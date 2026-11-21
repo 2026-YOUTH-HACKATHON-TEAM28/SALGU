@@ -14,7 +14,7 @@ import type {
 } from '../shared/types.js';
 import type { RealCalls, SimInternal } from './mock/sim.js';
 import { VISIT_SLOTS, localIso, slotStart } from './mock/sim.js';
-import { brokersOf, dongById } from './mock/data.js';
+import { dongById } from './mock/data.js';
 import { priceVerdict, valuesOf } from './mock/engine.js';
 import {
   DialogError,
@@ -22,6 +22,7 @@ import {
   advanceStage,
   announceCalls,
   announceVisits,
+  brokersFor,
   mid,
   preparePlan,
   say,
@@ -285,7 +286,7 @@ export async function startRealCalls(
 
   const plan = prep.dongIds.map((dongId) => ({
     dongId,
-    brokers: brokersOf(dongId).slice(0, agent.brokersPerDong),
+    brokers: brokersFor(chat, dongId).slice(0, agent.brokersPerDong),
   }));
   const total = plan.reduce((n, p) => n + p.brokers.length, 0);
   const allowed = ctx.useCalls(total);

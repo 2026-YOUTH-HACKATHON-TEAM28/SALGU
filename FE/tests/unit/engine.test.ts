@@ -42,7 +42,7 @@ describe('동네 찾기', () => {
       expect(r.dongs[i - 1]!.score).toBeGreaterThanOrEqual(r.dongs[i]!.score);
     }
     for (const d of r.dongs) {
-      expect(d.commute.minutes).toBeLessThanOrEqual(40);
+      expect(d.commute?.minutes).toBeLessThanOrEqual(40);
       expect(d.brokers).toHaveLength(3);
       expect(d.rentRange[0]).toBeLessThanOrEqual(d.median);
       expect(d.median).toBeLessThanOrEqual(d.rentRange[1]);

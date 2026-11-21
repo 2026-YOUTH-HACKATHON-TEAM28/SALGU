@@ -10,6 +10,7 @@ import type {
   Conditions,
   Listing,
   Message,
+  SearchResult,
   SourceTag,
   Stage,
   Visit,
@@ -225,15 +226,46 @@ function runSearch(chat: ChatState, now: Date, exclude: string[] = [], lead?: st
     return;
   }
   fillDefaults(chat.conditions);
-  const result = searchDongs(chat.conditions, WORKPLACES, exclude);
+  if (deferOn.has(chat)) {
+    // 대화 에이전트에 물어볼 차례: 라우트가 받아 와서 showSearch 로 마무리해요.
+    deferred.set(chat, { exclude, lead });
+    return;
+  }
+  showSearch(chat, searchDongs(chat.conditions, WORKPLACES, exclude), now, lead);
+}
+
+/* 동네 찾기를 대화 에이전트에 맡길 때: 대화 규칙은 '찾을 차례'만 남기고 라우트가 비동기로 물어봐요 */
+const deferOn = new WeakSet<ChatState>();
+const deferred = new WeakMap<ChatState, { exclude: string[]; lead?: string }>();
+export function deferSearch(chat: ChatState): void {
+  deferOn.add(chat);
+}
+export function takeDeferredSearch(chat: ChatState): { exclude: string[]; lead?: string } | null {
+  deferOn.delete(chat);
+  const p = deferred.get(chat) ?? null;
+  deferred.delete(chat);
+  return p;
+}
+
+/** 동네 찾기 결과를 말풍선·카드로 보여 줘요. agent 면 출처를 추천 엔진으로 */
+export function showSearch(
+  chat: ChatState,
+  result: SearchResult,
+  now: Date,
+  lead?: string,
+  agent?: { source: string; notes: string[] },
+): void {
   advanceStage(chat, 'dong');
   if (!result.dongs.length) {
     say(
       chat,
-      `${lead ? `${lead} ` : ''}지금 조건에 맞는 동네가 없어요. 가장 많이 걸러 낸 조건부터 넓혀 볼까요?`,
+      [
+        `${lead ? `${lead} ` : ''}지금 조건에 맞는 동네가 없어요. ${agent ? '보증금·월세나 집 유형을 넓혀 볼까요?' : '가장 많이 걸러 낸 조건부터 넓혀 볼까요?'}`,
+        ...(agent?.notes ?? []).map((n) => `- ${n}`),
+      ].join('\n'),
       {
         cards: [{ kind: 'noMatch', id: mid('k'), losses: result.losses }],
-        sources: [SRC.deals, SRC.transit],
+        sources: agent ? [{ label: agent.source, kind: 'real' }] : [SRC.deals, SRC.transit],
       },
       now,
     );
@@ -245,11 +277,11 @@ function runSearch(chat: ChatState, now: Date, exclude: string[] = [], lead?: st
   const bullets: string[] = [];
   if (a) {
     bullets.push(
-      `1순위는 ${a.name}이에요. 조건 비슷한 계약 ${a.dealCount}건, 환산월세 중간값 ${a.median}만 원, ${wpName(chat)}까지 ${a.commute.minutes}분`,
+      `1순위는 ${a.name}이에요. 조건 비슷한 계약 ${a.dealCount}건, 환산월세 중간값 ${a.median}만 원${a.commute ? `, ${wpName(chat)}까지 ${a.commute.minutes}분` : ''}`,
     );
   }
   if (a && b) {
-    const diff = b.commute.minutes - a.commute.minutes;
+    const diff = a.commute && b.commute ? b.commute.minutes - a.commute.minutes : 0;
     const cheaper = b.median - a.median;
     bullets.push(
       diff > 0
@@ -262,8 +294,11 @@ function runSearch(chat: ChatState, now: Date, exclude: string[] = [], lead?: st
   say(
     chat,
     [
-      `${lead ? `${lead} ` : ''}과거 실거래(최근 12개월)와 출퇴근 여건으로 살만한 동네 ${result.dongs.length}곳을 골랐어요.`,
+      agent
+        ? `${lead ? `${lead} ` : ''}실거래 추천 엔진(최근 12개월 계약)으로 살만한 동네 ${result.dongs.length}곳을 골랐어요.`
+        : `${lead ? `${lead} ` : ''}과거 실거래(최근 12개월)와 출퇴근 여건으로 살만한 동네 ${result.dongs.length}곳을 골랐어요.`,
       ...bullets.map((x) => `- ${x}`),
+      ...(agent?.notes ?? []).map((n) => `- ${n}`),
       '실거래는 이미 끝난 계약이라 지금 나온 집은 알 수 없어요. 동네를 고르면 동네마다 중개사무소 여러 곳에 AI가 전화해서 비슷한 방이 있는지 물어볼게요.',
     ].join('\n'),
     {
@@ -274,10 +309,17 @@ function runSearch(chat: ChatState, now: Date, exclude: string[] = [], lead?: st
         '더 싼 데 없어?',
         '1번 자세히 알려줘',
       ],
-      sources: [SRC.deals, SRC.transit, SRC.bus, SRC.brokers, SRC.conv],
+      sources: agent
+        ? [{ label: agent.source, kind: 'real' }, SRC.brokers, SRC.conv]
+        : [SRC.deals, SRC.transit, SRC.bus, SRC.brokers, SRC.conv],
     },
     now,
   );
+}
+
+/** 동네의 중개사무소: 동네 찾기 결과에 있는 목록(에이전트가 준 것 포함), 없으면 예시 */
+export function brokersFor(chat: ChatState, dongId: string) {
+  return chat.search?.dongs.find((d) => d.id === dongId)?.brokers ?? brokersOf(dongId);
 }
 
 function dongByNo(chat: ChatState, no: number) {
@@ -302,9 +344,10 @@ function prepCalls(chat: ChatState, dongIds: string[], now: Date): void {
   };
   advanceStage(chat, 'call');
   const names = ids.map((id) => dongById(id)?.name).join(', ');
+  const brokerCount = ids.reduce((n, id) => n + brokersFor(chat, id).length, 0);
   say(
     chat,
-    `${names}의 등록 중개사무소 ${ids.length * 3}곳에 전화할게요. 입주 희망일과 계약 기간을 고르면 전화를 시작할 수 있어요.`,
+    `${names}의 등록 중개사무소 ${brokerCount}곳에 전화할게요. 입주 희망일과 계약 기간을 고르면 전화를 시작할 수 있어요.`,
     { cards: [{ kind: 'callPrep', id: mid('k'), done: false }], sources: [SRC.brokers] },
     now,
   );
@@ -316,7 +359,7 @@ function startCalls(chat: ChatState, internal: SimInternal, ctx: Ctx): void {
   if (!prep.moveIn || !prep.term)
     throw new DialogError('prep_required', '입주 희망일과 계약 기간을 골라 주세요.');
   if (chat.batch && !chat.batch.doneAt) throw new DialogError('calling', '지금 통화가 진행 중이에요.');
-  const brokers = prep.dongIds.flatMap((id) => brokersOf(id));
+  const brokers = prep.dongIds.flatMap((id) => brokersFor(chat, id));
   const allowed = ctx.useCalls(brokers.length);
   if (allowed === 0)
     throw new DialogError(
@@ -657,11 +700,16 @@ export function handleText(chat: ChatState, internal: SimInternal, raw: string, 
         .slice(0, 6);
       say(
         chat,
-        `${d.name}(${d.gu}) 한 장 설명이에요. ${d.station}역 기준으로 ${wpName(chat)}까지 ${d.commute.minutes}분, 환승 ${d.commute.transfers}회예요.`,
+        d.commute
+          ? `${d.name}(${d.gu}) 한 장 설명이에요. ${d.station}역 기준으로 ${wpName(chat)}까지 ${d.commute.minutes}분, 환승 ${d.commute.transfers}회예요.`
+          : `${d.name}(${d.gu}) 한 장 설명이에요. 실거래 ${d.dealCount}건, 환산월세 중간값 ${d.median}만 원이에요. ${wpName(chat)}까지 통근 시간은 아직 계산하지 못해요.`,
         {
           cards: [{ kind: 'dongDetail', id: mid('k'), dong: d, deals }],
           chips: [`${d.rank}번만 전화해줘`],
-          sources: [SRC.deals, SRC.transit, SRC.bus, SRC.brokers],
+          sources:
+            d.source === 'agent'
+              ? [{ label: '추천 엔진(실거래 DB)', kind: 'real' }, SRC.brokers]
+              : [SRC.deals, SRC.transit, SRC.bus, SRC.brokers],
         },
       );
       break;
@@ -792,7 +840,10 @@ export function aiContext(chat: ChatState): string {
     )
     .join(', ');
   const dongs = chat.search?.dongs
-    .map((d) => `${d.rank}. ${d.name}(통근 ${d.commute.minutes}분, 환산월세 중간 ${d.median}만 원)`)
+    .map(
+      (d) =>
+        `${d.rank}. ${d.name}(${d.commute ? `통근 ${d.commute.minutes}분, ` : ''}환산월세 중간 ${d.median}만 원)`,
+    )
     .join(' / ');
   const docs = Object.values(CONCEPTS)
     .map((c) => `[${c.title}] ${c.body.join(' ')}`)

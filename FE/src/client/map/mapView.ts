@@ -1,7 +1,7 @@
 import { html, nothing, type TemplateResult } from 'lit-html';
 import type { Listing } from '../../shared/types.js';
 import { CONTACT_LABEL, PRICE_LABEL } from '../../shared/labels.js';
-import { depRent, hm } from '../../shared/format.js';
+import { busLabel, commuteLabel, depRent, hm } from '../../shared/format.js';
 import { state, ui, type MapMode } from '../store.js';
 import { listingCard } from '../components/cards/listing.js';
 import { createProvider, esc, SEOUL, type LatLng, type MapProvider } from './provider.js';
@@ -82,11 +82,7 @@ function paint(p: MapProvider): void {
         lng: d.lng,
         html: `<span class="lpin ${d.rank === 1 ? 'k-first' : 'k-dong'}"><b>${d.rank}</b>${esc(d.name)}</span>`,
         title: `${d.rank}순위 ${d.name}`,
-        popup: [
-          `${d.rank}. ${d.name}`,
-          `출퇴근 ${d.commute.minutes}분 · 환승 ${d.commute.transfers}회`,
-          `환산월세 중간값 ${d.median}만 원`,
-        ],
+        popup: [`${d.rank}. ${d.name}`, `출퇴근 ${commuteLabel(d)}`, `환산월세 중간값 ${d.median}만 원`],
         onClick: () => ui({ mapFocus: d.id, sheetOpen: true }),
       });
       for (const b of d.brokers) {
@@ -260,7 +256,9 @@ function sheet(): TemplateResult | typeof nothing {
     <div class="sheet-body">
       ${
         d
-          ? html`<h3>${d.rank}. ${d.name} <span class="muted">${d.gu} · ${d.station}역</span></h3>
+          ? html`<h3>
+                ${d.rank}. ${d.name} <span class="muted">${d.gu}${d.station ? ` · ${d.station}역` : ''}</span>
+              </h3>
               <dl class="facts">
                 <div>
                   <dt>실거래</dt>
@@ -270,11 +268,11 @@ function sheet(): TemplateResult | typeof nothing {
                 </div>
                 <div>
                   <dt>출퇴근</dt>
-                  <dd>${d.commute.minutes}분 · 환승 ${d.commute.transfers}회</dd>
+                  <dd>${commuteLabel(d)}</dd>
                 </div>
                 <div>
                   <dt>버스</dt>
-                  <dd>${d.bus.route}번 배차 ${d.bus.interval}분 · 막차 ${d.bus.last}</dd>
+                  <dd>${busLabel(d)}</dd>
                 </div>
                 <div>
                   <dt>중개사</dt>

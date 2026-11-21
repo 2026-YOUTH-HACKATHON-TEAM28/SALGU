@@ -236,7 +236,20 @@ export const WORKPLACES: Workplace[] = [
   { id: 'snu', name: '서울대', alias: ['서울대', '서울대학교'], lines: ['2'], lat: 37.4812, lng: 126.9527 },
 ];
 
-export const dongById = (id: string): DongSeed | undefined => DONGS.find((d) => d.id === id);
+/** 대화 에이전트(실거래 추천)로 받은 동네. 예시 동네와 같은 자리에서 찾을 수 있게 등록해 둬요 */
+export interface AgentDong extends Omit<DongSeed, 'bus'> {
+  bus: BusInfo | null;
+  refDeals: Deal[];
+  priceRef: { conv: number; n: number } | null;
+}
+const AGENT_DONGS = new Map<string, AgentDong>();
+export function registerAgentDong(d: AgentDong): void {
+  AGENT_DONGS.set(d.id, d);
+}
+export const agentDong = (id: string): AgentDong | undefined => AGENT_DONGS.get(id);
+
+export const dongById = (id: string): DongSeed | AgentDong | undefined =>
+  DONGS.find((d) => d.id === id) ?? AGENT_DONGS.get(id);
 export const workplaceById = (id: string): Workplace | undefined => WORKPLACES.find((w) => w.id === id);
 
 /* ---------- 결정적 난수 ---------- */
@@ -304,7 +317,9 @@ export function buildingsOf(
 
 /** 동네별 최근 12개월 실거래 예시(월세 계약) */
 export function dealsOf(dongId: string): Deal[] {
-  const d = dongById(dongId);
+  const a = AGENT_DONGS.get(dongId);
+  if (a) return a.refDeals;
+  const d = DONGS.find((x) => x.id === dongId);
   if (!d) return [];
   const r = rng(`deal:${dongId}`);
   const blds = buildingsOf(dongId);

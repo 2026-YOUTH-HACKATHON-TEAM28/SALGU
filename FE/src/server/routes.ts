@@ -8,6 +8,9 @@ import {
   advance,
   aiContext,
   applyAgentTurn,
+  deferSearch,
+  showSearch,
+  takeDeferredSearch,
   applyAiAnswer,
   userSays,
   handleAction,
@@ -22,6 +25,8 @@ import { ChatAgent, mapAgentCard, mapRecs } from './chatAgent.js';
 import { PhoneAgent, acceptRealProposal, planRealVisits, startRealCalls, syncReal } from './phoneAgent.js';
 import type { ChatRecord } from './store.js';
 import { BeAuth } from './beAuth.js';
+import { agentSearch, condQuestion, restoreAgentDongs } from './dongAgent.js';
+import { searchDongs } from './mock/engine.js';
 import { DONGS, STATIONS, WORKPLACES, dongById } from './mock/data.js';
 import { VISIT_SLOTS } from './mock/sim.js';
 
@@ -73,7 +78,28 @@ export async function registerRoutes(app: FastifyInstance, config: Config, store
   };
   // 실제 통화 결과는 대화를 읽을 때 전화 에이전트에서 가져와요(같은 대화는 1초에 한 번까지).
   const lastSync = new Map<string, number>();
+  /* 동네 찾기는 대화 에이전트(실거래 추천 엔진)에 물어봐요. 못 받으면 예시 데이터로 */
+  const finishSearch = async (rec: ChatRecord) => {
+    const p = takeDeferredSearch(rec.state);
+    if (!p) return;
+    const turn = await agent.turn(rec.state.id, condQuestion(rec.state, WORKPLACES));
+    const result = agentSearch(turn?.backend, p.exclude);
+    if (result) {
+      showSearch(rec.state, result, new Date(), p.lead, {
+        source: turn?.backend?.source ?? '추천 엔진(실거래 DB)',
+        notes: turn?.backend?.notes ?? [],
+      });
+    } else {
+      showSearch(
+        rec.state,
+        searchDongs(rec.state.conditions, WORKPLACES, p.exclude),
+        new Date(),
+        `${p.lead ? `${p.lead} ` : ''}실거래 추천을 받지 못해 예시 데이터로 보여 드려요.`,
+      );
+    }
+  };
   const sync = async (rec: ChatRecord) => {
+    restoreAgentDongs(rec.state.search);
     if (!rec.internal.real || !phone.enabled) return;
     const t = Date.now();
     if (t - (lastSync.get(rec.state.id) ?? 0) < 1000) return;
@@ -286,11 +312,14 @@ export async function registerRoutes(app: FastifyInstance, config: Config, store
       const aiValues =
         ai.enabled && intentOf(text).kind === 'other' ? await ai.extract(text, WORKPLACES) : {};
       let result;
+      if (agent.enabled) deferSearch(rec.state);
       try {
         result = handleText(rec.state, rec.internal, text, { ...ctxFor(req.user!), aiValues });
       } catch (err) {
+        takeDeferredSearch(rec.state);
         return sendDialogError(reply, err);
       }
+      await finishSearch(rec);
       // 규칙으로 못 답한 질문은 AI가 답해요(실패하면 규칙 안내 그대로).
       if (result.askAi && ai.enabled) {
         const answer = await ai.answer(result.askAi.question, aiContext(rec.state));
@@ -346,9 +375,12 @@ export async function registerRoutes(app: FastifyInstance, config: Config, store
         ) {
           await acceptRealProposal(rec.state, rec.internal, phone, a.visitId, new Date());
         } else {
+          if (agent.enabled) deferSearch(rec.state);
           handleAction(rec.state, rec.internal, a, ctxFor(req.user!));
+          await finishSearch(rec);
         }
       } catch (err) {
+        takeDeferredSearch(rec.state);
         return sendDialogError(reply, err);
       }
       store.putChat(rec);

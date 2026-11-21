@@ -95,10 +95,17 @@ export interface DongResult {
   dealCount: number;
   rentRange: [number, number];
   median: number;
-  commute: Commute;
-  bus: BusInfo;
+  /** 통근 계산 전이면 null(에이전트 추천 엔진은 아직 교통 데이터 연결 전) */
+  commute: Commute | null;
+  bus: BusInfo | null;
   brokers: Broker[];
   buildings: string[];
+  /** 'agent' 면 대화 에이전트(실거래 추천 엔진)에서 받은 동네 */
+  source?: 'agent' | 'mock';
+  /** 에이전트 동네의 근거 실거래(동네 설명 카드에 보여요) */
+  refDeals?: Deal[];
+  /** 가격 판단 기준: 같은 건물·면적대 시세 중앙값의 환산월세 중앙값 */
+  priceRef?: { conv: number; n: number } | null;
 }
 
 export interface Deal {

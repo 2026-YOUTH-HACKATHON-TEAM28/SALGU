@@ -172,8 +172,8 @@ export function finalCard(card: Extract<Card, { kind: 'final' }>): TemplateResul
               <td>${PRICE_LABEL[r.l.priceVerdict].text}</td>
               <td>${r.l.fee}만</td>
               <td class="money">${r.burden}만</td>
-              <td>${d ? `${d.commute.minutes}분 · ${d.commute.transfers}회` : '-'}</td>
-              <td>${d ? `${d.bus.interval}분 · ${d.bus.last}` : '-'}</td>
+              <td>${d?.commute ? `${d.commute.minutes}분 · ${d.commute.transfers}회` : '-'}</td>
+              <td>${d?.bus ? `${d.bus.interval}분 · ${d.bus.last}` : '-'}</td>
               <td>${r.l.built || '-'}</td>
               <td>${r.l.moveIn}</td>
               <td>${v ? `${CONTACT_LABEL[r.l.contact].text} ${dateTime(v.at)}` : '-'}</td>

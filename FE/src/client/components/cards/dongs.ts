@@ -1,7 +1,7 @@
 import { html, nothing, type TemplateResult } from 'lit-html';
 import type { Card, CondKey, DongResult } from '../../../shared/types.js';
 import { COND_META } from '../../../shared/labels.js';
-import { depRent } from '../../../shared/format.js';
+import { busLabel, commuteLabel, depRent } from '../../../shared/format.js';
 import { act, openPanel, send, state } from '../../store.js';
 import { miniMap, type MiniPoint } from './minimap.js';
 import { condText } from '../prefs.js';
@@ -16,7 +16,7 @@ function latestDongsCardId(): string | null {
 }
 
 function commuteText(d: DongResult): string {
-  return d.commute.route.join(', ');
+  return d.commute?.route.join(', ') ?? '';
 }
 
 /** S-03 살만한 동네 */
@@ -59,7 +59,7 @@ export function dongsCard(card: Extract<Card, { kind: 'dongs' }>): TemplateResul
               <div class="dong-head">
                 <span class="rank">${d.rank}</span>
                 <strong>${d.name}</strong>
-                <span class="muted">${d.gu} · ${d.station}역</span>
+                <span class="muted">${d.gu}${d.station ? ` · ${d.station}역` : ''}</span>
                 <span class="score">점수 ${d.score}</span>
               </div>
               <p class="deal-line">
@@ -67,11 +67,13 @@ export function dongsCard(card: Extract<Card, { kind: 'dongs' }>): TemplateResul
                 <span class="muted">같은 조건 중간 ${d.median}만 · 최근 12개월 계약</span>
               </p>
               <div class="commute-box">
-                <strong>${wpName}까지 ${d.commute.minutes}분 · 환승 ${d.commute.transfers}회</strong>
+                <strong
+                  >${d.commute ? `${wpName}까지 ${commuteLabel(d)}` : `${wpName}까지 통근 시간은 계산 전`}</strong
+                >
                 <span>${commuteText(d)}</span>
               </div>
               <ul class="ticks">
-                <li>버스 ${d.bus.route}번 배차 ${d.bus.interval}분 · 막차 ${d.bus.last}</li>
+                ${d.bus ? html`<li>버스 ${busLabel(d)}</li>` : nothing}
                 <li>전화할 등록 중개사무소 ${d.brokers.length}곳</li>
               </ul>
             </button>
@@ -93,10 +95,17 @@ export function dongsCard(card: Extract<Card, { kind: 'dongs' }>): TemplateResul
           </div>`
         : nothing
     }
-    <p class="foot-note">
-      과거 실거래 기준: 서울시 부동산 전월세가 정보(최근 12개월 계약) · 카카오맵 대중교통 · 서울시
-      버스운행노선 · 기준일 ${asOf}. 지금 나온 방은 전화로 확인해요. 시험용 예시 데이터예요.
-    </p>
+    ${
+      dongs.some((d) => d.source === 'agent')
+        ? html`<p class="foot-note">
+            과거 실거래 기준: 살구 추천 엔진(최근 12개월 전월세 실거래). 통근 시간은 교통 데이터 연결 뒤에
+            보여 드려요. 중개사무소 목록은 시험용 예시예요. 지금 나온 방은 전화로 확인해요.
+          </p>`
+        : html`<p class="foot-note">
+            과거 실거래 기준: 서울시 부동산 전월세가 정보(최근 12개월 계약) · 카카오맵 대중교통 · 서울시
+            버스운행노선 · 기준일 ${asOf}. 지금 나온 방은 전화로 확인해요. 시험용 예시 데이터예요.
+          </p>`
+    }
   </article>`;
 }
 
@@ -111,11 +120,11 @@ export function dongDetailCard(card: Extract<Card, { kind: 'dongDetail' }>): Tem
     <dl class="facts">
       <div>
         <dt>출퇴근</dt>
-        <dd>${d.commute.minutes}분 · 환승 ${d.commute.transfers}회 · ${commuteText(d)}</dd>
+        <dd>${commuteLabel(d)}${d.commute ? ` · ${commuteText(d)}` : ''}</dd>
       </div>
       <div>
         <dt>버스</dt>
-        <dd>${d.bus.route}번 배차 ${d.bus.interval}분 · 막차 ${d.bus.last}</dd>
+        <dd>${busLabel(d)}</dd>
       </div>
       <div>
         <dt>계약 있던 건물</dt>

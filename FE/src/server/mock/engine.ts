@@ -13,7 +13,16 @@ import type {
   SearchResult,
   Workplace,
 } from '../../shared/types.js';
-import { DONGS, STANDARD, brokersOf, buildingsOf, dealsOf, dongById, type DongSeed } from './data.js';
+import {
+  DONGS,
+  STANDARD,
+  agentDong,
+  brokersOf,
+  buildingsOf,
+  dealsOf,
+  dongById,
+  type DongSeed,
+} from './data.js';
 
 /** 조건 기본값(말하지 않은 칸) */
 export const DEFAULTS: CondValues = {
@@ -187,10 +196,10 @@ export function searchDongs(
   const scored = pool.map((p) => {
     const avgBuilt = median(similarDeals(p.id, v).map((x) => x.built));
     const s =
-      w.commute * (1 - p.commute.minutes / Math.max(v.maxCommute, 1)) +
+      w.commute * (1 - (p.commute?.minutes ?? v.maxCommute) / Math.max(v.maxCommute, 1)) +
       w.price * (maxMed === minMed ? 0.5 : (maxMed - p.median) / (maxMed - minMed)) +
       w.built * Math.min(1, Math.max(0, (avgBuilt - 1995) / 30)) +
-      w.bus * Math.max(0, 1 - p.bus.interval / 15) +
+      w.bus * Math.max(0, 1 - (p.bus?.interval ?? 15) / 15) +
       w.supply * Math.min(1, p.dealCount / 40);
     return { ...p, score: Math.round(s * 10) / 10 };
   });
@@ -235,7 +244,10 @@ export function tighten(
     return Math.max(25, Math.round(best - (v.deposit * STANDARD.convRate) / 100 / 12) - 3);
   }
   if (key === 'maxCommute')
-    return Math.max(15, Math.min(...current.map((d) => d.commute.minutes), v.maxCommute) - 1);
+    return Math.max(
+      15,
+      Math.min(...current.map((d) => d.commute?.minutes ?? v.maxCommute), v.maxCommute) - 1,
+    );
   return Math.max(v.builtAfter ?? 2005, 2005) + 5;
 }
 
@@ -247,6 +259,13 @@ export function priceVerdict(
   deposit: number,
   rent: number,
 ): PriceVerdict {
+  // 에이전트 동네: 추천 엔진이 준 시세 중앙값과 비교해요
+  const a = agentDong(dongId);
+  if (a) {
+    if (!a.priceRef || a.priceRef.conv <= 0) return 'unknown';
+    const r = convRent(deposit, rent) / a.priceRef.conv;
+    return r <= 1.05 ? 'fair' : r <= 1.15 ? 'slightly_high' : 'high';
+  }
   const near = dealsOf(dongId).filter((d) => !d.renewal && d.type === type && Math.abs(d.area - area) <= 5);
   if (near.length < 3) return 'unknown';
   const med = median(near.map((d) => convRent(d.deposit, d.rent)));

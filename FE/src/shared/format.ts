@@ -82,3 +82,13 @@ export function maskPersonal(text: string): string {
     .replace(/\b(\d{6})[-\s]?([1-4])\d{6}\b/g, '$1-$2******')
     .replace(/\b(\d{4})[-\s]?(\d{4})[-\s]?(\d{4})[-\s]?(\d{4})\b/g, '$1-****-****-$4');
 }
+
+/** 동네 통근 표시. 계산 전이면(에이전트 추천 엔진은 교통 데이터 연결 전) 그렇게 알려요 */
+export function commuteLabel(d: { commute: { minutes: number; transfers: number } | null }): string {
+  return d.commute ? `${d.commute.minutes}분 · 환승 ${d.commute.transfers}회` : '통근 계산 전';
+}
+
+/** 동네 버스 표시. 정보가 없으면 그렇게 알려요 */
+export function busLabel(d: { bus: { route: string; interval: number; last: string } | null }): string {
+  return d.bus ? `${d.bus.route}번 배차 ${d.bus.interval}분 · 막차 ${d.bus.last}` : '버스 정보 없음';
+}
