@@ -214,3 +214,13 @@ describe('보안 헤더', () => {
     expect(res.headers['referrer-policy']).toBe('strict-origin-when-cross-origin');
   });
 });
+
+describe('카카오맵 허용', () => {
+  it('CSP 가 카카오맵 SDK 본체(kakaocdn)와 지도 그림을 막지 않아요', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/health' });
+    const csp = String(res.headers['content-security-policy']);
+    expect(csp).toMatch(/script-src[^;]*https:\/\/\*\.kakaocdn\.net/);
+    expect(csp).toMatch(/img-src[^;]*https:\/\/\*\.kakaocdn\.net/);
+    expect(csp).toMatch(/img-src[^;]*https:\/\/\*\.daumcdn\.net/);
+  });
+});

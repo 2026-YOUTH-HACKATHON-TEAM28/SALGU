@@ -10,7 +10,7 @@ HOST="${DEPLOY_HOST:-$(cat .deploy-host 2>/dev/null || true)}"
 [ -n "$HOST" ] || { echo "DEPLOY_HOST=user@서버 또는 .deploy-host 파일이 필요해요"; exit 1; }
 OPENSSH="${WINDIR:-/c/Windows}/System32/OpenSSH"
 if [ -x "$OPENSSH/ssh.exe" ]; then SSH="$OPENSSH/ssh.exe"; SCP="$OPENSSH/scp.exe"; else SSH=ssh; SCP=scp; fi
-SSH="$SSH -o BatchMode=yes -o ConnectTimeout=10"
+SSH="$SSH -n -o BatchMode=yes -o ConnectTimeout=10"   # -n: 입력을 기다리지 않게
 SCP="$SCP -q -o BatchMode=yes -o ConnectTimeout=10"
 BIN="$PWD/node_modules/.bin"
 REL="$(date +%Y%m%d-%H%M%S)"

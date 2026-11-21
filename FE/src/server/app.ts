@@ -24,15 +24,22 @@ export async function buildApp(config: Config, store = new Store(config.dataDir)
     contentSecurityPolicy: {
       useDefaults: true,
       directives: {
-        'script-src': ["'self'", 'https://dapi.kakao.com', 'https://*.daumcdn.net'],
+        // 카카오맵 SDK 는 dapi.kakao.com 에서 시작해 kakaocdn·daumcdn 에서 본체와 지도 그림을 받아요.
+        'script-src': ["'self'", 'https://dapi.kakao.com', 'https://*.kakaocdn.net', 'https://*.daumcdn.net'],
         'img-src': [
           "'self'",
           'data:',
           'https://*.tile.openstreetmap.org',
           'https://*.daumcdn.net',
+          'https://*.kakaocdn.net',
           'https://*.kakao.com',
         ],
-        'connect-src': ["'self'", 'https://dapi.kakao.com'],
+        'connect-src': [
+          "'self'",
+          'https://dapi.kakao.com',
+          'https://*.kakaocdn.net',
+          'https://*.daumcdn.net',
+        ],
         'style-src': ["'self'", "'unsafe-inline'"],
         'upgrade-insecure-requests': null,
       },
