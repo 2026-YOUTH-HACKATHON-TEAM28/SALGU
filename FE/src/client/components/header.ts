@@ -3,7 +3,17 @@ import { APP_VERSION } from '../../shared/version.js';
 import { STAGES } from '../../shared/labels.js';
 import { icons, logo } from '../icons.js';
 import { confirmAction } from './common.js';
-import { deleteChat, login, logout, newChat, openChat, openPanel, refreshList, state, ui } from '../store.js';
+import {
+  deleteChat,
+  login,
+  logout,
+  newChat,
+  openChat,
+  refreshList,
+  state,
+  togglePanel,
+  ui,
+} from '../store.js';
 
 function accountButton() {
   const u = state.session?.user;
@@ -85,6 +95,11 @@ function chatList() {
   </div>`;
 }
 
+/** 일정·지도가 지금 보이는지(PC 옆 칸 또는 모바일 탭) */
+function shown(panel: 'map' | 'sched'): boolean {
+  return state.ui.panel === panel || state.ui.mobileTab === panel;
+}
+
 export function headerView() {
   const visits = state.schedule.length;
   return html`<header class="top">
@@ -94,14 +109,20 @@ export function headerView() {
     </button>
     <nav class="top-actions" aria-label="주요 메뉴">
       <button
-        class="hdr-btn"
-        @click=${() => openPanel('sched')}
+        class="hdr-btn ${shown('sched') ? 'on' : ''}"
+        aria-pressed=${shown('sched')}
+        @click=${() => togglePanel('sched')}
         data-testid="hdr-sched"
         aria-label="일정${visits ? ` ${visits}건` : ''}"
       >
         ${icons.calendar()}<span class="lbl">일정</span>${visits ? html`<i class="count">${visits}</i>` : ''}
       </button>
-      <button class="hdr-btn pc-only" @click=${() => openPanel('map')} data-testid="hdr-map">
+      <button
+        class="hdr-btn pc-only ${shown('map') ? 'on' : ''}"
+        aria-pressed=${shown('map')}
+        @click=${() => togglePanel('map')}
+        data-testid="hdr-map"
+      >
         ${icons.map()}<span class="lbl">지도</span>
       </button>
       <button

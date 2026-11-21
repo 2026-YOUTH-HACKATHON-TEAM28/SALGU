@@ -895,3 +895,10 @@ button.pin-wrap {
 .m-pane {
   isolation: isolate;
 }
+
+/* 헤더 일정·지도: 열려 있으면 눌린 모양(다시 누르면 닫혀요) */
+.hdr-btn.on {
+  background: var(--apricot-soft);
+  color: var(--apricot-dark);
+  box-shadow: inset 0 0 0 1px #f6d6bf;
+}

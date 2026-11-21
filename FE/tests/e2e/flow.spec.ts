@@ -207,3 +207,28 @@ test('지도와 일정 화면 전환', async ({ page }) => {
   }
   await noHorizontalScroll(page);
 });
+
+test('헤더 일정·지도는 다시 누르면 닫혀요', async ({ page }) => {
+  await startAsExample(page);
+  if (isMobile(page)) {
+    await page.getByTestId('hdr-sched').click();
+    await expect(page.getByTestId('schedule')).toBeVisible();
+    await expect(page.getByTestId('hdr-sched')).toHaveAttribute('aria-pressed', 'true');
+    await page.getByTestId('hdr-sched').click();
+    await expect(page.getByTestId('chat-log')).toBeVisible();
+    await expect(page.getByTestId('schedule')).toHaveCount(0);
+    return;
+  }
+  for (const id of ['hdr-map', 'hdr-sched'] as const) {
+    await page.getByTestId(id).click();
+    await expect(page.getByTestId('side')).toBeVisible();
+    await expect(page.getByTestId(id)).toHaveAttribute('aria-pressed', 'true');
+    await page.getByTestId(id).click();
+    await expect(page.getByTestId('side')).toHaveCount(0);
+    await expect(page.getByTestId(id)).toHaveAttribute('aria-pressed', 'false');
+  }
+  // 지도가 열린 채 일정을 누르면 닫히지 않고 일정으로 바뀌어요
+  await page.getByTestId('hdr-map').click();
+  await page.getByTestId('hdr-sched').click();
+  await expect(page.getByTestId('schedule')).toBeVisible();
+});

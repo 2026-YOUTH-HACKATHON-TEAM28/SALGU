@@ -455,6 +455,18 @@ window.setInterval(notifyDue, 60000);
 
 /* ---------- 이동 ---------- */
 
+/** 헤더의 일정·지도 버튼: 이미 보이고 있으면 닫고, 아니면 열어요 */
+export function togglePanel(panel: Exclude<Panel, null>): void {
+  const mobile = window.matchMedia('(max-width: 767px)').matches;
+  const open = mobile ? state.ui.mobileTab === panel : state.ui.panel === panel;
+  if (open) {
+    if (mobile) ui({ mobileTab: 'chat' });
+    else ui({ panel: null });
+    return;
+  }
+  openPanel(panel);
+}
+
 export function openPanel(
   panel: Exclude<Panel, null>,
   opts: { mode?: MapMode; focus?: string | null } = {},
