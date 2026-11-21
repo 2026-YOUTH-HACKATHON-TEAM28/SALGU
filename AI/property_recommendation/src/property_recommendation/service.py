@@ -15,6 +15,7 @@ from .models import (
     RecommendationInput,
     RecommendationOutput,
 )
+from .public_data import SqlPublicDataRepository
 from .repository import PropertyRepository, SqlPropertyRepository
 from .scoring import ScoredCandidate, score_candidate
 
@@ -53,14 +54,25 @@ class CommuteProvider(Protocol):
     ) -> Mapping[str, CommuteMetric]: ...
 
 
+class PublicDataRepository(Protocol):
+    async def enrich_commutes(
+        self,
+        metrics: Mapping[str, CommuteMetric],
+        *,
+        include_nearby_stops: bool,
+    ) -> dict[str, CommuteMetric]: ...
+
+
 class PropertyRecommendationService:
     def __init__(
         self,
         repository: PropertyRepository,
         commute_provider: CommuteProvider | None = None,
+        public_data_repository: PublicDataRepository | None = None,
     ) -> None:
         self._repository = repository
         self._commute_provider = commute_provider
+        self._public_data_repository = public_data_repository
 
     async def recommend(self, criteria: RecommendationInput) -> RecommendationOutput:
         """통근권을 단계적으로 넓히며 실거래 매물을 점수화한다."""
@@ -113,6 +125,11 @@ class PropertyRecommendationService:
                     max_walk_to_station_min=criteria.max_walk_to_station_min,
                     max_bus_headway_min=criteria.max_bus_headway_min,
                 )
+                if self._public_data_repository:
+                    measured = await self._public_data_repository.enrich_commutes(
+                        measured,
+                        include_nearby_stops=False,
+                    )
                 region_commutes.update(measured)
                 allowed_regions = [
                     region
@@ -176,7 +193,7 @@ class PropertyRecommendationService:
     ) -> Mapping[str, CommuteMetric]:
         if not criteria.workplace or self._commute_provider is None or not candidates:
             return {}
-        return await self._commute_provider.measure_properties(
+        measured = await self._commute_provider.measure_properties(
             criteria.workplace,
             candidates,
             max_commute_min=criteria.max_commute_min,
@@ -184,6 +201,12 @@ class PropertyRecommendationService:
             max_walk_to_station_min=criteria.max_walk_to_station_min,
             max_bus_headway_min=criteria.max_bus_headway_min,
         )
+        if self._public_data_repository:
+            return await self._public_data_repository.enrich_commutes(
+                measured,
+                include_nearby_stops=True,
+            )
+        return measured
 
 
 async def recommend_properties(
@@ -193,7 +216,9 @@ async def recommend_properties(
 ) -> RecommendationOutput:
     """조건에 맞는 매물을 기본 5개 추천하며 중개업소는 조회하지 않는다."""
     service = PropertyRecommendationService(
-        SqlPropertyRepository(session), commute_provider
+        SqlPropertyRepository(session),
+        commute_provider,
+        SqlPublicDataRepository(session),
     )
     return await service.recommend(criteria)
 
@@ -251,13 +276,20 @@ def _result(
     region_count = len(region_commutes) if criteria.workplace else len(
         {candidate.region_address for candidate in candidates}
     )
+    public_data_tables = {
+        table
+        for metric in (*region_commutes.values(), *property_commutes.values())
+        for table in metric.public_data_tables
+    }
+    source_tables = ["officetel_rentals", "multifamily_rentals"]
+    source_tables.extend(sorted(public_data_tables))
     return RecommendationOutput(
         count=len(selected),
         candidates=[_to_output(item) for item in selected],
         query=QueryInfo(
             start_date=start_date,
             end_date=end_date,
-            source_tables=["officetel_rentals", "multifamily_rentals"],
+            source_tables=source_tables,
             evaluated_count=len(candidates),
             evaluated_region_count=region_count,
             commute_evaluated_count=len(property_commutes),
@@ -299,6 +331,7 @@ def _to_output(item: ScoredCandidate) -> PropertyRecommendation:
         commute_distance_km=item.commute.distance_km if item.commute else None,
         transit_fare_won=item.commute.fare_won if item.commute else None,
         transit_legs=item.commute.legs if item.commute else [],
+        nearby_bus_stops=item.commute.nearby_bus_stops if item.commute else [],
         route_url=item.commute.route_url if item.commute else None,
         station=first_transit.start_name if first_transit else None,
         walk_to_station_min=(

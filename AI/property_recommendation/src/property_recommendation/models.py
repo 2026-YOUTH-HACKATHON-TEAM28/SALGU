@@ -187,17 +187,48 @@ class TransitLeg(BaseModel):
     route_names: list[str] = Field(
         default_factory=list, description="이용할 버스·지하철 노선명"
     )
+    headway_min: float | None = Field(
+        default=None, ge=0, description="DB 운행정보 기준 배차간격, 단위 분"
+    )
+    first_time: str | None = Field(
+        default=None, description="DB 운행정보 기준 첫차 시각"
+    )
+    last_time: str | None = Field(
+        default=None, description="DB 운행정보 기준 막차 시각"
+    )
+    scheduled_departures: int | None = Field(
+        default=None, ge=0, description="DB 시각표 기준 일 운행 횟수"
+    )
+    public_data_applied: bool = Field(
+        default=False, description="서울시 교통 DB 정보 적용 여부"
+    )
+
+
+class NearbyBusStop(BaseModel):
+    """매물 반경 800m 안의 버스 정류장."""
+
+    name: str = Field(description="정류장명")
+    ars_id: str | None = Field(default=None, description="버스 정류장 ARS ID")
+    distance_m: int = Field(ge=0, description="매물과 정류장 직선거리, 단위 미터")
+    route_names: list[str] = Field(
+        default_factory=list, description="정류장을 지나는 버스 노선명"
+    )
 
 
 class CommuteMetric(BaseModel):
     minutes: int = Field(ge=0)
     transfers: int = Field(ge=0)
-    bus_headway_min: int | None = Field(default=None, ge=0)
+    bus_headway_min: float | None = Field(default=None, ge=0)
     distance_km: float | None = Field(default=None, ge=0)
     fare_won: int | None = Field(default=None, ge=0)
     walk_to_transit_min: int | None = Field(default=None, ge=0)
     route_url: str | None = None
     legs: list[TransitLeg] = Field(default_factory=list)
+    origin_longitude: float | None = None
+    origin_latitude: float | None = None
+    nearby_bus_stops: list[NearbyBusStop] = Field(default_factory=list)
+    public_data_applied: bool = False
+    public_data_tables: list[str] = Field(default_factory=list)
 
 
 class ScoreBreakdown(BaseModel):
@@ -237,6 +268,9 @@ class PropertyRecommendation(BaseModel):
     transit_legs: list[TransitLeg] = Field(
         default_factory=list, description="도보·버스·지하철 상세 경로"
     )
+    nearby_bus_stops: list[NearbyBusStop] = Field(
+        default_factory=list, description="매물 반경 800m 내 가까운 버스 정류장"
+    )
     route_url: str | None = Field(default=None, description="카카오맵 경로 URL")
     station: str | None = Field(default=None, description="첫 승차역·정류장")
     walk_to_station_min: int | None = Field(
@@ -265,7 +299,7 @@ class QueryInfo(BaseModel):
 
     start_date: date = Field(description="실거래 조회 시작일")
     end_date: date = Field(description="실거래 조회 종료일")
-    source_tables: list[str] = Field(description="조회한 실거래 테이블")
+    source_tables: list[str] = Field(description="추천에 실제로 조회한 DB 테이블")
     evaluated_count: int = Field(description="점수 평가 대상 매물 수")
     evaluated_region_count: int = Field(description="통근 평가 지역 수")
     commute_evaluated_count: int = Field(
@@ -307,10 +341,22 @@ class RealtorSearchInput(BaseModel):
     )
 
 
+class RealtorLocationCandidate(BaseModel):
+    place_id: str
+    name: str
+    phone: str | None = None
+    address: str
+    road_address: str | None = None
+    distance_m: int
+    longitude: float
+    latitude: float
+    place_url: str
+
+
 class RealtorOffice(BaseModel):
     """거리순 공인중개사 검색 결과 한 건."""
 
-    place_id: str = Field(description="카카오 장소 ID")
+    place_id: str = Field(description="DB 중개업소 시스템 ID")
     name: str = Field(description="공인중개사 사무소명")
     phone: str | None = Field(default=None, description="전화번호")
     address: str = Field(description="지번 주소")
@@ -318,7 +364,14 @@ class RealtorOffice(BaseModel):
     distance_m: int = Field(ge=0, description="확정 매물과의 직선거리, 단위 미터")
     longitude: float = Field(description="경도")
     latitude: float = Field(description="위도")
-    place_url: str = Field(description="카카오맵 장소 URL")
+    place_url: str = Field(description="카카오맵 장소 검색 URL")
+    registration_no: str | None = Field(
+        default=None, description="DB의 중개업소 등록번호"
+    )
+    status: str | None = Field(default=None, description="DB의 중개업소 영업 상태")
+    source: Literal["database"] = Field(
+        default="database", description="중개업소 정보 출처"
+    )
 
 
 class RealtorSearchOutput(BaseModel):
