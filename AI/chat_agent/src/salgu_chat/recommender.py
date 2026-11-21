@@ -126,6 +126,12 @@ def plan(card):
             conds.pop(key, None)
         base["priorities"] = [p for p in base.get("priorities") or [] if p not in ("commute", "bus_headway")]
         notes.append(f"{work}까지 {way} 시간·환승은 아직 계산하지 못해요(교통 데이터 연결 전).")
+    # 엔진은 workplace 없이 역 도보·배차 조건이 오면 오류를 낸다 → 빼고 알린다(회사·학교 유무와 상관없이)
+    said = [k for k in ("max_walk_to_station_min", "max_bus_headway_min") if conds.pop(k, None)]
+    if said:
+        base["priorities"] = [p for p in base.get("priorities") or [] if p != "bus_headway"]
+        what = "·".join({"max_walk_to_station_min": "역까지 걷는 시간", "max_bus_headway_min": "버스 배차"}[k] for k in said)
+        notes.append(f"{what} 조건은 아직 확인하지 못해요(교통 데이터 연결 전).")
 
     pref = (conds.get("preferred_areas") or {}).get("value") or []
     avoid = (conds.get("avoid_areas") or {}).get("value") or []
@@ -218,8 +224,18 @@ class _Runner:
             url = URL.create("postgresql+asyncpg", username=_env("SALGU_DB_USER"),
                              password=_env("SALGU_DB_PASSWORD"), host=_env("SALGU_DB_HOST"),
                              port=int(_env("SALGU_DB_PORT", "5432")), database=_env("SALGU_DB_NAME", "postgres"))
-            self._engine = create_async_engine(url, connect_args={"ssl": "require"}, hide_parameters=True,
-                                               pool_pre_ping=True)
+            # 공용 Supabase 풀러(세션 모드)는 팀 전체 동시 접속이 15개로 제한된다.
+            # 기본 풀(최대 15개)이면 한도를 혼자 다 쓸 수 있어, 챗봇 서버는 최대 3개만 쓴다.
+            # 포트 6543(트랜잭션 모드)은 이 한도를 받지 않지만, 요청마다 다른 실제 연결로 갈 수 있어
+            # 이름 있는 준비 문장(prepared statement)을 캐시하면 안 된다 → 캐시를 끄고 이름을 매번 새로 만든다.
+            args = {"ssl": "require"}
+            if int(_env("SALGU_DB_PORT", "5432")) == 6543:
+                import uuid
+                args.update(statement_cache_size=0, prepared_statement_cache_size=0,
+                            prepared_statement_name_func=lambda: f"__salgu_{uuid.uuid4().hex}__")
+            self._engine = create_async_engine(url, connect_args=args, hide_parameters=True,
+                                               pool_pre_ping=True, pool_size=2, max_overflow=1,
+                                               pool_recycle=300, pool_timeout=10)
         return self._engine
 
     async def _run(self, card):

@@ -76,6 +76,14 @@ class RecommenderTest(unittest.TestCase):
         self.assertEqual(crit.preferred_areas, ["강남구"])
         self.assertTrue(any("통근 시간" in n for n in res["notes"]))
 
+    def test_walk_and_headway_limits_without_workplace(self):
+        # 엔진은 workplace 없이 역 도보·배차 조건이 오면 ValueError → 빼고 알린다
+        res, repo = self.run_engine("신촌 1000/50 역에서 걸어서 10분 이내 버스 배차 10분 이하")
+        self.assertIsNone(repo.calls[-1].max_walk_to_station_min)
+        self.assertIsNone(repo.calls[-1].max_bus_headway_min)
+        self.assertEqual(res["count"], 2)
+        self.assertTrue(any("역까지 걷는 시간·버스 배차 조건" in n for n in res["notes"]))
+
     def test_avoid_neighborhood_not_whole_gu(self):
         stages, _ = recommender.plan(intake.intake("마포구 1000/50 홍대는 빼고")["card"])
         conds = stages[0][0]["conditions"]
