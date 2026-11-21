@@ -11,8 +11,9 @@
 - 사용자가 말한 것에서만 추론합니다. 말하지 않은 것(전세대출·매매 등)은 넣지 않습니다.
 - 카드는 **무엇을 볼지**만 정합니다. 실거래 분위수, 통근 시간 같은 숫자 판정은 계산 엔진이 합니다.
 - 데이터로 판단할 수 없는 바람은 `unverifiable`에 넣고 "데이터로 확인할 수 없어요"로 표시합니다.
-- **처음부터 다 묻지 않습니다.** 대충 말해도 가장 자연스러운 뜻으로 카드를 만들고(해석한 조건은 `inferred`), 사용자는 다음 말로 고칩니다(예: "홍대는 좀?" → 홍대를 `avoid_areas`로). 회사·예산이 없어도 되묻지 않습니다.
-- `clarifications`(버튼 되묻기)는 말에서 집 찾기 조건을 하나도 알아낼 수 없을 때만 씁니다.
+- **처음부터 다 묻지 않습니다.** 대충 말해도 가장 자연스러운 뜻으로 카드를 만들고(해석한 조건은 `inferred`), 사용자는 다음 말로 고칩니다(예: "홍대는 좀?" → 홍대를 `avoid_areas`로).
+- **최소 조건은 지역·보증금·월세 세 가지**입니다(지역 = `preferred_areas` 또는 `workplace`, 전세면 월세 없음). 빠진 것만 한 번에 자연스럽게 묻고 `clarifications`에 버튼을 넣습니다. 그 밖의 조건은 묻지 않습니다.
+- 최소 조건이 다 모이면 `ready: true`입니다. 계산하는 쪽(BE)은 `ready`인 카드로 검색합니다.
 - 금액 단위는 만원입니다(국토부 실거래 API와 같은 단위).
 
 ## 예시 1: 기본 흐름
@@ -197,7 +198,9 @@
 | `conditions.max_walk_to_station_min` | int | 가까운 지하철역까지 걸어서 상한(분) |
 | `priorities` | string 배열 | 사용자가 말한 우선순위. `price`, `commute`, `bus_headway`, `building_age` 중에서 순서대로 |
 | `unverifiable` | `{phrase, message}` 배열 | 데이터로 판단할 수 없는 바람 |
-| `clarifications` | `{id, question, options}` 배열 | 버튼 되묻기 |
+| `clarifications` | `{id, question, options}` 배열 | 빠진 최소 조건 버튼 되묻기. `id`: `area`, `budget`, `deposit`, `monthly_rent` |
+| `missing` | string 배열 | 아직 모르는 최소 조건: `area`, `deposit`, `monthly_rent` |
+| `ready` | bool | 최소 조건이 다 모였는지. `true`면 검색 가능 |
 
 조건 항목은 모두 다음 형태를 따릅니다.
 
