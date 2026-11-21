@@ -14,6 +14,7 @@ from typing import Any, Callable, Optional
 
 from . import policy
 from .config import KST, Settings
+from .extract import decide, empty_result
 from .instruction import build_instruction, build_sms_draft
 from .policy import PolicyError
 from .provider import ProviderError
@@ -24,12 +25,6 @@ PENDING = ("waiting", "scheduled")
 ACTIVE = PENDING + ON_LINE + ("retry_wait", "analyzing")
 FINAL = ("done", "failed", "rejected")
 MAX_ATTEMPTS = 2  # 안 받으면 1번만 다시
-
-LISTING_FIELDS = (
-    "location", "building", "floor", "unit", "area_m2", "deposit_manwon", "monthly_rent_manwon",
-    "maintenance_fee_manwon", "maintenance_includes", "move_in",
-)
-
 
 def iso(dt: Optional[datetime]) -> Optional[str]:
     return dt.astimezone(KST).isoformat() if dt else None
@@ -67,10 +62,6 @@ class Store:
         tmp = self.path.with_suffix(".tmp")
         tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
         tmp.replace(self.path)
-
-
-def in_user_window(start: datetime, windows: list) -> bool:
-    return any(w.start <= start < w.end for w in windows)
 
 
 class CallService:
@@ -317,7 +308,7 @@ class CallService:
         segments = transcript.get("segments", []) if status == "completed" else []
         request = self._request_of(rec)
         raw = self._extract(rec, request, segments)
-        outcome, result = self._build_result(request, raw, segments)
+        outcome, result = self._build_result(request, raw, segments, parse(rec["started_at"]))
         if outcome == "no_answer":  # 자동응답
             self._no_answer(rec, now, result)
             return
@@ -338,60 +329,14 @@ class CallService:
         rec.update(status="done", outcome=outcome, result=result)
 
     # ------------------------------------------------------------ 결과 만들기
-    @staticmethod
-    def _label(segments: list[dict]) -> list[dict]:
-        """화자 이름 붙이기. C4에서 extract.label_speakers로 바꾼다."""
-        return [{**seg, "speaker": "ai" if seg.get("speaker") == "speaker_0" else "broker"} for seg in segments]
-
     def _empty_result(self, rec: dict) -> dict:
-        return {
-            "listings": [], "broker_slots": [], "availability_note": None, "pet_allowed": None,
-            "registry_reply": None, "unverified": [], "corrections": [], "evidence": {}, "quotes": {},
-            "transcript": [], "sms_draft": None, "timing": None,
-        }
+        return empty_result()
 
-    def _build_result(self, request: CallRequest, raw: Optional[dict], segments: list[dict]) -> tuple[str, dict]:
-        """C1: 추출 값을 그대로 옮긴다. C4에서 근거 줄 대조(extract.decide)로 바꾼다."""
-        lines = self._label(segments)
-        result = self._empty_result({})
-        if request.keep_transcript:
-            result["transcript"] = lines
-        if raw is None:
-            return "unclear", result
-
-        evidence: dict[str, int] = {}
-        listings = []
-        for i, item in enumerate(raw.get("listings") or []):
-            listings.append({field: item.get(field) for field in LISTING_FIELDS})
-            for field, line in (item.get("evidence") or {}).items():
-                evidence[f"listings[{i}].{field}"] = line
-        slots = []
-        for i, slot in enumerate(raw.get("broker_slots") or []):
-            start = parse(slot.get("start"))
-            if not start:
-                continue
-            slots.append({"start": iso(start), "end": iso(parse(slot.get("end"))),
-                          "in_user_window": in_user_window(start, request.windows)})
-            if slot.get("evidence") is not None:
-                evidence[f"broker_slots[{len(slots) - 1}]"] = slot["evidence"]
-        evidence.update(raw.get("evidence") or {})
-        quotes = {str(n): lines[n] for n in sorted(set(evidence.values()))
-                  if isinstance(n, int) and 0 <= n < len(lines)}
-
-        result.update(listings=listings, broker_slots=slots, evidence=evidence, quotes=quotes,
-                      availability_note=raw.get("availability_note"), pet_allowed=raw.get("pet_allowed"),
-                      registry_reply=raw.get("registry_reply"))
-        if raw.get("voicemail"):
-            outcome = "no_answer"
-        elif raw.get("declined"):
-            outcome = "declined"
-        elif any(any(v is not None for v in item.values()) for item in listings):
-            outcome = "listing"
-        elif raw.get("available") is False:
-            outcome = "no_listing"
-        else:
-            outcome = "unclear"
-        return outcome, result
+    def _build_result(self, request: CallRequest, raw: Optional[dict], segments: list[dict],
+                      called_at: Optional[datetime] = None) -> tuple[str, dict]:
+        """근거 줄 대조로 결론을 정한다(extract.decide). LLM 값은 확인된 것만 쓴다."""
+        result = decide(request, raw, segments, called_at)
+        return result.pop("outcome"), result
 
     # ------------------------------------------------------------ 응답 모양
     def accepted(self, batch: dict) -> dict:

@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ValidationError
 
 from .config import Settings
+from .extract import LLMExtractor
 from .policy import PolicyError
 from .provider import KatProvider, MockProvider
 from .schemas import BatchRequest
@@ -24,7 +25,8 @@ TICK_SEC = 5
 def build_service(settings: Settings) -> CallService:
     if settings.mode == "mock":
         return CallService(settings, MockProvider(), store=Store())
-    return CallService(settings, KatProvider(settings), store=Store(settings.store_path))
+    return CallService(settings, KatProvider(settings), extractor=LLMExtractor(settings),
+                       store=Store(settings.store_path))
 
 
 def _notify_channel(settings: Settings) -> str:
