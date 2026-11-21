@@ -129,6 +129,9 @@ if [ -f "$FE_ENV" ]; then
   put_env "$FE_ENV" CHAT_AGENT_URL http://127.0.0.1:8095
   put_env "$FE_ENV" PHONE_AGENT_URL http://127.0.0.1:8090
   put_env "$FE_ENV" BE_URL http://127.0.0.1:8081
+  # 화면 서버도 동네·회사 이름을 좌표로 바꿀 때 카카오 REST 키를 써요
+  KK="$(grep -E '^KAKAO_REST_API_KEY=.+' "$HOME/salgu-chat/agent.env" | head -1 | cut -d= -f2-)"
+  [ -n "$KK" ] && put_env "$FE_ENV" KAKAO_REST_API_KEY "$KK"
   if systemctl is-active --quiet salgu-fe; then sudo -n systemctl restart salgu-fe; fi
 fi
 

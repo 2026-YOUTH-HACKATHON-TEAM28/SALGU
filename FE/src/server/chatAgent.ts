@@ -51,6 +51,7 @@ export interface AgentAction {
 export interface AgentBackend {
   ok: boolean;
   mock: boolean;
+  error?: string | null;
   source?: string;
   count?: number;
   notes?: string[];
@@ -162,25 +163,25 @@ export function mapAgentCard(card: AgentCard | null, workplaces: Workplace[], no
     out.conds.push({ key, value, source, ...(source === 'filled' ? { reason: why(item, '') } : {}) });
   };
 
-  // 회사·학교: 이름으로 회사 목록에서 찾아요. 없으면 살고 싶은 곳을 기준점으로 써요.
+  // 회사·학교: 회사 목록에 있으면 그 id, 없으면 말한 이름 그대로(좌표는 카카오 장소 검색으로 찾아요).
+  // 회사를 말하지 않았으면 살고 싶은 곳을 기준점으로 써요.
   const wpLabel = c.workplace?.label ?? (typeof c.workplace?.value === 'string' ? c.workplace.value : '');
   const wp = wpLabel ? findWorkplace(wpLabel, workplaces) : null;
-  if (wp && c.workplace) {
-    push('workplace', c.workplace, wp.id);
+  if (wpLabel && c.workplace && wpLabel !== 'place') {
+    push('workplace', c.workplace, wp?.id ?? wpLabel.trim().slice(0, 40));
     const areas = (c.preferred_areas?.value as string[] | undefined) ?? [];
     if (areas.length) out.notApplied.push(`살 곳(${areas.join(', ')})`);
   } else {
     const areas = (c.preferred_areas?.value as string[] | undefined) ?? [];
-    const near = areas.map((a) => findWorkplace(a, workplaces)).find(Boolean);
-    if (near && c.preferred_areas) {
+    const first = areas[0];
+    const near = first ? findWorkplace(first, workplaces) : null;
+    if (first && c.preferred_areas) {
       out.conds.push({
         key: 'workplace',
-        value: near.id,
+        value: near?.id ?? first.trim().slice(0, 40),
         source: 'filled',
-        reason: `살고 싶은 곳(${areas.join(', ')}) 가까이로 찾으려고 ${near.name}을 기준점으로 봤어요`,
+        reason: `살고 싶은 곳(${areas.join(', ')}) 가까이로 찾으려고 ${near?.name ?? first}을 기준점으로 봤어요`,
       });
-    } else if (wpLabel) {
-      out.notApplied.push(`${wpLabel}(회사 목록에 없는 곳)`);
     }
   }
 

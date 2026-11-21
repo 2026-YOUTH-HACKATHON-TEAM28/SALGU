@@ -164,17 +164,19 @@ test('맞는 동네가 없으면 넓혀본 조건으로 표시하고 원래대�
   );
 });
 
-test('조건 골라서 찾기 양식: 회사를 안 고르면 안내', async ({ page }) => {
+test('조건 골라서 찾기 양식: 회사를 안 적으면 안내, 목록에 없는 곳도 적기', async ({ page }) => {
   await startAsExample(page);
   await page.getByTestId('open-cond-form').click();
   const form = page.getByTestId('cond-form').last();
   await form.getByTestId('cond-form-submit').click();
-  await expect(form.getByRole('alert')).toHaveText('회사(학교) 위치를 골라 주세요.');
-  await form.locator('select[name=workplace]').selectOption({ label: '강남역' });
+  await expect(form.getByRole('alert')).toHaveText('회사(학교) 위치를 적어 주세요.');
+  // 회사 목록에 없는 곳도 이름으로 적을 수 있어요
+  await form.locator('input[name=workplace]').fill('신촌역');
   await form.locator('input[name=rent]').fill('65');
   await form.getByTestId('cond-form-submit').click();
   await expect(page.getByText('채운 조건으로 찾았어요.')).toBeVisible();
-  await expect(page.getByTestId('dongs-card').or(page.getByTestId('nomatch-card')).last()).toBeVisible();
+  await expect(page.getByTestId('dongs-card').last()).toBeVisible();
+  await expect(page.getByTestId('dongs-card').last()).toContainText('신촌역');
 });
 
 test('주민등록번호는 보내기 전에 가려요', async ({ page }) => {

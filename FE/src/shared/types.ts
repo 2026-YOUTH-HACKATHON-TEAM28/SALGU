@@ -294,7 +294,18 @@ export interface Plan {
   visitIds: string[];
 }
 
+/** 회사(학교) 위치. 회사 목록에 없는 곳은 카카오 장소 검색으로 찾아요 */
+export interface WorkplacePoint {
+  /** 조건 값(회사 목록 id 또는 말한 이름) */
+  value: string;
+  name: string;
+  lat: number;
+  lng: number;
+}
+
 export interface ChatState {
+  /** 회사(학교) 좌표(지도·안내용). 못 찾으면 null */
+  workplacePoint?: WorkplacePoint | null;
   id: string;
   title: string;
   createdAt: string;

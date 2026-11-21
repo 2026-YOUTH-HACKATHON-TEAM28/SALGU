@@ -35,6 +35,8 @@ function routeItems() {
 
 function workplace() {
   const id = state.chat?.conditions.workplace?.value;
+  const point = state.chat?.workplacePoint;
+  if (point && point.value === id) return point;
   return state.meta?.workplaces.find((w) => w.id === id) ?? null;
 }
 

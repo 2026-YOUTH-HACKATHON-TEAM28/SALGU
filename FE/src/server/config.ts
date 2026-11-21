@@ -26,6 +26,8 @@ export const config = {
   phoneAgentUrl: process.env.PHONE_AGENT_URL || '',
   /** BE(Spring Boot) 주소. 있으면 카카오 로그인을 BE 로 넘겨요(예: http://127.0.0.1:8081) */
   beUrl: process.env.BE_URL || '',
+  /** 카카오 로컬 REST 키: 동네·회사(학교) 이름을 좌표로 바꿔요. 비우면 자치구 중심 근처에 표시 */
+  kakaoRestKey: process.env.KAKAO_REST_API_KEY || '',
   /** (로컬 시험용) 전화 에이전트 mock 모드에 보낼 결과 시나리오. 예: listing,two_rooms */
   phoneMockScenario: process.env.PHONE_AGENT_MOCK_SCENARIO || '',
   /** 실제 전화일 때 동네마다 걸 사무소 수(시연 번호로 가니 기본 1곳) */

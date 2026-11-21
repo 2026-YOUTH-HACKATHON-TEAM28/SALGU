@@ -15,6 +15,13 @@ export function condFormView(opts: {
 }) {
   const c = state.chat?.conditions ?? {};
   const wps = state.meta?.workplaces ?? [];
+  // 회사 목록에 있는 이름이면 그 id, 아니면 적은 이름 그대로(서버가 카카오 장소 검색으로 위치를 찾아요)
+  const toWorkplace = (text: string) => {
+    const t = text.trim();
+    if (!t) return null;
+    return wps.find((w) => w.name === t || w.id === t)?.id ?? t.slice(0, 40);
+  };
+  const wpText = (v: string) => wps.find((w) => w.id === v)?.name ?? v;
   const onSubmit = async (e: Event) => {
     e.preventDefault();
     const f = new FormData(e.currentTarget as HTMLFormElement);
@@ -27,7 +34,7 @@ export function condFormView(opts: {
       return v === '' ? null : Number(v);
     };
     const values: Partial<CondValues> = {
-      workplace: String(f.get('workplace') ?? '') || null,
+      workplace: toWorkplace(String(f.get('workplace') ?? '')),
       rent: num('rent') ?? null,
       deposit: num('deposit'),
       maxCommute: num('maxCommute'),
@@ -44,8 +51,8 @@ export function condFormView(opts: {
     const form = e.currentTarget as HTMLFormElement;
     const err = form.querySelector<HTMLElement>('.form-error');
     if (!values.workplace) {
-      if (err) err.textContent = '회사(학교) 위치를 골라 주세요.';
-      form.querySelector<HTMLSelectElement>('select[name=workplace]')?.focus({ preventScroll: true });
+      if (err) err.textContent = '회사(학교) 위치를 적어 주세요.';
+      form.querySelector<HTMLInputElement>('input[name=workplace]')?.focus({ preventScroll: true });
       return;
     }
     if (values.rent === null || values.rent === undefined) {
@@ -75,10 +82,20 @@ export function condFormView(opts: {
   return html`<form class="cond-form" @submit=${onSubmit} novalidate data-testid="cond-form">
     <div class="grid">
       <label for=${`${opts.id}-workplace`}>회사(학교) <em>필수</em></label>
-      <select name="workplace" id=${`${opts.id}-workplace`} ?autofocus=${opts.autofocus} required>
-        <option value="">고르기</option>
-        ${wps.map((w) => html`<option value=${w.id} ?selected=${val(c, 'workplace') === w.id}>${w.name}</option>`)}
-      </select>
+      <input
+        name="workplace"
+        id=${`${opts.id}-workplace`}
+        list=${`${opts.id}-workplaces`}
+        placeholder="예) 강남역, 서울대, 회사 이름"
+        maxlength="40"
+        autocomplete="off"
+        .value=${wpText(String(val(c, 'workplace') ?? ''))}
+        ?autofocus=${opts.autofocus}
+        required
+      />
+      <datalist id=${`${opts.id}-workplaces`}>
+        ${wps.map((w) => html`<option value=${w.name}></option>`)}
+      </datalist>
       <label for=${`${opts.id}-rent`}>월세 상한(만 원) <em>필수</em></label>
       <input
         name="rent"

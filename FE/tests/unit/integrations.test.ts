@@ -4,6 +4,7 @@ import { buildApp } from '../../src/server/app.js';
 import { Store } from '../../src/server/store.js';
 import { config } from '../../src/server/config.js';
 import type { ChatState, SessionInfo } from '../../src/shared/types.js';
+import { fakeAgentFetch } from '../fixtures/fakeChatAgent.js';
 
 /* BE(카카오 로그인)와 전화 에이전트를 흉내 내요 */
 const BE = 'http://be.test';
@@ -109,14 +110,15 @@ const json = { 'content-type': 'application/json' };
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 beforeAll(async () => {
-  vi.stubGlobal('fetch', fake);
+  vi.stubGlobal('fetch', fakeAgentFetch('http://agent.test', fake as typeof fetch));
   app = await buildApp(
     {
       ...config,
       beUrl: BE,
       phoneAgentUrl: PHONE,
       phoneUniqueReg: false,
-      chatAgentUrl: '',
+      chatAgentUrl: 'http://agent.test',
+      kakaoRestKey: '',
       openaiKey: '',
       timeScale: 2000,
       clientDir: '__none__',

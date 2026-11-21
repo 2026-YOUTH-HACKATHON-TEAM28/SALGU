@@ -153,8 +153,10 @@ describe('대화 에이전트 연결', () => {
     expect(last.text).toContain('1층 이상');
     expect(last.sources[0]?.kind).toBe('ai');
     expect(after.conditions.workplace).toMatchObject({ value: 'gangnam', source: 'said' });
-    // 동네 찾기는 이 서버 계산 엔진이 해요
+    // 동네 찾기는 에이전트 추천 엔진만 써요. 결과가 없으면 예시로 대신하지 않고 다시 시도하라고 해요
     const searched = await post(`/api/chats/${chat.id}/actions`, { type: 'search' });
-    expect(searched.stage).toBe('dong');
+    expect(searched.stage).toBe('cond');
+    expect(searched.search).toBeNull();
+    expect(searched.messages.at(-1)?.text).toContain('동네 추천 서버에 연결하지 못했어요');
   });
 });

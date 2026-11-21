@@ -9,6 +9,7 @@ import {
   aiContext,
   applyAgentTurn,
   deferSearch,
+  searchUnavailable,
   showSearch,
   takeDeferredSearch,
   applyAiAnswer,
@@ -25,8 +26,8 @@ import { ChatAgent, mapAgentCard, mapRecs } from './chatAgent.js';
 import { PhoneAgent, acceptRealProposal, planRealVisits, startRealCalls, syncReal } from './phoneAgent.js';
 import type { ChatRecord } from './store.js';
 import { BeAuth } from './beAuth.js';
-import { agentSearch, brokersFromAction, condQuestion, restoreAgentDongs } from './dongAgent.js';
-import { searchDongs } from './mock/engine.js';
+import { agentSearch, brokersFromAction, condQuestion, locateDongs, restoreAgentDongs } from './dongAgent.js';
+import { KakaoLocal } from './kakaoLocal.js';
 import { DONGS, STATIONS, WORKPLACES, dongById } from './mock/data.js';
 import { VISIT_SLOTS } from './mock/sim.js';
 
@@ -61,6 +62,7 @@ export async function registerRoutes(app: FastifyInstance, config: Config, store
   });
   const agent = new ChatAgent(config.chatAgentUrl);
   const be = new BeAuth(config.beUrl);
+  const kakao = new KakaoLocal(config.kakaoRestKey);
   be.register(app);
   const phone = new PhoneAgent(config.phoneAgentUrl, {
     mockScenario: config.phoneMockScenario,
@@ -84,19 +86,28 @@ export async function registerRoutes(app: FastifyInstance, config: Config, store
     if (!p) return;
     const turn = await agent.turn(rec.state.id, condQuestion(rec.state, WORKPLACES));
     const result = agentSearch(turn?.backend, p.exclude);
-    if (result) {
-      showSearch(rec.state, result, new Date(), p.lead, {
-        source: turn?.backend?.source ?? '추천 엔진(실거래 DB)',
-        notes: turn?.backend?.notes ?? [],
-      });
-    } else {
-      showSearch(
-        rec.state,
-        searchDongs(rec.state.conditions, WORKPLACES, p.exclude),
-        new Date(),
-        `${p.lead ? `${p.lead} ` : ''}실거래 추천을 받지 못해 예시 데이터로 보여 드려요.`,
-      );
+    if (!result) {
+      if (turn?.backend?.error) console.error(`[agent] 추천 엔진 오류: ${turn.backend.error.slice(0, 160)}`);
+      searchUnavailable(rec.state, new Date());
+      return;
     }
+    await locateDongs(result, kakao);
+    showSearch(rec.state, result, new Date(), p.lead, {
+      source: turn?.backend?.source ?? '추천 엔진(실거래 DB)',
+      notes: turn?.backend?.notes ?? [],
+    });
+  };
+  /* 회사(학교) 좌표: 회사 목록에 있으면 그 좌표, 없으면 카카오 장소 검색 */
+  const locateWorkplace = async (rec: ChatRecord) => {
+    const value = rec.state.conditions.workplace?.value;
+    if (!value) {
+      rec.state.workplacePoint = null;
+      return;
+    }
+    if (rec.state.workplacePoint?.value === value) return;
+    const known = WORKPLACES.find((w) => w.id === value);
+    const p = known ? { name: known.name, lat: known.lat, lng: known.lng } : await kakao.place(value);
+    rec.state.workplacePoint = p ? { value, ...p } : null;
   };
   /* 전화할 동네의 중개사무소: 에이전트에 대표 후보를 '문의'해서 전화 요청 초안의 사무소 목록을 받아요.
    * 에이전트의 마지막 검색이 바뀌었으면(후보 주소가 다르면) 조건으로 다시 찾고 한 번 더 물어요. */
@@ -323,6 +334,7 @@ export async function registerRoutes(app: FastifyInstance, config: Config, store
                 }
               : null,
           );
+          await locateWorkplace(rec);
           store.putChat(rec);
           return rec.state;
         }
@@ -332,6 +344,9 @@ export async function registerRoutes(app: FastifyInstance, config: Config, store
         ai.enabled && intentOf(text).kind === 'other' ? await ai.extract(text, WORKPLACES) : {};
       let result;
       if (agent.enabled) deferSearch(rec.state);
+      // '다 전화해줘', '2번만 전화해줘': 전화 준비 전에 중개사무소를 에이전트에서 받아 둬요.
+      if (agent.enabled && (intent === 'callAll' || intent === 'callOnly'))
+        await fillBrokers(rec, rec.state.search?.dongs.map((d) => d.id) ?? []);
       try {
         result = handleText(rec.state, rec.internal, text, { ...ctxFor(req.user!), aiValues });
       } catch (err) {
@@ -339,6 +354,7 @@ export async function registerRoutes(app: FastifyInstance, config: Config, store
         return sendDialogError(reply, err);
       }
       await finishSearch(rec);
+      await locateWorkplace(rec);
       // 규칙으로 못 답한 질문은 AI가 답해요(실패하면 규칙 안내 그대로).
       if (result.askAi && ai.enabled) {
         const answer = await ai.answer(result.askAi.question, aiContext(rec.state));
@@ -398,6 +414,7 @@ export async function registerRoutes(app: FastifyInstance, config: Config, store
           if (agent.enabled && a.type === 'prepCalls') await fillBrokers(rec, a.dongIds);
           handleAction(rec.state, rec.internal, a, ctxFor(req.user!));
           await finishSearch(rec);
+          await locateWorkplace(rec);
         }
       } catch (err) {
         takeDeferredSearch(rec.state);

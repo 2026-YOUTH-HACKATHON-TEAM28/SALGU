@@ -17,8 +17,8 @@ import type {
 } from '../../shared/types.js';
 import { COND_META, REQUIRED_CONDS } from '../../shared/labels.js';
 import { condValueText, dateOnly, hm, maskPersonal } from '../../shared/format.js';
-import { STANDARD, WORKPLACES, brokersOf, dealsOf, dongById } from './data.js';
-import { DEFAULTS, searchDongs, tighten, valuesOf, convRent } from './engine.js';
+import { STANDARD, WORKPLACES, dongById } from './data.js';
+import { DEFAULTS, tighten, valuesOf, convRent } from './engine.js';
 import { extractConds, intentOf } from './nlu.js';
 import { CONCEPTS, conceptOf } from './wiki.js';
 import type { MappedCard } from '../chatAgent.js';
@@ -65,10 +65,9 @@ let seq = 0;
 export const mid = (p: string) => `${p}${Date.now().toString(36)}${(seq++).toString(36)}`;
 
 export const SRC = {
-  deals: { label: '서울시 부동산 전월세가 정보(최근 12개월 계약)', kind: 'example' },
-  transit: { label: '카카오맵 대중교통 경로', kind: 'example' },
-  bus: { label: '서울시 버스운행노선', kind: 'example' },
-  brokers: { label: '서울시 중개업소 정보', kind: 'example' },
+  market: { label: '추천 엔진 시세(실거래 DB)', kind: 'real' },
+  travel: { label: '방문지 사이 직선거리로 어림한 이동 시간', kind: 'standard' },
+  brokers: { label: '중개업소 정보(실거래 DB)', kind: 'real' },
   conv: { label: `전월세전환율 ${STANDARD.convRate}%`, kind: 'standard' },
   calls: { label: 'AI 통화', kind: 'simulation' },
   wiki: { label: '살구 설명 문서', kind: 'standard' },
@@ -178,7 +177,7 @@ function valueText(key: CondKey, value: unknown): string {
 
 function wpName(chat: ChatState): string {
   const id = chat.conditions.workplace?.value;
-  return WORKPLACES.find((w) => w.id === id)?.name ?? '회사';
+  return WORKPLACES.find((w) => w.id === id)?.name ?? id ?? '회사';
 }
 
 /* ---------- 조건 ---------- */
@@ -231,7 +230,18 @@ function runSearch(chat: ChatState, now: Date, exclude: string[] = [], lead?: st
     deferred.set(chat, { exclude, lead });
     return;
   }
-  showSearch(chat, searchDongs(chat.conditions, WORKPLACES, exclude), now, lead);
+  // 동네 추천은 대화 에이전트(실거래 추천 엔진)만 써요. 예시 데이터로 대신하지 않아요.
+  searchUnavailable(chat, now);
+}
+
+/** 동네 추천 서버에 닿지 못했을 때 */
+export function searchUnavailable(chat: ChatState, now: Date): void {
+  say(
+    chat,
+    '지금 동네 추천 서버에 연결하지 못했어요. 말씀하신 조건은 그대로 두었으니 잠시 후 [이대로 찾기]를 다시 눌러 주세요.',
+    { cards: [{ kind: 'cond', id: mid('k') }] },
+    now,
+  );
 }
 
 /* 동네 찾기를 대화 에이전트에 맡길 때: 대화 규칙은 '찾을 차례'만 남기고 라우트가 비동기로 물어봐요 */
@@ -265,7 +275,7 @@ export function showSearch(
       ].join('\n'),
       {
         cards: [{ kind: 'noMatch', id: mid('k'), losses: result.losses }],
-        sources: agent ? [{ label: agent.source, kind: 'real' }] : [SRC.deals, SRC.transit],
+        sources: agent ? [{ label: agent.source, kind: 'real' }] : [],
       },
       now,
     );
@@ -309,17 +319,15 @@ export function showSearch(
         '더 싼 데 없어?',
         '1번 자세히 알려줘',
       ],
-      sources: agent
-        ? [{ label: agent.source, kind: 'real' }, SRC.brokers, SRC.conv]
-        : [SRC.deals, SRC.transit, SRC.bus, SRC.brokers, SRC.conv],
+      sources: [{ label: agent?.source ?? '추천 엔진(실거래 DB)', kind: 'real' }, SRC.conv],
     },
     now,
   );
 }
 
-/** 동네의 중개사무소: 동네 찾기 결과에 있는 목록(에이전트가 준 것 포함), 없으면 예시 */
+/** 동네의 중개사무소: 대화 에이전트 전화 요청 초안에서 받은 실거래 DB 목록(없으면 빈 목록) */
 export function brokersFor(chat: ChatState, dongId: string) {
-  return chat.search?.dongs.find((d) => d.id === dongId)?.brokers ?? brokersOf(dongId);
+  return chat.search?.dongs.find((d) => d.id === dongId)?.brokers ?? [];
 }
 
 function dongByNo(chat: ChatState, no: number) {
@@ -329,8 +337,14 @@ function dongByNo(chat: ChatState, no: number) {
 /* ---------- 전화 ---------- */
 
 function prepCalls(chat: ChatState, dongIds: string[], now: Date): void {
-  const ids = dongIds.filter((id) => chat.search?.dongs.some((d) => d.id === id));
-  if (!ids.length) throw new DialogError('no_dong', '전화할 동네를 하나 이상 골라 주세요.');
+  const picked = dongIds.filter((id) => chat.search?.dongs.some((d) => d.id === id));
+  if (!picked.length) throw new DialogError('no_dong', '전화할 동네를 하나 이상 골라 주세요.');
+  const ids = picked.filter((id) => brokersFor(chat, id).length);
+  if (!ids.length)
+    throw new DialogError(
+      'no_brokers',
+      '고른 동네의 중개사무소 정보를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.',
+    );
   if (chat.batch && !chat.batch.doneAt)
     throw new DialogError('calling', '지금 통화가 진행 중이에요. 끝난 뒤에 다시 골라 주세요.');
   chat.selectedDongIds = ids;
@@ -347,14 +361,10 @@ function prepCalls(chat: ChatState, dongIds: string[], now: Date): void {
   const brokerCount = ids.reduce((n, id) => n + brokersFor(chat, id).length, 0);
   say(
     chat,
-    `${names}의 등록 중개사무소 ${brokerCount}곳에 전화할게요. 입주 희망일과 계약 기간을 고르면 전화를 시작할 수 있어요.`,
+    `${picked.length > ids.length ? '중개사무소 정보를 불러오지 못한 동네는 빼고, ' : ''}${names}의 등록 중개사무소 ${brokerCount}곳에 전화할게요. 입주 희망일과 계약 기간을 고르면 전화를 시작할 수 있어요.`,
     {
       cards: [{ kind: 'callPrep', id: mid('k'), done: false }],
-      sources: [
-        ids.every((id) => chat.search?.dongs.find((d) => d.id === id)?.brokersReal)
-          ? { label: '중개업소 정보(실거래 DB)', kind: 'real' }
-          : SRC.brokers,
-      ],
+      sources: [{ label: '중개업소 정보(실거래 DB)', kind: 'real' }],
     },
     now,
   );
@@ -469,7 +479,7 @@ export function preparePlan(
     `고른 방 ${visits.length}곳을 동선이 짧은 순서로 배치했어요. 중개사무소마다 다시 전화해서 시간을 확정하고 있어요.
 - ${dateOnly(chat.plan.start)} ${hm(chat.plan.start)}부터 ${visits.length}곳 방문
 - 확정된 방문만 일정 탭에 넣어요`,
-    { cards: [{ kind: 'plan', id: mid('k') }], sources: [SRC.calls, SRC.transit] },
+    { cards: [{ kind: 'plan', id: mid('k') }], sources: [SRC.calls, SRC.travel] },
     now,
   );
   chat.live = true;
@@ -492,7 +502,7 @@ function showFinal(chat: ChatState, now: Date): void {
           ranking: finalRanking(chat).map((r) => ({ listingId: r.listing.id, burden: r.burden })),
         },
       ],
-      sources: [SRC.calls, SRC.deals, SRC.conv],
+      sources: [SRC.calls, SRC.market, SRC.conv],
     },
     now,
   );
@@ -606,7 +616,7 @@ export function announceCalls(chat: ChatState, now: Date): void {
 미팅 잡을 방을 고르면 중개사무소마다 다시 전화해 시간을 확정할게요.`,
     {
       cards: [{ kind: 'rooms', id: mid('k') }],
-      sources: [SRC.calls, SRC.deals, SRC.conv],
+      sources: [SRC.calls, SRC.market, SRC.conv],
     },
     now,
   );
@@ -702,9 +712,7 @@ export function handleText(chat: ChatState, internal: SimInternal, raw: string, 
         say(chat, `${intent.no}번 동네가 없어요. 동네 목록에서 번호를 확인해 주세요.`);
         break;
       }
-      const deals = dealsOf(d.id)
-        .filter((x) => !x.renewal)
-        .slice(0, 6);
+      const deals = (d.refDeals ?? []).slice(0, 6);
       say(
         chat,
         d.commute
@@ -713,10 +721,7 @@ export function handleText(chat: ChatState, internal: SimInternal, raw: string, 
         {
           cards: [{ kind: 'dongDetail', id: mid('k'), dong: d, deals }],
           chips: [`${d.rank}번만 전화해줘`],
-          sources:
-            d.source === 'agent'
-              ? [{ label: '추천 엔진(실거래 DB)', kind: 'real' }, SRC.brokers]
-              : [SRC.deals, SRC.transit, SRC.bus, SRC.brokers],
+          sources: [{ label: '추천 엔진(실거래 DB)', kind: 'real' }],
         },
       );
       break;
@@ -901,7 +906,7 @@ const NUM_RANGE: Partial<Record<CondKey, [number, number]>> = {
 };
 
 export function validCondValue(key: CondKey, value: unknown): boolean {
-  if (key === 'workplace') return typeof value === 'string' && WORKPLACES.some((w) => w.id === value);
+  if (key === 'workplace') return typeof value === 'string' && value.trim().length > 0 && value.length <= 40;
   if (key === 'pet' || key === 'parking') return typeof value === 'boolean';
   if (key === 'houseType') return value === 'any' || value === 'villa' || value === 'officetel';
   if (key === 'priority') return ['balanced', 'commute', 'price', 'new'].includes(value as string);

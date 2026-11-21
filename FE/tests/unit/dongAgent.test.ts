@@ -142,7 +142,7 @@ describe('추천 후보 -> 동네 카드', () => {
     expect(a).toMatchObject({ rank: 1, gu: '영등포구', source: 'agent', dealCount: 8, commute: null });
     expect(a!.buildings).toEqual(['해든빌라', '신길하우스']);
     expect(a!.priceRef).toEqual({ conv: 60, n: 2 }); // 1000만 원 -> 환산 약 4.2만 + 월세 55~57
-    expect(a!.brokers.length).toBeGreaterThan(0); // 에이전트가 목록을 안 주면 예시 목록
+    expect(a!.brokers).toEqual([]); // 예시 목록은 쓰지 않아요(전화 준비 때 에이전트에서 받아요)
     // 가격 판단: 같은 동네 시세 중앙값 대비
     expect(priceVerdict(a!.id, 24, 'villa', 1000, 56)).toBe('fair');
     expect(priceVerdict(a!.id, 24, 'villa', 1000, 63)).toBe('slightly_high');

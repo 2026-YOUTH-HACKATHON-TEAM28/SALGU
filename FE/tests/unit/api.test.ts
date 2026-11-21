@@ -1,4 +1,5 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { fakeAgentFetch } from '../fixtures/fakeChatAgent.js';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../../src/server/app.js';
 import { Store } from '../../src/server/store.js';
@@ -12,11 +13,27 @@ const json = { 'content-type': 'application/json' };
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 beforeAll(async () => {
-  app = await buildApp({ ...config, timeScale: 2000, clientDir: '__none__' }, new Store(null));
+  // 동네 추천·중개사무소는 대화 에이전트에서만 받아요. 시험은 가짜 에이전트로
+  vi.stubGlobal('fetch', fakeAgentFetch('http://agent.test'));
+  app = await buildApp(
+    {
+      ...config,
+      timeScale: 2000,
+      clientDir: '__none__',
+      chatAgentUrl: 'http://agent.test',
+      openaiKey: '',
+      phoneAgentUrl: '',
+      kakaoRestKey: '',
+    },
+    new Store(null),
+  );
   const res = await app.inject({ method: 'POST', url: '/api/auth/mock-login', headers: json, payload: {} });
   cookie = String(res.headers['set-cookie']).split(';')[0] ?? '';
 });
-afterAll(async () => app.close());
+afterAll(async () => {
+  vi.unstubAllGlobals();
+  await app.close();
+});
 
 const call = async <T>(method: 'GET' | 'POST' | 'DELETE', url: string, payload?: unknown) => {
   const body = method === 'POST' ? (payload ?? {}) : payload;
@@ -59,7 +76,7 @@ describe('세션', () => {
   });
 });
 
-describe('집 찾기 흐름(mock)', () => {
+describe('집 찾기 흐름(가짜 에이전트, 통화는 mock)', () => {
   let chat: ChatState;
 
   it('말에서 조건을 뽑아 조건 카드', async () => {
@@ -143,7 +160,9 @@ describe('집 찾기 흐름(mock)', () => {
       patch: { moveIn: '12월 초', term: '2년', visitSlot: 'sat-pm' },
     });
     chat = (await call<ChatState>('POST', `/api/chats/${chat.id}/actions`, { type: 'startCalls' })).body;
-    expect(chat.batch?.calls).toHaveLength(9);
+    // 중개사무소는 에이전트 전화 요청 초안에서(신길동 2, 공덕동 1, 대림동 2)
+    expect(chat.batch?.calls).toHaveLength(5);
+    expect(chat.brokers.map((b) => b.name)).toContain('신길역부동산공인중개사사무소');
     expect(chat.live).toBe(true);
     expect(chat.batch?.calls.every((c) => c.status === 'waiting')).toBe(true);
     for (let i = 0; i < 40 && chat.live; i++) {

@@ -2,10 +2,11 @@
  * 화면 조건을 한 문장 질문으로 보내면 에이전트가 조건 카드를 고치고 추천 엔진(실거래 DB)을 불러 후보를 돌려줘요.
  * 후보(건물 단위 과거 계약)를 '구 동'으로 묶어 동네 카드(DongResult)로 바꾸고,
  * 같은 건물·면적대 시세 중앙값(market_median_*)을 그 동네 가격 판단 기준으로 써요.
- * 중개사무소는 에이전트 응답에 brokers 가 있으면 그것을, 없으면 예시 목록을 써요. */
+ * 중개사무소는 전화 준비 때 에이전트 전화 요청 초안에서 받아요(예시 목록은 쓰지 않아요). */
 import type { Broker, ChatState, Deal, DongResult, SearchResult, Workplace } from '../shared/types.js';
 import type { AgentAction, AgentBackend } from './chatAgent.js';
-import { DONGS, STANDARD, brokersOf, hashString, registerAgentDong, rng } from './mock/data.js';
+import { STANDARD, hashString, registerAgentDong, rng } from './mock/data.js';
+import type { KakaoLocal } from './kakaoLocal.js';
 import { convRent, median, valuesOf } from './mock/engine.js';
 
 /** 서울 자치구 대략 중심(동 좌표를 모를 때 지도에 찍는 자리) */
@@ -116,11 +117,11 @@ export function agentSearch(
   for (const g of groups.values()) {
     const id = `a${hashString(`${g.gu} ${g.dong}`).toString(36)}`;
     if (exclude.includes(id)) continue;
-    const seed = DONGS.find((d) => d.name === g.dong && d.gu === g.gu);
     const r = rng(`agent:${id}`);
     const [glat, glng] = GU_CENTER[g.gu] ?? [37.5665, 126.978];
-    const lat = seed?.lat ?? glat + (r() - 0.5) * 0.012;
-    const lng = seed?.lng ?? glng + (r() - 0.5) * 0.014;
+    // 좌표는 locateDongs 가 카카오로 바로잡아요. 그 전에는 자치구 중심 근처
+    const lat = glat + (r() - 0.5) * 0.012;
+    const lng = glng + (r() - 0.5) * 0.014;
     const convs = g.cands
       .filter((c) => num(c.monthly_rent_manwon) !== null)
       .map((c) => convRent(num(c.deposit_manwon) ?? 0, num(c.monthly_rent_manwon) ?? 0));
@@ -144,7 +145,7 @@ export function agentSearch(
       month: (c.contract_date ?? '').slice(0, 7),
       renewal: false,
     }));
-    const station = g.cands.find((c) => c.station)?.station ?? seed?.station ?? '';
+    const station = g.cands.find((c) => c.station)?.station ?? '';
     registerAgentDong({
       id,
       name: g.dong,
@@ -153,9 +154,9 @@ export function agentSearch(
       lng,
       base: priceRef?.conv ?? 0,
       station,
-      lines: seed?.lines ?? [],
-      bus: seed?.bus ?? null,
-      commercial: seed?.commercial ?? 'mixed',
+      lines: [],
+      bus: null,
+      commercial: 'mixed',
       refDeals,
       priceRef,
     });
@@ -174,8 +175,8 @@ export function agentSearch(
       commute: commuteCand
         ? { minutes: commuteCand.commute_minutes!, transfers: num(commuteCand.transfers) ?? 0, route: [] }
         : null,
-      bus: seed?.bus ?? null,
-      brokers: brokers.length ? brokers : brokersOf(id),
+      bus: null,
+      brokers,
       buildings: [...new Set(g.cands.map((c) => c.name ?? ''))].filter(Boolean).slice(0, 4),
       source: 'agent',
       agentPick: { index: g.pick, address: (backend.candidates as Cand[])[g.pick - 1]?.address ?? '' },
@@ -253,4 +254,18 @@ export function brokersFromAction(
       lat: dong.lat + (r() - 0.5) * 0.006,
       lng: dong.lng + (r() - 0.5) * 0.007,
     }));
+}
+
+/** 동네 좌표를 카카오 주소 검색으로 바로잡아요(키가 없거나 못 찾으면 그대로) */
+export async function locateDongs(search: SearchResult, kakao: KakaoLocal): Promise<void> {
+  if (!kakao.enabled) return;
+  await Promise.all(
+    search.dongs.map(async (d) => {
+      const p = await kakao.region(d.gu, d.name);
+      if (!p) return;
+      d.lat = p.lat;
+      d.lng = p.lng;
+    }),
+  );
+  restoreAgentDongs(search);
 }

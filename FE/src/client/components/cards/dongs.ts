@@ -24,7 +24,9 @@ export function dongsCard(card: Extract<Card, { kind: 'dongs' }>): TemplateResul
   const { dongs, asOf } = card.result;
   const latest = latestDongsCardId() === card.id;
   const selected = new Set(state.chat?.selectedDongIds ?? []);
-  const wp = state.meta?.workplaces.find((w) => w.id === card.workplace);
+  const point = state.chat?.workplacePoint;
+  const known = state.meta?.workplaces.find((w) => w.id === card.workplace);
+  const wp = point?.value === card.workplace ? point : (known ?? null);
   const points: MiniPoint[] = [
     ...dongs.map((d) => ({
       lat: d.lat,
@@ -36,7 +38,7 @@ export function dongsCard(card: Extract<Card, { kind: 'dongs' }>): TemplateResul
     ...(wp ? [{ lat: wp.lat, lng: wp.lng, label: wp.name, kind: 'company' as const }] : []),
   ];
   const calling = Boolean(state.chat?.batch && !state.chat.batch.doneAt);
-  const wpName = wp?.name ?? '회사';
+  const wpName = wp?.name ?? (card.workplace || '회사');
   return html`<article class="card dongs" data-testid="dongs-card">
     ${miniMap(points, { mode: 'dong', caption: `살만한 동네 ${dongs.length}곳 · ${wpName} 출근 기준` })}
     <ol class="dong-list">
@@ -74,7 +76,9 @@ export function dongsCard(card: Extract<Card, { kind: 'dongs' }>): TemplateResul
               </div>
               <ul class="ticks">
                 ${d.bus ? html`<li>버스 ${busLabel(d)}</li>` : nothing}
-                <li>전화할 등록 중개사무소 ${d.brokers.length}곳</li>
+                <li>
+                  ${d.brokers.length ? `전화할 등록 중개사무소 ${d.brokers.length}곳` : '중개사무소는 고르면 실거래 DB에서 불러와요'}
+                </li>
               </ul>
             </button>
           </li>`,
@@ -91,7 +95,7 @@ export function dongsCard(card: Extract<Card, { kind: 'dongs' }>): TemplateResul
             >
               고른 동네 중개사무소들에 전화
             </button>
-            <span class="note">동네마다 3곳 · 비슷한 방과 보여 줄 시간 묻기</span>
+            <span class="note">동네마다 중개사무소 최대 3곳 · 비슷한 방과 보여 줄 시간 묻기</span>
           </div>`
         : nothing
     }
@@ -99,7 +103,7 @@ export function dongsCard(card: Extract<Card, { kind: 'dongs' }>): TemplateResul
       dongs.some((d) => d.source === 'agent')
         ? html`<p class="foot-note">
             과거 실거래 기준: 살구 추천 엔진(최근 12개월 전월세 실거래). 통근 시간은 교통 데이터 연결 뒤에
-            보여 드려요. 중개사무소 목록은 시험용 예시예요. 지금 나온 방은 전화로 확인해요.
+            보여 드려요. 지금 나온 방은 전화로 확인해요.
           </p>`
         : html`<p class="foot-note">
             과거 실거래 기준: 서울시 부동산 전월세가 정보(최근 12개월 계약) · 카카오맵 대중교통 · 서울시
