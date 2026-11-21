@@ -23,7 +23,15 @@ import { intentOf } from './mock/nlu.js';
 import { maskPersonal } from '../shared/format.js';
 import { Ai } from './ai.js';
 import { ChatAgent, mapAgentCard, mapRecs } from './chatAgent.js';
-import { PhoneAgent, acceptRealProposal, planRealVisits, startRealCalls, syncReal } from './phoneAgent.js';
+import {
+  PhoneAgent,
+  acceptRealProposal,
+  planRealVisits,
+  startRealCalls,
+  startRealTestCall,
+  syncReal,
+  syncRealTest,
+} from './phoneAgent.js';
 import type { ChatRecord } from './store.js';
 import { BeAuth } from './beAuth.js';
 import { agentSearch, brokersFromAction, condQuestion, locateDongs, restoreAgentDongs } from './dongAgent.js';
@@ -130,11 +138,12 @@ export async function registerRoutes(app: FastifyInstance, config: Config, store
   };
   const sync = async (rec: ChatRecord) => {
     restoreAgentDongs(rec.state.search);
-    if (!rec.internal.real || !phone.enabled) return;
+    if ((!rec.internal.real && !rec.internal.realTest) || !phone.enabled) return;
     const t = Date.now();
     if (t - (lastSync.get(rec.state.id) ?? 0) < 1000) return;
     lastSync.set(rec.state.id, t);
     if (await syncReal(rec.state, rec.internal, phone, new Date())) store.markDirty();
+    if (await syncRealTest(rec.state, rec.internal, phone, new Date())) store.markDirty();
   };
   // 에이전트가 맡는 말: 규칙이 흐름 명령으로 알아듣지 못한 자유로운 말
   const AGENT_INTENTS = new Set(['other', 'question', 'greeting', 'oneByOne']);
@@ -395,6 +404,22 @@ export async function registerRoutes(app: FastifyInstance, config: Config, store
             rec.state.messages.pop();
             throw err;
           }
+        } else if (phone.enabled && a.type === 'testCall') {
+          // 내 번호로 먼저 받아 보기: 전화 에이전트로 실제 통화(시험 서버는 등록된 시연 번호만)
+          const digits = String(a.phone ?? '').replace(/\D/g, '');
+          if (!/^01[016789]\d{7,8}$/.test(digits))
+            throw new DialogError('invalid_phone', '휴대폰 번호를 010-1234-5678처럼 적어 주세요.');
+          if (rec.state.testCall && !rec.state.testCall.doneAt)
+            throw new DialogError('testing', '지금 시험 전화가 진행 중이에요.');
+          await phoneMode();
+          if (phone.lastMode === 'demo' && !config.phoneTestNumbers.includes(digits))
+            throw new DialogError(
+              'test_number',
+              '시험 서버에서는 등록된 시연 번호로만 실제 전화가 가요. 등록된 번호를 적어 주세요.',
+            );
+          if (ctxFor(req.user!).useTestCalls() === 0)
+            throw new DialogError('daily_limit', '시험 전화는 하루 3번까지 걸 수 있어요.');
+          await startRealTestCall(rec.state, rec.internal, phone, digits, new Date());
         } else if (phone.enabled && rec.internal.real && a.type === 'planVisits') {
           userSays(rec.state, '고른 방으로 미팅 잡아줘', new Date());
           try {

@@ -132,6 +132,9 @@ if [ -f "$FE_ENV" ]; then
   # 화면 서버도 동네·회사 이름을 좌표로 바꿀 때 카카오 REST 키를 써요
   KK="$(grep -E '^KAKAO_REST_API_KEY=.+' "$HOME/salgu-chat/agent.env" | head -1 | cut -d= -f2-)"
   [ -n "$KK" ] && put_env "$FE_ENV" KAKAO_REST_API_KEY "$KK"
+  # 시험 전화(내 번호로 먼저 받아 보기)는 전화 에이전트 demo 의 시연 번호로만 실제로 걸려요
+  DT="$(grep -E '^PHONE_AGENT_DEMO_TO=.+' "$HOME/salgu-phone/phone.env" 2>/dev/null | head -1 | cut -d= -f2- | tr -d ' ')"
+  [ -n "$DT" ] && put_env "$FE_ENV" PHONE_TEST_NUMBERS "$DT"
   if systemctl is-active --quiet salgu-fe; then sudo -n systemctl restart salgu-fe; fi
 fi
 

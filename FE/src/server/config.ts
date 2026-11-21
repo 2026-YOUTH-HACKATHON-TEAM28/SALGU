@@ -34,6 +34,12 @@ export const config = {
   phoneBrokersPerDong: num('PHONE_BROKERS_PER_DONG', 1),
   /** 시연에서 같은 사무소 하루 1번 규칙에 막히지 않게 등록번호에 시각을 붙일지 */
   phoneUniqueReg: process.env.PHONE_UNIQUE_REG !== '0',
+  /** 시험 전화를 실제로 받을 수 있는 번호(쉼표로 여러 개). 전화 에이전트 demo 의 시연 번호와 같게 둬요.
+   *  demo 는 어떤 번호를 넣어도 시연 번호로만 걸어서, 여기에 없는 번호는 미리 막아요 */
+  phoneTestNumbers: (process.env.PHONE_TEST_NUMBERS || '')
+    .split(',')
+    .map((x) => x.replace(/\D/g, ''))
+    .filter(Boolean),
   timeScale: num('MOCK_TIME_SCALE', 1),
   clientDir: resolve(process.env.CLIENT_DIR || 'dist/client'),
   isProd: process.env.NODE_ENV === 'production',

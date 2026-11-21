@@ -48,6 +48,8 @@ export interface SimInternal {
   test?: TestCallPlan | null;
   /** 실제 전화 에이전트로 건 통화(있으면 시뮬레이션 대신 이 묶음을 따라가요) */
   real?: RealCalls | null;
+  /** 전화 에이전트로 건 '내 번호로 먼저 받아 보기' 통화 */
+  realTest?: { batchId: string; callId: string } | null;
 }
 
 export interface RealCalls {
