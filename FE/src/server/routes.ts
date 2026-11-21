@@ -77,10 +77,11 @@ export async function registerRoutes(app: FastifyInstance, config: Config, store
   const talk = new KakaoTalk(config.kakaoClientId, config.kakaoClientSecret);
 
   /* 카카오톡 알림 보내기(연결한 사용자만). 토큰이 끊겼으면 연결을 풀어요 */
-  const notify = async (userId: string, text: string): Promise<boolean> => {
+  const notify = async (userId: string, text: string, view?: 'schedule'): Promise<boolean> => {
     const u = store.user(userId);
     if (!u?.kakaoTalk || !u.kakaoToken || !talk.enabled) return false;
-    const r = await talk.send(u.kakaoToken, text, u.kakaoToken.origin);
+    const link = view ? `${u.kakaoToken.origin}?view=${view}` : u.kakaoToken.origin;
+    const r = await talk.send(u.kakaoToken, text, link);
     if (r.newToken) u.kakaoToken = { ...r.newToken, origin: u.kakaoToken.origin };
     if (r.revoked) {
       u.kakaoTalk = false;
@@ -88,6 +89,28 @@ export async function registerRoutes(app: FastifyInstance, config: Config, store
     }
     store.markDirty();
     return r.ok;
+  };
+
+  /* 알림에 담는 일정 내용: 일시, 장소(동네·건물·층), 가격, 중개사무소와 전화번호 */
+  const visitText = (c: ChatState, v: ChatState['visits'][number], head: string): string => {
+    const l = c.listings.find((x) => x.id === v.listingId);
+    const b = c.brokers.find((x) => x.id === l?.brokerId);
+    const dong = dongById(l?.dongId ?? '');
+    const place = [dong ? `${dong.gu} ${dong.name}` : '', l?.building ?? '', l?.floor ? `${l.floor}층` : '']
+      .filter((x) => x && x !== '건물 이름 확인 필요')
+      .join(' ');
+    const price = l
+      ? `보증금 ${l.deposit.toLocaleString('ko-KR')}만 원 / 월세 ${l.rent}만 원${l.fee ? ` · 관리비 ${l.fee}만 원` : ''}`
+      : '';
+    return [
+      head,
+      `일시: ${dateTime(v.at)}`,
+      place ? `장소: ${place}` : '',
+      price ? `가격: ${price}` : '',
+      b ? `중개사무소: ${b.name}${b.phone ? ` ${b.phone}` : ''}` : '',
+    ]
+      .filter(Boolean)
+      .join('\n');
   };
 
   /* 통화가 끝나거나 방문이 확정되면 알려요 */
@@ -105,15 +128,7 @@ export async function registerRoutes(app: FastifyInstance, config: Config, store
     }
     for (const v of c.visits) {
       if (v.status !== 'confirmed' || before.confirmed.has(v.id)) continue;
-      const l = c.listings.find((x) => x.id === v.listingId);
-      const b = c.brokers.find((x) => x.id === l?.brokerId);
-      await notify(
-        rec.userId,
-        `[살구] 방문 확정 ${dateTime(v.at)} · ${dongById(l?.dongId ?? '')?.name ?? ''} ${l?.building ?? ''} ${l?.floor ? `${l.floor}층` : ''} · ${b?.name ?? '중개사무소'}`.replace(
-          /\s+/g,
-          ' ',
-        ),
-      );
+      await notify(rec.userId, visitText(c, v, '[살구] 방문이 확정됐어요'), 'schedule');
     }
   };
 
@@ -129,17 +144,18 @@ export async function registerRoutes(app: FastifyInstance, config: Config, store
           const at = new Date(`${v.at}Z`);
           const dayBefore = new Date(at.getTime() - 24 * 3600000).toISOString().slice(0, 10) + 'T20:00:00';
           const hourBefore = new Date(at.getTime() - 3600000).toISOString().slice(0, 19);
-          const l = rec.state.listings.find((x) => x.id === v.listingId);
-          const where = `${dongById(l?.dongId ?? '')?.name ?? ''} ${l?.building ?? ''}`.trim();
           let kind: string | null = null;
           if (now >= hourBefore && !sent.includes('hour')) kind = 'hour';
           else if (now >= dayBefore && now < hourBefore && !sent.includes('day')) kind = 'day';
           if (!kind) continue;
           const ok = await notify(
             u.id,
-            kind === 'hour'
-              ? `[살구] 1시간 뒤 방문이에요. ${dateTime(v.at)} · ${where}`
-              : `[살구] 내일 방문이 있어요. ${dateTime(v.at)} · ${where}`,
+            visitText(
+              rec.state,
+              v,
+              kind === 'hour' ? '[살구] 1시간 뒤 방문이에요' : '[살구] 내일 방문이 있어요',
+            ),
+            'schedule',
           );
           if (ok) {
             rec.internal.reminded![v.id] = [...sent, kind];

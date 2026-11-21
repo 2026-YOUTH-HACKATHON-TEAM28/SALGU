@@ -28,9 +28,10 @@ export const config = {
   beUrl: process.env.BE_URL || '',
   /** 카카오 로컬 REST 키: 동네·회사(학교) 이름을 좌표로 바꿔요. 비우면 자치구 중심 근처에 표시 */
   kakaoRestKey: process.env.KAKAO_REST_API_KEY || '',
-  /** 카카오톡 알림(나에게 보내기): 카카오 로그인 앱의 REST API 키와 시크릿. 비우면 알림 연결을 못 해요 */
-  kakaoClientId: process.env.KAKAO_CLIENT_ID || '',
-  kakaoClientSecret: process.env.KAKAO_CLIENT_SECRET || '',
+  /** 카카오톡 알림(나에게 보내기) 전용 앱의 REST API 키. 비우면 알림 연결을 못 해요.
+   *  시크릿은 그 앱에서 클라이언트 시크릿을 켰을 때만(KAKAO_CLIENT_SECRET_NOTIFY) */
+  kakaoClientId: process.env.KAKAO_REST_API_KEY_NOTIFY || '',
+  kakaoClientSecret: process.env.KAKAO_CLIENT_SECRET_NOTIFY || '',
   /** (로컬 시험용) 전화 에이전트 mock 모드에 보낼 결과 시나리오. 예: listing,two_rooms */
   phoneMockScenario: process.env.PHONE_AGENT_MOCK_SCENARIO || '',
   /** 실제 전화일 때 동네마다 걸 사무소 수(본인 번호로 가니 기본 1곳) */

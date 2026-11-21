@@ -183,6 +183,11 @@ export async function boot(): Promise<void> {
       toast('카카오 로그인을 마치지 못했어요. 다시 시도해 주세요.', 'error');
       history.replaceState(null, '', location.pathname);
     }
+    // 카카오톡 알림의 '살구 열기'로 들어오면 일정 화면을 바로 열어요
+    if (q.get('view') === 'schedule' && session.user) {
+      openPanel('sched');
+      history.replaceState(null, '', location.pathname);
+    }
     // 카카오톡 알림 동의에서 돌아온 결과
     const kakao = q.get('kakao');
     if (kakao) {

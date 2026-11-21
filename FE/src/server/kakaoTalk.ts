@@ -2,7 +2,7 @@
  * 받은 토큰으로 본인 카카오톡에 '나에게 보내기'를 해요. 전화 에이전트의 알림(C6)은 아직 없어서 화면 서버가 보내요.
  * - 동의: GET /api/notify/kakao/connect -> 카카오 -> GET /api/notify/kakao/callback
  * - 보내기: POST https://kapi.kakao.com/v2/api/talk/memo/default/send (텍스트 200자, 만료면 갱신 한 번)
- * 앱 키(KAKAO_CLIENT_ID = 카카오 로그인 앱의 REST API 키)와 시크릿은 서버 설정 파일에만 둬요.
+ * 앱 키(KAKAO_REST_API_KEY_NOTIFY = 알림 전용 카카오 앱의 REST API 키)는 서버 설정 파일에만 둬요.
  * 카카오 개발자 콘솔: Redirect URI 에 <사이트>/api/notify/kakao/callback, 동의 항목에 카카오톡 메시지 전송,
  * 플랫폼(Web) 사이트 도메인에 사이트 주소가 있어야 해요. */
 

@@ -138,13 +138,11 @@ if [ -f "$FE_ENV" ]; then
   # 화면 서버도 동네·회사 이름을 좌표로 바꿀 때 카카오 REST 키를 써요
   KK="$(grep -E '^KAKAO_REST_API_KEY=.+' "$HOME/salgu-chat/agent.env" | head -1 | cut -d= -f2-)"
   [ -n "$KK" ] && put_env "$FE_ENV" KAKAO_REST_API_KEY "$KK"
-  # 카카오톡 알림(나에게 보내기)은 카카오 로그인 앱의 REST API 키·시크릿을 써요(BE 비밀 설정에서 가져와요)
-  BEY="$HOME/salgu-be/config/application.yml"
-  if [ -f "$BEY" ]; then
-    CID="$(grep -E '^[[:space:]]*client-id:' "$BEY" | head -1 | awk '{print $2}' | tr -d "'\"")"
-    CSC="$(grep -E '^[[:space:]]*client-secret:' "$BEY" | head -1 | awk '{print $2}' | tr -d "'\"")"
-    [ -n "$CID" ] && put_env "$FE_ENV" KAKAO_CLIENT_ID "$CID"
-    [ -n "$CSC" ] && put_env "$FE_ENV" KAKAO_CLIENT_SECRET "$CSC"
+  # 카카오톡 알림(나에게 보내기)은 알림 전용 카카오 앱 키를 써요(로컬 FE/.env 에서 올린 값)
+  sed -i '/^KAKAO_CLIENT_ID=/d; /^KAKAO_CLIENT_SECRET=/d' "$FE_ENV"
+  if [ -s "$IN/secrets/fe.env" ]; then
+    sed -i 's/$//' "$IN/secrets/fe.env"
+    while IFS='=' read -r k v; do [ -n "$k" ] && put_env "$FE_ENV" "$k" "$v"; done < "$IN/secrets/fe.env"
   fi
   if systemctl is-active --quiet salgu-fe; then sudo -n systemctl restart salgu-fe; fi
 fi

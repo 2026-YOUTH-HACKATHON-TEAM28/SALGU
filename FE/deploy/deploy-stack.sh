@@ -7,7 +7,8 @@
 #   AI/chat_agent/.env 의 GEMINI_*, SALGU_DB_*, KAKAO_REST_API_KEY 줄 -> ~/salgu-chat/agent.env
 #   AI/phone_agent/.env                         -> ~/salgu-phone/phone.env
 #   BE/src/main/resources/application-secret.yml -> ~/salgu-be/config/application.yml (jar 에는 넣지 않음)
-# 일부만 올리려면 PARTS=be 처럼(chat, phone, be 중에서).
+# 일부만 올리려면 PARTS=be 처럼(chat, phone, be 중에서). 화면 서버 설정만 바꾸려면 PARTS=env.
+#   FE/.env 의 KAKAO_REST_API_KEY_NOTIFY(카카오톡 알림 앱 키) 줄 -> ~/salgu-fe/salgu-fe.env
 # 전화 에이전트 모드는 PHONE_MODE(기본 mock). demo 로 올리면 화면에서 사용자가 입력한 본인 휴대폰으로 실제 전화가 가요
 # (PHONE_AGENT_DIAL_REQUESTED=1, 휴대폰이 아닌 번호는 전화 에이전트가 거절).
 set -euo pipefail
@@ -56,7 +57,8 @@ if [[ " ${PARTS:-chat phone be} " == *" be "* ]]; then
   cp "$JAR" "$STAGE/app.jar"
 fi
 cp deploy/salgu-py.service deploy/salgu-be.service deploy/remote-stack.sh "$STAGE/"
-grep -E '^(GEMINI_|SALGU_DB_|KAKAO_REST_API_KEY)' "$AI/chat_agent/.env" > "$STAGE/secrets/chat.env" 2>/dev/null || true
+grep -E '^(KAKAO_REST_API_KEY_NOTIFY|KAKAO_CLIENT_SECRET_NOTIFY)=' .env > "$STAGE/secrets/fe.env" 2>/dev/null || true
+grep -E '^(GEMINI_|SALGU_DB_|KAKAO_REST_API_KEY=)' "$AI/chat_agent/.env" > "$STAGE/secrets/chat.env" 2>/dev/null || true
 [ -f "$AI/phone_agent/.env" ] && cp "$AI/phone_agent/.env" "$STAGE/secrets/phone.env"
 ls "$STAGE/secrets" | sed 's/^/  비밀 파일: /'
 
