@@ -13,20 +13,20 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ValidationError
 
 from .config import Settings
-from .extract import LLMExtractor
 from .policy import PolicyError
-from .provider import KatProvider, MockProvider
 from .schemas import BatchRequest, ConfirmRequest
-from .service import CallService, Store
+from .service import CallService, build_service  # noqa: F401  (app.build_service)
 
 TICK_SEC = 5
 
 
-def build_service(settings: Settings) -> CallService:
-    if settings.mode == "mock":
-        return CallService(settings, MockProvider(), store=Store())
-    return CallService(settings, KatProvider(settings), extractor=LLMExtractor(settings),
-                       store=Store(settings.store_path))
+def _build_mcp(service: CallService):
+    """mcp 패키지가 없으면 REST만 연다(오류 아님)."""
+    try:
+        from .mcp_server import build_mcp
+    except ImportError:
+        return None
+    return build_mcp(service)
 
 
 def _notify_channel(settings: Settings) -> str:
@@ -74,9 +74,12 @@ def create_app(service: Optional[CallService] = None, background: bool = True, w
     if service is None:
         service = build_service(Settings.from_env())
     settings = service.settings
+    mcp = _build_mcp(service) if with_mcp else None
 
     @contextlib.asynccontextmanager
     async def lifespan(_app: FastAPI):
+        mcp_running = mcp.session_manager.run() if mcp else contextlib.nullcontext()
+        await mcp_running.__aenter__()
         task = None
         if background:
             async def loop():
@@ -90,16 +93,19 @@ def create_app(service: Optional[CallService] = None, background: bool = True, w
         finally:
             if task:
                 task.cancel()
+            await mcp_running.__aexit__(None, None, None)
 
     app = FastAPI(title="살구 전화 에이전트", version="0.3.1", lifespan=lifespan)
     app.state.service = service
     app.add_middleware(CORSMiddleware, allow_origins=list(settings.cors_origins),
                        allow_methods=["GET", "POST", "DELETE"], allow_headers=["*"])
+    if mcp:  # /mcp (Streamable HTTP). PHONE_AGENT_MCP_HOST=127.0.0.1이면 localhost로 온 요청만 받음
+        app.router.routes.extend(mcp.streamable_http_app(host=settings.mcp_host).routes)
 
     @app.get("/api/health")
     def health():
         return {"ok": True, "mode": settings.mode, "notify": _notify_channel(settings),
-                "mcp": False, "registry_inbox": settings.mode == "demo" and bool(settings.registry_number)}
+                "mcp": mcp is not None, "registry_inbox": settings.mode == "demo" and bool(settings.registry_number)}
 
     @app.post("/api/broker-call-batches")
     async def create_batch(request: Request):

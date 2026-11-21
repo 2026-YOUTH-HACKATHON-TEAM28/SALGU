@@ -549,3 +549,25 @@ def test_confirm_http_api(settings, provider, clock):
     assert res.status_code == 409 and res.json()["error"] == "outside_broker_slots"
     assert res.json()["message"].startswith("중개사가 문의 통화에서 말한 가능 시간 밖이에요")
     assert client.post("/api/visit-confirmations", json={"approval_id": "vs-bad", "visits": []}).status_code == 422
+
+
+# ---------------------------------------------------------------- C7 중복 매물
+def test_duplicate_groups_in_inquiry_results(service, clock):
+    batch, _ = service.create_batch(make_batch(2, approval_id="ap-dupe"), scenarios=["listing", "two_rooms"])
+    result = run_until_done(service, batch, clock)
+    groups = result["duplicate_groups"]
+    assert len(groups) == 1 and groups[0]["status"] == "suspected"
+    assert [(m["call_id"], m["listing_index"]) for m in groups[0]["members"]] == [
+        (batch["call_ids"][0], 0), (batch["call_ids"][1], 0)]
+    assert groups[0]["reasons"] == ["같은 건물: 해든빌라", "같은 층: 3층", "보증금·월세 같음"]
+
+
+def test_duplicate_groups_recomputed_with_confirmed_units(service, clock):
+    batch, _ = service.create_batch(make_batch(2, approval_id="ap-dupe2"), scenarios=["listing", "listing"])
+    calls = run_until_done(service, batch, clock)["calls"]
+    for i, call in enumerate(calls):  # mock 확정 통화는 둘 다 302호
+        confirm, _ = _confirm(service, [{"call_id": call["call_id"], "at": AT_14}], approval_id=f"vs-d{i}",
+                              scenarios=["confirmed"])
+        run_until_done(service, confirm, clock)
+    group = service.batch_result(service.get_batch(batch["batch_id"]))["duplicate_groups"][0]
+    assert group["status"] == "likely_same" and "같은 호수: 302호" in group["reasons"]

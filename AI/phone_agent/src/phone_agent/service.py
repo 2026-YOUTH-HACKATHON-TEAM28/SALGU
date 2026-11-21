@@ -14,10 +14,11 @@ from typing import Any, Callable, Optional
 
 from . import policy
 from .config import KST, Settings
-from .extract import decide, empty_confirm_result, empty_result, room_status, visit_status
+from .dedupe import duplicate_groups
+from .extract import LLMExtractor, decide, empty_confirm_result, empty_result, room_status, visit_status
 from .instruction import build_instruction, build_sms_draft
 from .policy import PolicyError
-from .provider import ProviderError
+from .provider import KatProvider, MockProvider, ProviderError
 from .schemas import (
     VERSION, BatchRequest, CallRequest, ConfirmRequest, ConfirmTarget, ListingRef, TargetRoom, VisitRequest,
 )
@@ -438,9 +439,29 @@ class CallService:
             "calls": [self.to_result(rec) for rec in calls],
         }
         if batch["kind"] == "inquiry":
-            body["duplicate_groups"] = []
+            body["duplicate_groups"] = duplicate_groups(self._dedupe_items(calls))
         body["notifications"] = [n for n in self.store.notifications if n.get("batch_id") == batch["batch_id"]]
         return body
+
+    def _dedupe_items(self, calls: list[dict]) -> list[dict]:
+        """중복 후보 비교 대상: 끝난 문의 통화의 방들. 확정 통화에서 받은 호수가 있으면 함께."""
+        units: dict[tuple[str, int], str] = {}
+        for rec in sorted(self.store.calls.values(), key=lambda r: r["order"]):  # 나중 확정 통화가 우선
+            if rec["kind"] == "confirm" and rec["status"] == "done" and rec["result"]:
+                for room in rec["result"].get("rooms") or []:
+                    if room.get("unit"):
+                        units[(rec["parent_call_id"], room["listing_index"])] = room["unit"]
+        items = []
+        for rec in calls:
+            if rec["status"] != "done" or not rec["result"]:
+                continue
+            for i, listing in enumerate(rec["result"].get("listings") or []):
+                item = {"call_id": rec["call_id"], "listing_index": i,
+                        "broker": rec["request"]["broker"]["name"], "listing": listing}
+                if (rec["call_id"], i) in units:
+                    item["confirmed_unit"] = units[(rec["call_id"], i)]
+                items.append(item)
+        return items
 
     def to_result(self, rec: dict) -> dict:
         broker = rec["request"]["broker"]
@@ -467,3 +488,11 @@ class CallService:
             ended_at=rec["ended_at"], error=rec["error"],
         )
         return body
+
+
+def build_service(settings: Settings) -> CallService:
+    """mock은 전화를 걸지 않고 기록을 파일에 남기지 않는다. demo는 한국AI통신 + LLM 추출 + .data/calls.json."""
+    if settings.mode == "mock":
+        return CallService(settings, MockProvider(), store=Store())
+    return CallService(settings, KatProvider(settings), extractor=LLMExtractor(settings),
+                       store=Store(settings.store_path))
