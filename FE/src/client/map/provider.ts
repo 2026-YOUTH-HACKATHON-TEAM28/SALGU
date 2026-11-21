@@ -48,11 +48,19 @@ class OsmProvider implements MapProvider {
   private map: L.Map;
   private layer: L.LayerGroup;
 
-  constructor(el: HTMLElement) {
-    this.map = L.map(el, { zoomControl: true, attributionControl: true, minZoom: 10, maxZoom: 18 }).setView(
-      [SEOUL.lat, SEOUL.lng],
-      13,
-    );
+  constructor(el: HTMLElement, interactive = true) {
+    this.map = L.map(el, {
+      zoomControl: interactive,
+      attributionControl: true,
+      minZoom: 10,
+      maxZoom: 18,
+      dragging: interactive,
+      scrollWheelZoom: interactive,
+      doubleClickZoom: interactive,
+      touchZoom: interactive,
+      boxZoom: interactive,
+      keyboard: interactive,
+    }).setView([SEOUL.lat, SEOUL.lng], 13);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution:
         '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>',
@@ -119,6 +127,7 @@ interface KakaoMaps {
   CustomOverlay: new (opts: {
     position: unknown;
     content: HTMLElement;
+    xAnchor?: number;
     yAnchor?: number;
     clickable?: boolean;
   }) => KakaoObj;
@@ -129,6 +138,8 @@ interface KakaoMaps {
 }
 interface KakaoMap {
   setBounds(b: unknown, ...pad: number[]): void;
+  setDraggable(v: boolean): void;
+  setZoomable(v: boolean): void;
   setCenter(p: unknown): void;
   setLevel(l: number): void;
   getLevel(): number;
@@ -180,9 +191,14 @@ class KakaoProvider implements MapProvider {
   constructor(
     private readonly k: KakaoMaps,
     el: HTMLElement,
+    interactive = true,
   ) {
     this.map = new k.Map(el, { center: new k.LatLng(SEOUL.lat, SEOUL.lng), level: 6 });
-    this.map.addControl(new k.ZoomControl(), k.ControlPosition.RIGHT);
+    if (interactive) this.map.addControl(new k.ZoomControl(), k.ControlPosition.RIGHT);
+    else {
+      this.map.setDraggable(false);
+      this.map.setZoomable(false);
+    }
   }
   private add(o: KakaoObj) {
     o.setMap(this.map);
@@ -212,7 +228,10 @@ class KakaoProvider implements MapProvider {
         this.popup.setMap(this.map);
       }
     });
-    this.add(new this.k.CustomOverlay({ position: pos, content: el, yAnchor: 0.5, clickable: true }));
+    // 감싸는 칸은 크기 0, 모양은 안쪽에서 옮겨요(Leaflet 과 같은 기준점)
+    this.add(
+      new this.k.CustomOverlay({ position: pos, content: el, xAnchor: 0, yAnchor: 0, clickable: true }),
+    );
   }
   circle(c: LatLng & { radius: number; color: string; dashed?: boolean }) {
     this.add(
@@ -259,14 +278,18 @@ class KakaoProvider implements MapProvider {
 let kakaoFailed = false;
 
 /** 지도 만들기: 카카오 키가 있으면 카카오맵, 안 되면 OpenStreetMap */
-export async function createProvider(el: HTMLElement, kakaoKey: string): Promise<MapProvider> {
+export async function createProvider(
+  el: HTMLElement,
+  kakaoKey: string,
+  interactive = true,
+): Promise<MapProvider> {
   if (kakaoKey && !kakaoFailed) {
     try {
       const k = await loadKakao(kakaoKey);
-      return new KakaoProvider(k, el);
+      return new KakaoProvider(k, el, interactive);
     } catch {
       kakaoFailed = true;
     }
   }
-  return new OsmProvider(el);
+  return new OsmProvider(el, interactive);
 }

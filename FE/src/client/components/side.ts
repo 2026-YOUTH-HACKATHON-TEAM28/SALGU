@@ -12,7 +12,7 @@ export function sideView(content: { map: () => unknown; sched: () => unknown }) 
         ${icons.map(18)}지도
       </button>
       <button role="tab" aria-selected=${panel === 'sched'} @click=${() => ui({ panel: 'sched' })}>
-        ${icons.calendar(18)}일정
+        ${icons.calendar(18)}일정${state.schedule.length ? html`<i class="count">${state.schedule.length}</i>` : nothing}
       </button>
       <button class="icon-btn side-close" aria-label="옆 칸 닫기" @click=${() => ui({ panel: null })}>
         ${icons.close()}

@@ -1123,87 +1123,6 @@ p {
   gap: 8px;
 }
 
-/* ---------- 작은 지도 ---------- */
-.minimap {
-  display: grid;
-  gap: 4px;
-  padding: 0;
-  border: 0;
-  background: none;
-  text-align: left;
-}
-.minimap svg {
-  width: 100%;
-  height: auto;
-  display: block;
-}
-.minimap-cap {
-  font-size: 12px;
-  color: var(--ink-3);
-}
-.mm-bg {
-  fill: #f4efe9;
-}
-.mm-grid {
-  stroke: #e9e1d8;
-  stroke-width: 1;
-}
-.minimap text {
-  font-size: 10.5px;
-  text-anchor: middle;
-  fill: var(--ink-2);
-  font-weight: 600;
-}
-.mm-area {
-  fill: rgba(240, 138, 75, 0.15);
-}
-.mm-dong .mm-pin {
-  fill: var(--apricot);
-}
-.minimap .mm-no {
-  fill: #fff;
-  font-size: 10px;
-}
-.mm-company rect {
-  fill: var(--ink);
-}
-.mm-company path {
-  stroke: #fff;
-  stroke-width: 1.4;
-}
-.mm-listing .mm-pin {
-  fill: currentColor;
-}
-.mm-listing.tone-ok {
-  color: var(--ok);
-}
-.mm-listing.tone-warn {
-  color: var(--warn);
-}
-.mm-listing.tone-bad {
-  color: var(--bad);
-}
-.mm-listing.tone-muted {
-  color: var(--muted);
-}
-.mm-listing.tone-info {
-  color: var(--info);
-}
-.mm-listing,
-.mm-listing.tone-ok,
-.mm-listing.tone-warn,
-.mm-listing.tone-bad,
-.mm-listing.tone-muted,
-.mm-listing.tone-info {
-  background: none;
-}
-.mm-route {
-  fill: none;
-  stroke: var(--apricot-dark);
-  stroke-width: 2;
-  stroke-dasharray: 5 4;
-}
-
 /* ---------- 동네 카드 ---------- */
 .dong-list {
   list-style: none;
@@ -1726,9 +1645,6 @@ th {
   flex-wrap: wrap;
   align-items: center;
   gap: 4px 8px;
-}
-.minimap {
-  max-width: 460px;
 }
 
 /* ---------- 큰 지도 ---------- */

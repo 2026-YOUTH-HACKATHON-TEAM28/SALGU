@@ -153,8 +153,12 @@ export function condCard(card: Extract<Card, { kind: 'cond' }>): TemplateResult 
   const searched = Boolean(state.chat?.search);
 
   return html`<article class="card cond" data-testid="cond-card">
+    <header class="card-title">
+      <h3>조건 카드</h3>
+      <span class="sub">말한 내용으로 채웠어요. 값을 누르면 바로 고칠 수 있어요</span>
+    </header>
     <section aria-labelledby=${`${card.id}-said`}>
-      <h3 id=${`${card.id}-said`}>말씀하신 조건</h3>
+      <h4 id=${`${card.id}-said`}>말씀하신 조건</h4>
       <ul class="cond-list">
         ${saidPrimary.map((m) => row(m.key, m.item, true))}
       </ul>
@@ -184,7 +188,7 @@ export function condCard(card: Extract<Card, { kind: 'cond' }>): TemplateResult 
     ${
       guessed.length
         ? html`<section class="guessed" aria-labelledby=${`${card.id}-guess`}>
-            <h3 id=${`${card.id}-guess`}>살구가 정한 조건</h3>
+            <h4 id=${`${card.id}-guess`}>살구가 정한 조건</h4>
             <p class="note">
               말씀하지 않았거나 맞는 동네가 없어 살구가 정한 값이에요. 값을 누르면 바로 바꿀 수 있어요.
             </p>

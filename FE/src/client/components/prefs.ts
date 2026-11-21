@@ -32,8 +32,17 @@ export function prefsView() {
           </div>`
         : nothing
     }
-    <div class="prefs-row">
+    <div class="prefs-head">
       <span class="prefs-title">내 조건</span>
+      <button
+        class="btn-pill"
+        @click=${() => ui({ prefsForm: !state.ui.prefsForm })}
+        data-testid="prefs-edit"
+      >
+        조건 바꾸기
+      </button>
+    </div>
+    <div class="prefs-row">
       <ul class="prefs-items">
         ${items.map(
           ({ meta, item }) =>
@@ -45,22 +54,17 @@ export function prefsView() {
                   : `${item.source === 'widened' ? '넓혀본 값' : '살구가 채운 값'}: ${item.reason ?? ''}`
               }
             >
-              <span class="k">${meta.label}</span> ${condText(meta.key, item.value)}
+              <span class="k">${meta.label}</span> <b>${condText(meta.key, item.value)}</b>
             </li>`,
         )}
       </ul>
-      <div class="prefs-btns">
-        <button
-          class="link"
-          @click=${() => ui({ prefsExpanded: !state.ui.prefsExpanded })}
-          aria-expanded=${state.ui.prefsExpanded}
-        >
-          ${state.ui.prefsExpanded ? '접기' : '전체 보기'}
-        </button>
-        <button class="link" @click=${() => ui({ prefsForm: !state.ui.prefsForm })} data-testid="prefs-edit">
-          조건 바꾸기
-        </button>
-      </div>
+      <button
+        class="link prefs-all"
+        @click=${() => ui({ prefsExpanded: !state.ui.prefsExpanded })}
+        aria-expanded=${state.ui.prefsExpanded}
+      >
+        ${state.ui.prefsExpanded ? '접기' : '전체 보기'}
+      </button>
     </div>
   </div>`;
 }

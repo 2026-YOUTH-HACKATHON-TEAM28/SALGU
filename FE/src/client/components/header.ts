@@ -86,30 +86,38 @@ function chatList() {
 }
 
 export function headerView() {
+  const visits = state.schedule.length;
   return html`<header class="top">
     <button class="brand" @click=${newChat} aria-label="살구 첫 화면으로" data-testid="logo">
-      ${logo()}<strong>살구</strong><span class="tagline">살 집 구하기</span>
+      <span class="brand-tile">${logo(24)}</span><strong>살구</strong
+      ><span class="tagline">살 집 구하기</span>
     </button>
     <nav class="top-actions" aria-label="주요 메뉴">
-      <button class="hdr-btn pc-only" @click=${() => openPanel('sched')} data-testid="hdr-sched">
-        ${icons.calendar()}<span>일정</span>
+      <button
+        class="hdr-btn"
+        @click=${() => openPanel('sched')}
+        data-testid="hdr-sched"
+        aria-label="일정${visits ? ` ${visits}건` : ''}"
+      >
+        ${icons.calendar()}<span class="lbl">일정</span>${visits ? html`<i class="count">${visits}</i>` : ''}
       </button>
       <button class="hdr-btn pc-only" @click=${() => openPanel('map')} data-testid="hdr-map">
-        ${icons.map()}<span>지도</span>
+        ${icons.map()}<span class="lbl">지도</span>
       </button>
       <button
         class="hdr-btn"
         aria-expanded=${state.ui.listOpen}
+        aria-label="대화 목록"
         @click=${() => {
           ui({ listOpen: !state.ui.listOpen, accountOpen: false });
           void refreshList();
         }}
         data-testid="hdr-chats"
       >
-        ${icons.chats()}<span>대화</span>
+        ${icons.chats()}<span class="lbl">대화</span>
       </button>
-      <button class="hdr-btn" @click=${newChat} data-testid="hdr-new">
-        ${icons.plus()}<span>새 대화</span>
+      <button class="hdr-btn" @click=${newChat} data-testid="hdr-new" aria-label="새 대화">
+        ${icons.pen()}<span class="lbl">새 대화</span>
       </button>
       ${accountButton()}
     </nav>

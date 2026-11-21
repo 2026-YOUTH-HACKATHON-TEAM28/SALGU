@@ -26,6 +26,7 @@ export const icons = {
     wrap(svg`<path d="M9 4 3.5 6v14L9 18l6 2 5.5-2V4L15 6 9 4z"/><path d="M9 4v14M15 6v14"/>`, s),
   chats: (s?: number) => wrap(svg`<path d="M4 5h16v10H9l-5 4V5z"/><path d="M8 9h8M8 12h5"/>`, s),
   plus: (s?: number) => wrap(svg`<path d="M12 5v14M5 12h14"/>`, s),
+  pen: (s?: number) => wrap(svg`<path d="M4 20h4L19 9l-4-4L4 16v4z"/><path d="m13.5 6.5 4 4"/>`, s),
   person: (s?: number) =>
     wrap(svg`<circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c1.2-3.6 3.8-5.5 7-5.5s5.8 1.9 7 5.5"/>`, s),
   home: (s?: number) =>
