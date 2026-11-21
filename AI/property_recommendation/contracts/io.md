@@ -83,7 +83,8 @@
     "end_date": "2026-11-21",
     "source_tables": ["officetel_rentals", "multifamily_rentals"],
     "evaluated_count": 500,
-    "evaluated_region_count": 12
+    "evaluated_region_count": 12,
+    "commute_evaluated_count": 30
   },
   "unapplied_conditions": [],
   "applied_tolerances": ["월세 상한 +10%"]
@@ -92,6 +93,8 @@
 
 `is_live_listing=false`는 이 후보가 과거 계약 데이터라는 뜻이다. 현재 계약 가능한지는
 중개사 확인 결과로 갱신한다.
+
+`commute_evaluated_count`는 카카오 API로 주소 단위 통근 경로가 확인된 후보 수다.
 
 ## 점수
 

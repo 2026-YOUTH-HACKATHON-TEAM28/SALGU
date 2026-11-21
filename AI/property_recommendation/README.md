@@ -32,8 +32,9 @@
 - 매물 식별: 주택 유형 + 지역 + 지번 + 건물명 + 5㎡ 면적 구간
 - 같은 건물·면적대 거래는 최신 한 건으로 합치고 중앙값·표본 수를 함께 계산
 
-현재 DB에는 건물·지하철역 좌표가 없으므로 통근시간은 `CommuteProvider` 구현체가 제공한다.
-직장 조건이 있으면 통근 제공자가 지역을 먼저 거르고, 이후 개별 매물 통근시간을 계산한다.
+현재 DB에는 건물·지하철역 좌표가 없으므로 통근시간은 `KakaoCommuteProvider`가
+카카오 위치 검색과 대중교통 길찾기로 계산한다. 직장 조건이 있으면 가까운 지역을 먼저
+거르고, 이후 개별 매물 주소의 통근시간을 계산한다.
 직장 조건이 있는데 제공자가 없으면 잘못된 결과를 반환하지 않고 오류를 발생시킨다.
 
 ## 출력
@@ -55,15 +56,34 @@
 ## 호출
 
 ```python
-result = await recommend_properties(
-    criteria=RecommendationInput.from_condition_card(card),
-    session=db_session,
-    commute_provider=commute_provider,
+from property_recommendation import (
+    KakaoCommuteConfig,
+    KakaoCommuteProvider,
+    recommend_properties,
 )
+
+async with KakaoCommuteProvider(KakaoCommuteConfig.from_env()) as commute_provider:
+    result = await recommend_properties(
+        criteria=RecommendationInput.from_condition_card(card),
+        session=db_session,
+        commute_provider=commute_provider,
+    )
 ```
 
-`CommuteProvider`는 `measure_regions()`와 `measure_properties()`를 구현한다. 지역 통근값으로
-후보 지역을 먼저 좁히므로, 최신 거래 200건에 먼저 제한하던 편향이 없다.
+`KAKAO_REST_API_KEY`에는 카카오 디벨로퍼스 REST API 키를 넣고 카카오맵 API 사용 설정을
+활성화해야 한다. FastAPI에서는 provider를 요청마다 만들지 말고 lifespan에서 한 번 생성해
+HTTP 연결과 좌표·경로 캐시를 재사용한다.
+
+기본 호출 상한은 지역 경로 30건, 개별 매물 경로 30건이다. 지역은 직선거리로 먼저
+축소하며, 최종 결과에는 개별 매물 주소 경로가 확인된 후보만 사용한다. 카카오 응답에 없는
+버스 배차간격 조건은 추정하지 않고 `UnsupportedCommuteConditionError`를 발생시킨다.
+
+연동 확인:
+
+```powershell
+$env:KAKAO_REST_API_KEY="REST_API_KEY"
+python scripts/check_kakao_commute.py 강남역 "서울특별시 마포구 공덕동"
+```
 
 ## 평가
 
