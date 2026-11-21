@@ -19,7 +19,7 @@ import { condValueText, dateOnly, hm, maskPersonal } from '../../shared/format.j
 import { STANDARD, WORKPLACES, brokersOf, dealsOf, dongById } from './data.js';
 import { DEFAULTS, searchDongs, tighten, valuesOf, convRent } from './engine.js';
 import { extractConds, intentOf } from './nlu.js';
-import { conceptOf } from './wiki.js';
+import { CONCEPTS, conceptOf } from './wiki.js';
 import {
   VISIT_SLOTS,
   emptyInternal,
@@ -40,6 +40,13 @@ export interface Ctx {
   useCalls: (n: number) => number;
   /** 시험 전화(하루 3번)를 하나 쓸 수 있으면 1 */
   useTestCalls: () => number;
+  /** AI가 말에서 뽑은 조건(규칙이 못 뽑은 칸만 써요) */
+  aiValues?: Partial<Record<CondKey, unknown>>;
+}
+
+/** 규칙으로 못 답한 말: 서버가 AI에게 물어 이 답변을 바꿔요 */
+export interface TextResult {
+  askAi?: { messageId: string; question: string };
 }
 
 export class DialogError extends Error {
@@ -187,8 +194,13 @@ function condCard(chat: ChatState, ask?: Extract<Card, { kind: 'cond' }>['ask'])
 function applyExtract(
   chat: ChatState,
   text: string,
+  aiValues: Partial<Record<CondKey, unknown>> = {},
 ): { changed: CondKey[]; unknowns: string[]; ambiguous: boolean } {
   const ex = extractConds(text, WORKPLACES);
+  // 규칙이 못 뽑은 칸만 AI 값으로 채워요(값 범위는 같은 검사를 거쳐요).
+  for (const [k, v] of Object.entries(aiValues)) {
+    if (ex.values[k as CondKey] === undefined && validCondValue(k as CondKey, v)) ex.values[k as CondKey] = v;
+  }
   const changed: CondKey[] = [];
   for (const [k, v] of Object.entries(ex.values)) {
     setSaid(chat.conditions, k as CondKey, v);
@@ -557,7 +569,8 @@ function touch(chat: ChatState, now: Date): void {
 
 /* ---------- 말 ---------- */
 
-export function handleText(chat: ChatState, internal: SimInternal, raw: string, ctx: Ctx): void {
+export function handleText(chat: ChatState, internal: SimInternal, raw: string, ctx: Ctx): TextResult {
+  let result: TextResult = {};
   const text = maskPersonal(raw.trim()).slice(0, 500);
   if (!text) throw new DialogError('empty', '내용을 입력해 주세요.');
   const now = ctx.now;
@@ -589,7 +602,7 @@ export function handleText(chat: ChatState, internal: SimInternal, raw: string, 
           cards: [{ kind: 'concept', id: mid('k'), title: c.title, body: c.body }],
           sources: [SRC.wiki],
         });
-      else fallback(chat);
+      else result = { askAi: { messageId: fallback(chat).id, question: text } };
       break;
     }
     case 'search':
@@ -664,9 +677,9 @@ export function handleText(chat: ChatState, internal: SimInternal, raw: string, 
       showFinal(chat, now);
       break;
     case 'other': {
-      const { changed, unknowns, ambiguous } = applyExtract(chat, text);
+      const { changed, unknowns, ambiguous } = applyExtract(chat, text, ctx.aiValues);
       if (!changed.length && !unknowns.length && !ambiguous) {
-        fallback(chat);
+        result = { askAi: { messageId: fallback(chat).id, question: text } };
         break;
       }
       // 동네를 이미 찾은 뒤 조건 하나만 바꾼 경우: 바꾼 것만 알려 주고 다시 찾기 제안
@@ -695,6 +708,42 @@ export function handleText(chat: ChatState, internal: SimInternal, raw: string, 
     }
   }
   touch(chat, now);
+  return result;
+}
+
+/** AI 답으로 바꾸기(규칙 안내 답변 자리에) */
+export function applyAiAnswer(chat: ChatState, messageId: string, answer: string, model: string): void {
+  const m = chat.messages.find((x) => x.id === messageId);
+  if (!m) return;
+  m.text = answer;
+  m.chips = ['조건 골라서 찾기'];
+  m.sources = [{ label: `AI 답변(OpenAI ${model}) · 살구 설명 문서 참고`, kind: 'ai' }];
+  chat.rev += 1;
+}
+
+/** AI에게 줄 근거 자료: 살구 설명 문서와 지금 대화 상황(숫자는 계산 결과만) */
+export function aiContext(chat: ChatState): string {
+  const conds = Object.entries(chat.conditions)
+    .map(
+      ([k, item]) =>
+        `${condLabel(k as CondKey)} ${valueText(k as CondKey, (item as CondItem<unknown>).value)}`,
+    )
+    .join(', ');
+  const dongs = chat.search?.dongs
+    .map((d) => `${d.rank}. ${d.name}(통근 ${d.commute.minutes}분, 환산월세 중간 ${d.median}만 원)`)
+    .join(' / ');
+  const docs = Object.values(CONCEPTS)
+    .map((c) => `[${c.title}] ${c.body.join(' ')}`)
+    .join('\n');
+  return [
+    `지금 단계: ${chat.stage}`,
+    conds ? `사용자 조건: ${conds}` : '사용자 조건: 아직 없음',
+    dongs ? `살구가 계산한 동네: ${dongs}` : '',
+    '살구가 하는 일: 회사와 월세로 동네를 고르고, 동네 중개사무소에 AI가 전화해 비슷한 방을 묻고, 고른 방으로 방문 시간을 확정해요. 등기부·건축물대장 확인은 하지 않아요.',
+    `살구 설명 문서:\n${docs}`,
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 function openCondForm(chat: ChatState, now: Date, text?: string): void {
@@ -709,8 +758,8 @@ function openCondForm(chat: ChatState, now: Date, text?: string): void {
   );
 }
 
-function fallback(chat: ChatState): void {
-  say(chat, '그 질문은 지금 답하기 어려워요. 집 찾기 조건이나 아래처럼 물어봐 주세요.', {
+function fallback(chat: ChatState): Message {
+  return say(chat, '그 질문은 지금 답하기 어려워요. 집 찾기 조건이나 아래처럼 물어봐 주세요.', {
     chips: [
       '환산월세가 뭐야?',
       '전입신고는 언제까지 해?',

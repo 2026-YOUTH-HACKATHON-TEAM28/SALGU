@@ -84,6 +84,7 @@ export const SOURCE_KIND_LABEL: Record<SourceKind, string> = {
   example: '예시 값',
   simulation: '시뮬레이션',
   standard: '기준값',
+  ai: 'AI 답변',
 };
 
 export const STAGES: { id: Stage; label: string }[] = [

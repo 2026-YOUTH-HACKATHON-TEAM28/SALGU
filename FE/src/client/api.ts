@@ -18,10 +18,12 @@ export class ApiError extends Error {
 }
 
 const TIMEOUT_MS = 15000;
+/** AI 답변을 기다리는 말 보내기는 더 길게 */
+const SEND_TIMEOUT_MS = 40000;
 
-async function request<T>(method: string, url: string, body?: unknown): Promise<T> {
+async function request<T>(method: string, url: string, body?: unknown, timeoutMs = TIMEOUT_MS): Promise<T> {
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   let res: Response;
   try {
     res = await fetch(url, {
@@ -60,7 +62,7 @@ export const api = {
     request<ChatState | undefined>('GET', `/api/chats/${encodeURIComponent(id)}${rev ? `?rev=${rev}` : ''}`),
   deleteChat: (id: string) => request<{ ok: boolean }>('DELETE', `/api/chats/${encodeURIComponent(id)}`),
   send: (id: string, text: string) =>
-    request<ChatState>('POST', `/api/chats/${encodeURIComponent(id)}/messages`, { text }),
+    request<ChatState>('POST', `/api/chats/${encodeURIComponent(id)}/messages`, { text }, SEND_TIMEOUT_MS),
   act: (id: string, action: Action) =>
     request<ChatState>('POST', `/api/chats/${encodeURIComponent(id)}/actions`, action),
   schedule: () => request<{ items: ScheduleItem[] }>('GET', '/api/schedule'),

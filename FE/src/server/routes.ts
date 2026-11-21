@@ -3,7 +3,19 @@ import type { Action, ChatState, ChatSummary, ScheduleItem, SessionInfo, User } 
 import { APP_VERSION } from '../shared/version.js';
 import type { Config } from './config.js';
 import { Store, type UserRecord } from './store.js';
-import { DialogError, advance, handleAction, handleText, newChat, type Ctx } from './mock/dialog.js';
+import {
+  DialogError,
+  advance,
+  aiContext,
+  applyAiAnswer,
+  handleAction,
+  handleText,
+  newChat,
+  type Ctx,
+} from './mock/dialog.js';
+import { intentOf } from './mock/nlu.js';
+import { maskPersonal } from '../shared/format.js';
+import { Ai } from './ai.js';
 import { DONGS, STATIONS, WORKPLACES, dongById } from './mock/data.js';
 import { VISIT_SLOTS } from './mock/sim.js';
 
@@ -30,6 +42,12 @@ const idParam = {
 } as const;
 
 export async function registerRoutes(app: FastifyInstance, config: Config, store: Store): Promise<void> {
+  const ai = new Ai({
+    apiKey: config.openaiKey,
+    model: config.openaiModel,
+    timeoutMs: 20000,
+    dailyCap: config.aiDailyCap,
+  });
   app.decorateRequest('user', null);
 
   app.addHook('preHandler', async (req) => {
@@ -71,6 +89,8 @@ export async function registerRoutes(app: FastifyInstance, config: Config, store
   };
 
   /* 세션 · 로그인 */
+
+  app.get('/api/ai', async () => ({ enabled: ai.enabled, model: ai.enabled ? ai.model : null }));
 
   app.get('/api/session', async (req): Promise<SessionInfo> => ({
     user: req.user ? publicUser(req.user) : null,
@@ -163,10 +183,20 @@ export async function registerRoutes(app: FastifyInstance, config: Config, store
       const rec = store.chat(req.params.id, req.user!.id);
       if (!rec) return reply.code(404).send({ error: 'not_found', message: '대화를 찾지 못했어요.' });
       advance(rec.state, rec.internal, new Date());
+      const text = maskPersonal(req.body.text.trim());
+      // 규칙이 의도를 모르는 말이면 AI가 먼저 조건을 뽑아 봐요.
+      const aiValues =
+        ai.enabled && intentOf(text).kind === 'other' ? await ai.extract(text, WORKPLACES) : {};
+      let result;
       try {
-        handleText(rec.state, rec.internal, req.body.text, ctxFor(req.user!));
+        result = handleText(rec.state, rec.internal, text, { ...ctxFor(req.user!), aiValues });
       } catch (err) {
         return sendDialogError(reply, err);
+      }
+      // 규칙으로 못 답한 질문은 AI가 답해요(실패하면 규칙 안내 그대로).
+      if (result.askAi && ai.enabled) {
+        const answer = await ai.answer(result.askAi.question, aiContext(rec.state));
+        if (answer) applyAiAnswer(rec.state, result.askAi.messageId, answer, ai.model);
       }
       store.putChat(rec);
       return rec.state;

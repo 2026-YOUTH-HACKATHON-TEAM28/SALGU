@@ -831,3 +831,9 @@ button.pin-wrap {
     left: 52px;
   }
 }
+
+/* 출처: AI 답변 */
+.src-ai {
+  background: #efeafd;
+  color: #6b4bd1;
+}

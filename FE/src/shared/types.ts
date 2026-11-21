@@ -207,7 +207,7 @@ export interface Visit {
 
 /* ---------- 대화 ---------- */
 
-export type SourceKind = 'real' | 'example' | 'simulation' | 'standard';
+export type SourceKind = 'real' | 'example' | 'simulation' | 'standard' | 'ai';
 export interface SourceTag {
   label: string;
   kind: SourceKind;
