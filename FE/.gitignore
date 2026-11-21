@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.data/
+playwright-report/
+test-results/
+*.log
+
+# 키·비밀 (값은 서버 환경 변수나 .env 에만)
+.env
+.env.*
+!.env.example
