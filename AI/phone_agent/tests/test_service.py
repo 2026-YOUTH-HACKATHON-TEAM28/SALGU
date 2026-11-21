@@ -572,3 +572,34 @@ def test_duplicate_groups_recomputed_with_confirmed_units(service, clock):
         run_until_done(service, confirm, clock)
     group = service.batch_result(service.get_batch(batch["batch_id"]))["duplicate_groups"][0]
     assert group["status"] == "likely_same" and "같은 호수: 302호" in group["reasons"]
+
+
+# ---------------------------------------------------------------- 보관 기간
+def test_kept_transcript_is_deleted_after_30_days_but_quotes_stay(settings, provider, clock, tmp_path):
+    from phone_agent.service import Store
+
+    path = tmp_path / "calls.json"
+    service = CallService(settings, provider, store=Store(path), now=clock)
+    batch, _ = service.create_batch(make_batch(1, approval_id="ap-keep30", keep_transcript=True), scenarios=["listing"])
+    call = run_until_done(service, batch, clock)["calls"][0]
+    assert call["transcript"] and call["quotes"]
+
+    clock.advance(days=29, hours=23)
+    service.tick()
+    assert service.to_result(service.store.calls[call["call_id"]])["transcript"]
+    clock.advance(hours=1)
+    service.tick()
+    after = service.to_result(service.store.calls[call["call_id"]])
+    assert after["transcript"] == [] and after["quotes"] == call["quotes"]
+    saved = path.read_text(encoding="utf-8")
+    assert "수도랑 인터넷 포함이에요" in saved  # 근거 줄(quotes)은 남음
+    assert "등기부등본을 방문 전에 미리 받아 볼 수 있을까요?" not in saved  # 근거가 아닌 줄은 파일에서도 사라짐
+
+
+def test_transcript_days_setting(provider, clock):
+    service = CallService(Settings(mode="mock", poll_interval_sec=0, transcript_days=1), provider, now=clock)
+    batch, _ = service.create_batch(make_batch(1, approval_id="ap-keep1", keep_transcript=True), scenarios=["listing"])
+    call = run_until_done(service, batch, clock)["calls"][0]
+    clock.advance(days=1)
+    service.tick()
+    assert service.to_result(service.store.calls[call["call_id"]])["transcript"] == []

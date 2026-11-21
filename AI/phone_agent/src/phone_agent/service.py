@@ -229,7 +229,18 @@ class CallService:
             if rec["status"] == "analyzing":
                 self._analyze(rec, now)
         self._dispatch(now)
+        self._purge_transcripts(now)
         self.store.save()
+
+    def _purge_transcripts(self, now: datetime) -> None:
+        """동의한 대화 전문은 통화가 끝나고 transcript_days(기본 30일)가 지나면 지운다. 근거 줄(quotes)은 남긴다."""
+        keep = timedelta(days=self.settings.transcript_days)
+        for rec in self.store.calls.values():
+            result = rec.get("result") or {}
+            ended = parse(rec.get("ended_at"))
+            if result.get("transcript") and ended and now - ended >= keep:
+                result["transcript"] = []
+                rec["transcript_purged_at"] = iso(now)
 
     def _line_busy(self) -> bool:
         return any(r["status"] in ON_LINE for r in self.store.calls.values())
