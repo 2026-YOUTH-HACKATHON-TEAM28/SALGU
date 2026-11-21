@@ -129,7 +129,7 @@ export function afterChatRender(): void {
   if (chat.id !== lastChatId) {
     lastChatId = chat.id;
     lastCount = count;
-    log.scrollTop = log.scrollHeight;
+    log.scrollTo({ top: log.scrollHeight, behavior: 'instant' });
     return;
   }
   if (count === lastCount) return;
