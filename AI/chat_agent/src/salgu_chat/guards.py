@@ -23,7 +23,8 @@ GREETING = "안녕하세요! 살구예요. 서울에서 살 집을 같이 찾아
 THANKS = "천만에요! 더 원하는 조건이 있으면 편하게 말해 주세요."
 QUESTION_GUIDE = ("용어나 제도 설명은 아직 도와 드리지 못해요. 원하는 집을 편하게 말해 주시면 바로 찾아 드릴게요. "
                   "예: '신촌 쪽 깨끗한 원룸, 월세 50 이하'")
-BLOCKED = "그 요청은 도와 드릴 수 없어요. " + GUIDE
+REFUSE = "그 요청은 도와 드릴 수 없어요."
+BLOCKED = REFUSE + " " + GUIDE
 TOO_LONG = "말이 너무 길어요. 원하는 집을 짧게 말해 주세요. 예: '회사 강남역, 1000/50 오피스텔'"
 EMPTY = "원하는 집을 말해 주세요. 예: '회사 강남역, 1000/50 오피스텔'"
 
@@ -114,6 +115,7 @@ def normalize_card(card, utterance, prev_card=None):
         return None
     sources = [utterance] + ([_card_text(prev_card)] if prev_card else [])
     conds = {}
+    outside = []
     for key, c in (card.get("conditions") or {}).items():
         if key not in ALLOWED or not isinstance(c, dict) or c.get("value") in (None, "", []):
             continue
@@ -135,7 +137,11 @@ def normalize_card(card, utterance, prev_card=None):
                 continue
             c["value"] = list(dict.fromkeys(vals))
         elif key in _NAME_LISTS:
-            vals = [str(x).strip() for x in (v if isinstance(v, list) else [v]) if _from_user(x, sources)]
+            vals = [str(x).strip() for x in (v if isinstance(v, list) else [v]) if _from_user(x, sources)
+                    and str(x).strip() not in ("서울", "서울시", "서울특별시")]  # 서울 전체는 살 곳 조건이 아니다
+            for x in [x for x in vals if x in rules._OUTSIDE_SEOUL]:  # 서울 밖은 살 곳이 아니라 '아직 서울만'
+                vals.remove(x)
+                outside.append(x)
             if not vals:
                 continue
             c["value"] = list(dict.fromkeys(vals))
@@ -152,7 +158,7 @@ def normalize_card(card, utterance, prev_card=None):
             c["source"] = "inferred"
         if not _from_user(c.get("evidence", ""), sources):
             c["evidence"] = ""
-        c = {k: c[k] for k in ("value", "label", "source", "evidence", "reason", "approx") if k in c}
+        c = {k: c[k] for k in ("value", "label", "kind", "source", "evidence", "reason", "approx") if k in c}
         if c["source"] == "inferred" and not isinstance(c.get("reason"), str):
             c.pop("reason", None)
         conds[key] = c
@@ -165,6 +171,8 @@ def normalize_card(card, utterance, prev_card=None):
     unver = [{"phrase": str(u["phrase"]).strip(), "message": "데이터로 확인할 수 없어요"}
              for u in card.get("unverifiable") or []
              if isinstance(u, dict) and _from_user(u.get("phrase", ""), sources)]
+    unver = [u for u in unver if u["phrase"] not in outside]
+    unver += [{"phrase": x, "message": rules.OUTSIDE_MESSAGE} for x in dict.fromkeys(outside)]
     return {"version": rules.VERSION, "utterance": utterance, "conditions": conds, "priorities": pri,
             "unverifiable": unver, "clarifications": []}
 
