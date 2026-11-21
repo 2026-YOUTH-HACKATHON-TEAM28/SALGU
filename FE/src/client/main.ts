@@ -1,4 +1,17 @@
-import { render, html } from 'lit-html';
+import { render } from 'lit-html';
+import './styles/main.css';
+import { appView } from './components/app.js';
+import { afterChatRender } from './components/chat.js';
+import { boot, subscribe } from './store.js';
 
 const root = document.getElementById('app');
-if (root) render(html`<p>살구 준비 중</p>`, root);
+if (!root) throw new Error('#app 이 없어요');
+
+const draw = () => {
+  render(appView(), root);
+  afterChatRender();
+};
+
+subscribe(draw);
+draw();
+void boot();

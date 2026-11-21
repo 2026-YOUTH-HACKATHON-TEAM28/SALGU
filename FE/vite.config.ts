@@ -14,7 +14,8 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/api': 'http://127.0.0.1:8787',
+      // Host 를 그대로 넘겨야 서버의 출처 확인(같은 호스트)이 통과해요.
+      '/api': { target: 'http://127.0.0.1:8787', changeOrigin: false },
     },
   },
   test: {
