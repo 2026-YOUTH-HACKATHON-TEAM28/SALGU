@@ -266,3 +266,22 @@ test('대화 지우기는 브라우저 창이 아니라 화면 안 확인 창으
   if (!(await page.getByTestId('chat-list').isVisible())) await page.getByTestId('hdr-chats').click();
   await expect(page.getByTestId('chat-list').locator('li')).toHaveCount(Math.max(before - 1, 1));
 });
+
+test('페이지 자체는 스크롤되지 않고 대화 칸 안에서만 스크롤', async ({ page }) => {
+  await startAsExample(page);
+  await page.getByRole('button', { name: /여의도역으로 출근해요/ }).click();
+  await page.getByTestId('cond-card').last().getByTestId('cond-search').click();
+  await expect(page.getByTestId('dongs-card')).toBeVisible();
+  // 브라우저가 포커스나 scrollIntoView 로 페이지를 밀어도 바로 되돌아와요
+  await page.evaluate(() => {
+    document.querySelector('[data-testid="dongs-card"]')?.scrollIntoView({ block: 'end' });
+    window.scrollTo(0, 400);
+  });
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+  await page.mouse.wheel(0, 2000);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+  // 입력창은 화면 안에 그대로
+  const box = await page.getByTestId('composer-input').boundingBox();
+  const vh = page.viewportSize()!.height;
+  expect(box && box.y + box.height).toBeLessThanOrEqual(vh);
+});

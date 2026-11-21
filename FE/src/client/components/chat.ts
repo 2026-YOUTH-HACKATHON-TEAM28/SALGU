@@ -129,7 +129,11 @@ function progressView(): TemplateResult | typeof nothing {
   const cur = STAGES.findIndex((s) => s.id === chat.stage);
   const jump = (stage: Stage) => {
     const el = [...document.querySelectorAll<HTMLElement>(`.card-wrap[data-stage="${stage}"]`)].pop();
-    el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const log = document.querySelector<HTMLElement>('.log');
+    if (!el || !log) return;
+    // scrollIntoView 는 페이지 자체까지 밀어 올릴 수 있어서 대화 칸만 움직여요.
+    const top = log.scrollTop + el.getBoundingClientRect().top - log.getBoundingClientRect().top - 8;
+    log.scrollTo({ top, behavior: 'smooth' });
   };
   const next =
     chat.stage === 'call' && !chat.batch

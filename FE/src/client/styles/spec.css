@@ -1036,3 +1036,10 @@ button.pin-wrap {
   align-items: baseline;
   gap: 4px 8px;
 }
+
+/* 화면 틀이 있을 때는 페이지 자체 스크롤을 막아요(스크롤은 대화 칸 .log 안에서만). 로그인 화면은 그대로 */
+html:has(.shell),
+body:has(.shell) {
+  overflow: hidden;
+  overscroll-behavior: none;
+}

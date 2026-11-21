@@ -45,12 +45,12 @@ export function condFormView(opts: {
     const err = form.querySelector<HTMLElement>('.form-error');
     if (!values.workplace) {
       if (err) err.textContent = '회사(학교) 위치를 골라 주세요.';
-      form.querySelector<HTMLSelectElement>('select[name=workplace]')?.focus();
+      form.querySelector<HTMLSelectElement>('select[name=workplace]')?.focus({ preventScroll: true });
       return;
     }
     if (values.rent === null || values.rent === undefined) {
       if (err) err.textContent = '월세 예산을 적어 주세요.';
-      form.querySelector<HTMLInputElement>('input[name=rent]')?.focus();
+      form.querySelector<HTMLInputElement>('input[name=rent]')?.focus({ preventScroll: true });
       return;
     }
     if (err) err.textContent = '';
