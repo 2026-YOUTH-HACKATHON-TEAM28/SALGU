@@ -15,6 +15,7 @@
 - pick  "2번째꺼 자세히"  → 마지막 검색 결과의 그 후보
 """
 
+import re
 import time
 
 from . import backend, guards, intake, rules
@@ -35,7 +36,7 @@ def describe(c):
     if c.get("area_m2"):
         details.append(f"전용 {c['area_m2']:g}㎡")
     if c.get("floor") is not None:
-        details.append(f"{c['floor']}층")
+        details.append("반지하" if c["floor"] <= 0 else f"{c['floor']}층")
     if c.get("construction_year"):
         details.append(f"{c['construction_year']}년 준공")
     if c.get("station") and c.get("walk_to_station_min") is not None:
@@ -43,7 +44,7 @@ def describe(c):
     if c.get("contract_date"):
         y, m = str(c["contract_date"])[:7].split("-")
         n = c.get("transaction_count")
-        details.append(f"{int(y)}년 {int(m)}월 계약" + (f"·실거래 {n}건" if n else ""))
+        details.append(f"{int(y)}년 {int(m)}월 계약" + (f"·실거래 {n}건" if n else "") + ("(표본 적음)" if n == 1 else ""))
     return f"'{c.get('name')}'({', '.join(details)})"
 
 
@@ -66,8 +67,10 @@ def answer(res):
     top = res["candidates"][0]
     name = str(top.get("name"))
     text = f"그중 추천 1순위는 '{name}'{_eyo(name)}. ({describe(top).split('(', 1)[1]}"
-    if top.get("reasons"):
-        text += " 이유: " + ", ".join(top["reasons"][:3]) + "."
+    # 괄호 안에 이미 있는 가격·준공·거래 수는 빼고, 새 정보(중앙값 이하, 통근 등)만 이유로 덧붙인다
+    extra = [r for r in top.get("reasons") or [] if not re.match(r"보증금|최근|\d{4}년 준공|전용", r)]
+    if extra:
+        text += " 추천 이유: " + ", ".join(extra[:2]) + "."
     if top.get("contract_date") and not res.get("mock"):
         text += " 과거 실거래 기준이라 지금 계약할 수 있는지는 중개사 확인이 필요해요."
     for note in (res.get("notes") or [])[:3]:
