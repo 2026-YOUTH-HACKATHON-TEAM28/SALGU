@@ -20,6 +20,7 @@ import { STANDARD, WORKPLACES, brokersOf, dealsOf, dongById } from './data.js';
 import { DEFAULTS, searchDongs, tighten, valuesOf, convRent } from './engine.js';
 import { extractConds, intentOf } from './nlu.js';
 import { CONCEPTS, conceptOf } from './wiki.js';
+import type { MappedCard } from '../chatAgent.js';
 import {
   VISIT_SLOTS,
   emptyInternal,
@@ -715,6 +716,44 @@ export function handleText(chat: ChatState, internal: SimInternal, raw: string, 
 }
 
 /** AI 답으로 바꾸기(규칙 안내 답변 자리에) */
+/** 대화 에이전트(AI 폴더) 결과 반영: 조건은 화면 조건으로 바꿔 넣고, 답 문장은 에이전트 말을 써요 */
+export function applyAgentTurn(
+  chat: ChatState,
+  raw: string,
+  agent: { reply: string; intent: string; via: string },
+  mapped: MappedCard,
+  now: Date,
+): void {
+  const text = maskPersonal(raw.trim()).slice(0, 500);
+  userSays(chat, text, now);
+  const src: SourceTag[] = [
+    { label: `AI 대화 에이전트(${agent.via.startsWith('rules') ? '규칙' : agent.via})`, kind: 'ai' },
+  ];
+  if (agent.intent === 'control' && /^좋아요, 처음부터 다시/.test(agent.reply)) chat.conditions = {};
+  if (mapped.conds.length) {
+    for (const c of mapped.conds) {
+      // 사용자가 버튼으로 직접 바꾼 값은 에이전트 짐작으로 덮지 않아요.
+      const cur = chat.conditions[c.key] as CondItem<unknown> | undefined;
+      if (cur?.source === 'said' && c.source === 'filled') continue;
+      if (!validCondValue(c.key, c.value)) continue;
+      (chat.conditions as Record<string, CondItem<unknown>>)[c.key] = {
+        value: c.value,
+        source: c.source,
+        ...(c.reason ? { reason: c.reason } : {}),
+      };
+    }
+    const notes: string[] = [];
+    if (mapped.notApplied.length)
+      notes.push(`${mapped.notApplied.join(', ')}은 아직 동네 찾기에 반영하지 못해요.`);
+    const m = condCard(chat, mapped.ask);
+    m.text = [agent.reply, ...notes].filter(Boolean).join('\n');
+    m.sources = src;
+  } else {
+    say(chat, agent.reply, { chips: chat.search ? [] : ['조건 골라서 찾기'], sources: src }, now);
+  }
+  touch(chat, now);
+}
+
 export function applyAiAnswer(chat: ChatState, messageId: string, answer: string, model: string): void {
   const m = chat.messages.find((x) => x.id === messageId);
   if (!m) return;

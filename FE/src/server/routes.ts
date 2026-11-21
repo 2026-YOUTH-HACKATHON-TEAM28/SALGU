@@ -7,6 +7,7 @@ import {
   DialogError,
   advance,
   aiContext,
+  applyAgentTurn,
   applyAiAnswer,
   handleAction,
   handleText,
@@ -16,6 +17,7 @@ import {
 import { intentOf } from './mock/nlu.js';
 import { maskPersonal } from '../shared/format.js';
 import { Ai } from './ai.js';
+import { ChatAgent, mapAgentCard } from './chatAgent.js';
 import { DONGS, STATIONS, WORKPLACES, dongById } from './mock/data.js';
 import { VISIT_SLOTS } from './mock/sim.js';
 
@@ -48,6 +50,9 @@ export async function registerRoutes(app: FastifyInstance, config: Config, store
     timeoutMs: 20000,
     dailyCap: config.aiDailyCap,
   });
+  const agent = new ChatAgent(config.chatAgentUrl);
+  // 에이전트가 맡는 말: 규칙이 흐름 명령으로 알아듣지 못한 자유로운 말
+  const AGENT_INTENTS = new Set(['other', 'question', 'greeting', 'oneByOne']);
   app.decorateRequest('user', null);
 
   app.addHook('preHandler', async (req) => {
@@ -90,7 +95,11 @@ export async function registerRoutes(app: FastifyInstance, config: Config, store
 
   /* 세션 · 로그인 */
 
-  app.get('/api/ai', async () => ({ enabled: ai.enabled, model: ai.enabled ? ai.model : null }));
+  app.get('/api/ai', async () => ({
+    enabled: ai.enabled,
+    model: ai.enabled ? ai.model : null,
+    chatAgent: agent.enabled,
+  }));
 
   app.get('/api/session', async (req): Promise<SessionInfo> => ({
     user: req.user ? publicUser(req.user) : null,
@@ -184,7 +193,27 @@ export async function registerRoutes(app: FastifyInstance, config: Config, store
       if (!rec) return reply.code(404).send({ error: 'not_found', message: '대화를 찾지 못했어요.' });
       advance(rec.state, rec.internal, new Date());
       const text = maskPersonal(req.body.text.trim());
-      // 규칙이 의도를 모르는 말이면 AI가 먼저 조건을 뽑아 봐요.
+      // 1) AI 폴더의 대화 에이전트가 있으면 자유로운 말은 에이전트가 이해해요.
+      const intent = intentOf(text).kind;
+      if (agent.enabled && AGENT_INTENTS.has(intent)) {
+        const turn = await agent.turn(rec.state.id, text);
+        const askingMore = turn?.intent === 'control' && /다른|더\s*보여|자세히|번째/.test(text);
+        const generic = turn?.intent === 'question' && turn.via.startsWith('rules');
+        if (turn && !askingMore && !(generic && ai.enabled)) {
+          // 에이전트의 자체 검색 말풍선(예시 응답)은 빼고 첫 답(reply)만 써요. 동네 찾기는 이 서버가 해요.
+          const reply = turn.messages?.find((m) => m.kind === 'reply')?.text ?? turn.reply;
+          applyAgentTurn(
+            rec.state,
+            text,
+            { ...turn, reply },
+            mapAgentCard(turn.card, WORKPLACES),
+            new Date(),
+          );
+          store.putChat(rec);
+          return rec.state;
+        }
+      }
+      // 2) 규칙이 의도를 모르는 말이면 AI가 먼저 조건을 뽑아 봐요.
       const aiValues =
         ai.enabled && intentOf(text).kind === 'other' ? await ai.extract(text, WORKPLACES) : {};
       let result;

@@ -15,6 +15,7 @@
 | 서버 | Node 22+, Fastify | 빌드한 화면과 `/api` 를 함께 내보내요(nginx 없음) |
 | mock API | `src/server/mock` | 실제 BE와 같은 `/api` 경로로 응답해요. 조건 뽑기, 동네 찾기, 전화·등기·확정 통화 시뮬레이션 |
 | 지도 | 카카오맵, 안 되면 OpenStreetMap(Leaflet) | 동네·매물·동선 |
+| 대화 이해 | AI 폴더 대화 에이전트(`AI/chat_agent`), 없으면 규칙 + OpenAI | 자유로운 말을 조건 카드로, 질문에 답하기. 흐름 명령과 숫자는 이 서버 |
 | 시험 | Vitest, Playwright | 계산·규칙·API 단위 시험, PC 1280px·모바일 390px 화면 동작 시험 |
 
 숫자(환산월세, 순위 점수, 시세 판정, 위험 비율)는 계산 엔진(`src/server/mock/engine.ts`)이 내요. 답변 아래에 출처를 실데이터 / 예시 값 / 시뮬레이션 / 기준값으로 표시해요. 지금 시세, 통근, 중개사무소, 등기 숫자는 모두 예시 값과 시뮬레이션이에요.
@@ -56,6 +57,13 @@ PORT=8080 npm start    # http://localhost:8080
 ```
 
 Windows 에서 npm 설정(`script-shell`)이 `/bin/bash` 로 되어 있으면 `npm run` 이 실패해요. 그때는 `node_modules/.bin/` 의 명령을 직접 쓰거나 `npm run --script-shell=cmd.exe <이름>` 으로 실행해 주세요.
+
+대화 에이전트까지 붙여 보려면(팀 저장소 `AI/chat_agent`):
+
+```bash
+cd ../AI/chat_agent && python -m venv .venv && .venv/Scripts/python -m pip install -r requirements.txt
+.venv/Scripts/python run_server.py 8095     # FE/.env 에 CHAT_AGENT_URL=http://127.0.0.1:8095
+```
 
 환경 변수는 [.env.example](./.env.example) 를 보세요. `MOCK_TIME_SCALE` 을 키우면 mock 통화가 빨리 끝나요.
 

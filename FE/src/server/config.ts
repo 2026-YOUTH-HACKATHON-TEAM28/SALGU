@@ -20,6 +20,8 @@ export const config = {
   openaiKey: process.env.OPENAI_API_KEY || '',
   openaiModel: process.env.OPENAI_MODEL || 'gpt-5.4-mini',
   aiDailyCap: num('AI_DAILY_CAP', 400),
+  /** AI 폴더 대화 에이전트(AI/chat_agent) 주소. 비우면 이 서버 규칙(+OpenAI)으로만 답해요 */
+  chatAgentUrl: process.env.CHAT_AGENT_URL || '',
   timeScale: num('MOCK_TIME_SCALE', 1),
   clientDir: resolve(process.env.CLIENT_DIR || 'dist/client'),
   isProd: process.env.NODE_ENV === 'production',
