@@ -43,7 +43,9 @@ test.describe('S-00 로그인', () => {
   });
 });
 
-test('조건에서 일정까지: 조건 카드, 그 자리 수정, 동네, 시험 전화, 통화, 방 고르기, 미팅, 일정', async ({ page }) => {
+test('조건에서 일정까지: 조건 카드, 그 자리 수정, 동네, 시험 전화, 통화, 방 고르기, 미팅, 일정', async ({
+  page,
+}) => {
   await startAsExample(page);
   await noHorizontalScroll(page);
 
