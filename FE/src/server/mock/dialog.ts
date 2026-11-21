@@ -348,7 +348,14 @@ function prepCalls(chat: ChatState, dongIds: string[], now: Date): void {
   say(
     chat,
     `${names}의 등록 중개사무소 ${brokerCount}곳에 전화할게요. 입주 희망일과 계약 기간을 고르면 전화를 시작할 수 있어요.`,
-    { cards: [{ kind: 'callPrep', id: mid('k'), done: false }], sources: [SRC.brokers] },
+    {
+      cards: [{ kind: 'callPrep', id: mid('k'), done: false }],
+      sources: [
+        ids.every((id) => chat.search?.dongs.find((d) => d.id === id)?.brokersReal)
+          ? { label: '중개업소 정보(실거래 DB)', kind: 'real' }
+          : SRC.brokers,
+      ],
+    },
     now,
   );
 }

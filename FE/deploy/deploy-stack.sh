@@ -4,7 +4,7 @@
 # 사용(Git Bash, FE 폴더에서): bash deploy/deploy-stack.sh
 # SSH 연결은 두 번만 열어요(파일 한 번에 올리기, 서버 설치 한 번). 서버 보호 장치에 걸리지 않게.
 # 비밀값은 로컬 Git 밖 파일에서 읽어 올리고, 서버에서는 권한 600 파일로만 둬요(값은 출력하지 않음).
-#   AI/chat_agent/.env 의 GEMINI_*, SALGU_DB_* 줄 -> ~/salgu-chat/agent.env
+#   AI/chat_agent/.env 의 GEMINI_*, SALGU_DB_*, KAKAO_REST_API_KEY 줄 -> ~/salgu-chat/agent.env
 #   AI/phone_agent/.env                         -> ~/salgu-phone/phone.env
 #   BE/src/main/resources/application-secret.yml -> ~/salgu-be/config/application.yml (jar 에는 넣지 않음)
 # 일부만 올리려면 PARTS=be 처럼(chat, phone, be 중에서).
@@ -55,7 +55,7 @@ if [[ " ${PARTS:-chat phone be} " == *" be "* ]]; then
   cp "$JAR" "$STAGE/app.jar"
 fi
 cp deploy/salgu-py.service deploy/salgu-be.service deploy/remote-stack.sh "$STAGE/"
-grep -E '^(GEMINI_|SALGU_DB_)' "$AI/chat_agent/.env" > "$STAGE/secrets/chat.env" 2>/dev/null || true
+grep -E '^(GEMINI_|SALGU_DB_|KAKAO_REST_API_KEY)' "$AI/chat_agent/.env" > "$STAGE/secrets/chat.env" 2>/dev/null || true
 [ -f "$AI/phone_agent/.env" ] && cp "$AI/phone_agent/.env" "$STAGE/secrets/phone.env"
 ls "$STAGE/secrets" | sed 's/^/  비밀 파일: /'
 

@@ -68,6 +68,33 @@ const BACKEND = {
   ],
 };
 
+/* '1번 집 문의해 줘' -> 전화 요청 초안(contracts/call_request.md). 사무소는 실거래 DB real_estate_agencies */
+function actionFor(message: string) {
+  const n = Number(/(\d)번/.exec(message)?.[1] ?? 1);
+  const c = BACKEND.candidates[n - 1] as { name?: string; address?: string };
+  return {
+    type: 'broker_call_request',
+    status: 'needs_approval',
+    listing: { name: c.name, address: c.address },
+    request: {
+      brokers: [
+        {
+          reg: '11560-2019-00011',
+          name: '신길역부동산공인중개사사무소',
+          phone: '02-111-2222',
+          visit_windows: [],
+        },
+        {
+          reg: '11560-2020-00022',
+          name: '영등포한빛공인중개사사무소',
+          phone: '02-333-4444',
+          visit_windows: [],
+        },
+      ],
+    },
+  };
+}
+
 const realFetch = globalThis.fetch;
 const asked: string[] = [];
 function fakeAgent(url: string | URL | Request, init?: RequestInit): Promise<Response> {
@@ -94,6 +121,7 @@ function fakeAgent(url: string | URL | Request, init?: RequestInit): Promise<Res
         missing: [],
         changed: [],
         backend: BACKEND,
+        action: /번 집 문의해 줘/.test(body.message) ? actionFor(body.message) : null,
       }),
       { status: 200, headers: { 'content-type': 'application/json' } },
     ),
@@ -195,6 +223,15 @@ describe('동네 찾기를 대화 에이전트에 물어요', () => {
       type: 'prepCalls',
       dongIds: [chat.search!.dongs[0]!.id],
     });
-    expect(chat.messages.at(-1)!.text).toMatch(/신길동의 등록 중개사무소 \d곳/);
+    // 중개사무소: 대표 후보(1번 해든빌라)를 에이전트에 '문의'해서 받은 실거래 DB 사무소
+    expect(asked.at(-1)).toBe('1번 집 문의해 줘');
+    const d = chat.search!.dongs[0]!;
+    expect(d.brokersReal).toBe(true);
+    expect(d.brokers.map((b) => [b.name, b.regNo, b.phone])).toEqual([
+      ['신길역부동산공인중개사사무소', '11560-2019-00011', '02-111-2222'],
+      ['영등포한빛공인중개사사무소', '11560-2020-00022', '02-333-4444'],
+    ]);
+    expect(chat.messages.at(-1)!.text).toMatch(/신길동의 등록 중개사무소 2곳/);
+    expect(chat.messages.at(-1)!.sources?.[0]).toMatchObject({ kind: 'real' });
   });
 });

@@ -37,6 +37,15 @@ export interface AgentTurn {
   missing: string[];
   changed: string[];
   backend?: AgentBackend | null;
+  /** 전화 요청 초안(contracts/call_request.md). '2번 집 문의해 줘' 같은 말에 와요 */
+  action?: AgentAction | null;
+}
+
+export interface AgentAction {
+  type: string;
+  status: 'needs_approval' | 'no_agencies' | string;
+  listing?: { name?: string; address?: string } | null;
+  request?: { brokers?: { reg?: string; name?: string; phone?: string }[] } | null;
 }
 
 export interface AgentBackend {

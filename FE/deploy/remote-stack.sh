@@ -65,10 +65,11 @@ if [ -s "$IN/secrets/chat.env" ]; then
   while IFS='=' read -r k v; do [ -n "$k" ] && put_env "$ENVF" "$k" "$v"; done < "$IN/secrets/chat.env"
 fi
 grep -q '^SESSION_CACHE_DIR=' "$ENVF" || put_env "$ENVF" SESSION_CACHE_DIR "$B/data/sessions"
-venv312 "$B" -r "$D/chat_agent/requirements.txt"
+venv312 "$B" -r "$D/chat_agent/requirements.txt" "'httpx>=0.27'"  # 추천 엔진(카카오 통근)이 쓰는데 requirements 에 아직 없음
 ln -sfn "$ENVF" "$D/chat_agent/.env"
 ln -sfn "$D" "$B/current"
-py_service salgu-chat "$B" "$B/current/chat_agent" "" "$B/venv312/bin/python run_server.py 8095"
+# 추천 엔진의 카카오 통근 계산은 환경 변수(KAKAO_REST_API_KEY)로 읽어서 설정 파일을 환경으로도 넘겨요.
+py_service salgu-chat "$B" "$B/current/chat_agent" "--env-file $ENVF" "$B/venv312/bin/python run_server.py 8095"
 wait_http http://127.0.0.1:8095/health && curl -fsS http://127.0.0.1:8095/health \
   | python3 -c 'import json,sys; d=json.load(sys.stdin); print("  ", {k: d.get(k) for k in ("ok","model","gemini_key","gemini_available","backend")})' \
   || echo "  대화 에이전트가 응답하지 않아요(journalctl -u salgu-chat)"

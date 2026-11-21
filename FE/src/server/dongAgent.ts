@@ -4,7 +4,7 @@
  * 같은 건물·면적대 시세 중앙값(market_median_*)을 그 동네 가격 판단 기준으로 써요.
  * 중개사무소는 에이전트 응답에 brokers 가 있으면 그것을, 없으면 예시 목록을 써요. */
 import type { Broker, ChatState, Deal, DongResult, SearchResult, Workplace } from '../shared/types.js';
-import type { AgentBackend } from './chatAgent.js';
+import type { AgentAction, AgentBackend } from './chatAgent.js';
 import { DONGS, STANDARD, brokersOf, hashString, registerAgentDong, rng } from './mock/data.js';
 import { convRent, median, valuesOf } from './mock/engine.js';
 
@@ -100,12 +100,14 @@ export function agentSearch(
   limit = 3,
 ): SearchResult | null {
   if (!backend || !backend.ok || backend.mock) return null;
-  const groups = new Map<string, { gu: string; dong: string; cands: Cand[] }>();
-  for (const c of (backend.candidates ?? []) as Cand[]) {
+  const groups = new Map<string, { gu: string; dong: string; cands: Cand[]; pick: number }>();
+  for (const [i, c] of ((backend.candidates ?? []) as Cand[]).entries()) {
     const at = splitAddress(c.address ?? '');
     if (!at) continue;
     const key = `${at.gu} ${at.dong}`;
-    const g = groups.get(key) ?? { ...at, cands: [] };
+    const g = groups.get(key) ?? { ...at, cands: [], pick: i + 1 };
+    const best = (backend.candidates as Cand[])[g.pick - 1];
+    if ((num(c.score) ?? 0) > (num(best?.score) ?? 0)) g.pick = i + 1;
     g.cands.push(c);
     groups.set(key, g);
   }
@@ -176,6 +178,8 @@ export function agentSearch(
       brokers: brokers.length ? brokers : brokersOf(id),
       buildings: [...new Set(g.cands.map((c) => c.name ?? ''))].filter(Boolean).slice(0, 4),
       source: 'agent',
+      agentPick: { index: g.pick, address: (backend.candidates as Cand[])[g.pick - 1]?.address ?? '' },
+      brokersReal: brokers.length > 0,
       refDeals,
       priceRef,
     });
@@ -229,4 +233,24 @@ export function restoreAgentDongs(search: SearchResult | null | undefined): void
       priceRef: d.priceRef ?? null,
     });
   }
+}
+
+/** 대표 후보를 '문의'하면 오는 전화 요청 초안에서 그 동 중개사무소를 꺼내요(실거래 DB real_estate_agencies) */
+export function brokersFromAction(
+  action: AgentAction | null | undefined,
+  dong: { id: string; lat: number; lng: number },
+): Broker[] {
+  const r = rng(`realtor:${dong.id}`);
+  return (action?.request?.brokers ?? [])
+    .filter((b) => b.name && b.phone)
+    .map((b, i) => ({
+      id: `${dong.id}-r${i + 1}`,
+      dongId: dong.id,
+      name: b.name!,
+      regNo: b.reg ?? '',
+      phone: b.phone!,
+      // 사무소 좌표는 초안에 없어서 동네 근처에 표시해요
+      lat: dong.lat + (r() - 0.5) * 0.006,
+      lng: dong.lng + (r() - 0.5) * 0.007,
+    }));
 }

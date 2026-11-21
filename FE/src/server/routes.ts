@@ -25,7 +25,7 @@ import { ChatAgent, mapAgentCard, mapRecs } from './chatAgent.js';
 import { PhoneAgent, acceptRealProposal, planRealVisits, startRealCalls, syncReal } from './phoneAgent.js';
 import type { ChatRecord } from './store.js';
 import { BeAuth } from './beAuth.js';
-import { agentSearch, condQuestion, restoreAgentDongs } from './dongAgent.js';
+import { agentSearch, brokersFromAction, condQuestion, restoreAgentDongs } from './dongAgent.js';
 import { searchDongs } from './mock/engine.js';
 import { DONGS, STATIONS, WORKPLACES, dongById } from './mock/data.js';
 import { VISIT_SLOTS } from './mock/sim.js';
@@ -98,6 +98,25 @@ export async function registerRoutes(app: FastifyInstance, config: Config, store
       );
     }
   };
+  /* 전화할 동네의 중개사무소: 에이전트에 대표 후보를 '문의'해서 전화 요청 초안의 사무소 목록을 받아요.
+   * 에이전트의 마지막 검색이 바뀌었으면(후보 주소가 다르면) 조건으로 다시 찾고 한 번 더 물어요. */
+  const fillBrokers = async (rec: ChatRecord, dongIds: string[]) => {
+    for (const d of rec.state.search?.dongs ?? []) {
+      if (!dongIds.includes(d.id) || d.source !== 'agent' || d.brokersReal || !d.agentPick) continue;
+      const ask = () => agent.turn(rec.state.id, `${d.agentPick!.index}번 집 문의해 줘`);
+      let turn = await ask();
+      if (turn?.action?.listing?.address !== d.agentPick.address) {
+        await agent.turn(rec.state.id, condQuestion(rec.state, WORKPLACES));
+        turn = await ask();
+        if (turn?.action?.listing?.address !== d.agentPick.address) continue;
+      }
+      const brokers = brokersFromAction(turn?.action, d);
+      if (brokers.length) {
+        d.brokers = brokers;
+        d.brokersReal = true;
+      }
+    }
+  };
   const sync = async (rec: ChatRecord) => {
     restoreAgentDongs(rec.state.search);
     if (!rec.internal.real || !phone.enabled) return;
@@ -162,7 +181,7 @@ export async function registerRoutes(app: FastifyInstance, config: Config, store
     if (be.enabled && BeAuth.beCookie(req) && req.user?.kind !== 'kakao') {
       const u = await be.me(req);
       if (u) {
-        const user = store.userByKakao(u.id, u.nickname ?? '');
+        const user = store.userByBe(u.id, u.nickname ?? '');
         setSession(reply, req, user.id);
         req.user = user;
       }
@@ -376,6 +395,7 @@ export async function registerRoutes(app: FastifyInstance, config: Config, store
           await acceptRealProposal(rec.state, rec.internal, phone, a.visitId, new Date());
         } else {
           if (agent.enabled) deferSearch(rec.state);
+          if (agent.enabled && a.type === 'prepCalls') await fillBrokers(rec, a.dongIds);
           handleAction(rec.state, rec.internal, a, ctxFor(req.user!));
           await finishSearch(rec);
         }

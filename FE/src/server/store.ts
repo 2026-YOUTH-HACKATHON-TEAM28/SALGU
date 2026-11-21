@@ -10,8 +10,8 @@ export interface UserRecord extends User {
   kakaoTalk: boolean;
   calls: { date: string; count: number };
   testCalls?: { date: string; count: number };
-  /** BE(카카오 로그인) 사용자 id */
-  kakaoId?: number;
+  /** BE users.id (카카오 로그인 후 BE /api/me 의 id) */
+  beUserId?: number;
 }
 
 export interface SessionRecord {
@@ -102,9 +102,9 @@ export class Store {
     return user;
   }
 
-  /** BE 카카오 사용자와 이어진 화면 계정(없으면 만들어요) */
-  userByKakao(kakaoId: number, name: string): UserRecord {
-    const found = Object.values(this.db.users).find((u) => u.kakaoId === kakaoId);
+  /** BE 사용자(users.id)와 이어진 화면 계정(없으면 만들어요) */
+  userByBe(beUserId: number, name: string): UserRecord {
+    const found = Object.values(this.db.users).find((u) => u.beUserId === beUserId);
     if (found) {
       if (name && found.name !== name) {
         found.name = name;
@@ -113,7 +113,7 @@ export class Store {
       return found;
     }
     const user = this.createUser('kakao', name || '카카오 사용자');
-    user.kakaoId = kakaoId;
+    user.beUserId = beUserId;
     this.markDirty();
     return user;
   }

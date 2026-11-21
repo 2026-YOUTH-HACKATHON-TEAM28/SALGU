@@ -236,3 +236,15 @@
 - 배포 스크립트가 로컬 JDK 21(`~/.jdks/*21*` 또는 `JAVA21_HOME`)로 `mvnw clean package` 해서 jar 만 올리고, 서버는 그 jar 를 실행만 함(서버 도커 빌드 제거)
 - 비밀 설정(application-secret.yml)이 jar 에 들어가지 않게 빌드하는 동안만 잠시 치워 두고 끝나면 되돌림. jar 안에 남아 있으면 올리지 않음
 - 확인: BE 서버 배포, 127.0.0.1:8081 상태 UP
+
+### 26. 중개사무소를 대화 에이전트 전화 요청 초안에서, 카카오 REST 키, BE 로그인 맞춤
+
+> (DB·BE 설정과 추천 알고리즘용 카카오 REST API 키 전달, 값은 기록하지 않음)
+> 현재 등록되어 있어. BE 코드 확인해서 맞춰줘.
+
+- 추천 엔진·chat_agent·phone_agent 원격 최신을 합침. 추천 엔진에 카카오 대중교통 통근과 중개업소 검색이, chat_agent 에 '2번 집 문의해 줘' 전화 요청 초안(contracts/call_request.md)이 생김
+- 중개사무소: 전화 준비 때 동네마다 대표 후보를 에이전트에 '문의'해서 초안의 사무소(실거래 DB real_estate_agencies, 이름·등록번호·전화)를 받아 씀. 에이전트 마지막 검색이 바뀌었으면 조건으로 다시 찾고 한 번 더 물음. 못 받으면 예시 목록
+- 카카오 REST 키는 Git 밖 AI/chat_agent/.env 와 서버 설정 파일에만 두고 컨테이너 환경으로도 넘김. 다만 chat_agent 가 아직 통근 계산기를 쓰지 않아 통근은 계속 '계산 전'
+- 최신 추천 엔진이 httpx 를 쓰는데 chat_agent requirements 에 없어 배포 때 따로 설치(팀 코드는 그대로)
+- BE 로그인: /api/me 는 {id(BE users.id), nickname}, 미로그인 401. 화면 계정 연결 키 이름을 beUserId 로 바로잡음. 공개 주소에서 카카오 이동(redirect_uri 사이트 주소), JSESSIONID, 실패 시 ?loginError=true 확인
+- 확인: 단위 시험(중개사무소 초안) 추가 50개 통과, 화면 동작 시험 20개 통과. 실제 DB 시험은 Supabase 세션 모드 연결 한도(15)에 걸려 확인하지 못함

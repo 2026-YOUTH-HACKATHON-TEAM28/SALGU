@@ -8,6 +8,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
 export const BE_LOGIN_PATHS = ['/oauth2/authorization/kakao', '/login/oauth2/code/kakao'] as const;
 
+/** BE GET /api/me 응답(UserResponse): id 는 BE users.id, 로그인 안 했으면 401 */
 export interface BeUser {
   id: number;
   nickname: string | null;

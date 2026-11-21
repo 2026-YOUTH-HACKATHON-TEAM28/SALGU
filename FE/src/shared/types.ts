@@ -106,6 +106,10 @@ export interface DongResult {
   refDeals?: Deal[];
   /** 가격 판단 기준: 같은 건물·면적대 시세 중앙값의 환산월세 중앙값 */
   priceRef?: { conv: number; n: number } | null;
+  /** 이 동네 대표 후보(에이전트 마지막 검색의 몇 번째, 주소). 중개사무소를 물을 때 써요 */
+  agentPick?: { index: number; address: string };
+  /** 중개사무소 목록이 실거래 DB(에이전트 전화 요청 초안)에서 온 것인지 */
+  brokersReal?: boolean;
 }
 
 export interface Deal {
