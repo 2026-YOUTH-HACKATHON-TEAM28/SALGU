@@ -24,7 +24,34 @@ class IntakeTest(unittest.TestCase):
         r = intake.intake("홍대 근처 1000/50 오피스텔 찾아줘")
         self.assertEqual(r["via"], "rules")
         self.gemini.assert_not_called()
-        self.assertEqual(r["reply"], "좋아요! 홍대 근처, 보증금 1000만·월세 50만 이하 오피스텔로 찾아볼게요.")
+        self.assertTrue(r["reply"].startswith("좋아요! 홍대 근처, 보증금 1000만·월세 50만 이하 오피스텔로 찾아볼게요."))
+        self.assertTrue(r["card"]["ready"])
+
+    def test_asks_only_missing_minimum(self):
+        r = intake.intake("신촌에 원하는 매물좀 찾아줘")
+        self.assertEqual(r["via"], "rules")
+        self.assertEqual(r["card"]["missing"], ["deposit", "monthly_rent"])
+        self.assertFalse(r["card"]["ready"])
+        self.assertIn("보증금이랑 월세", r["reply"])
+        self.assertEqual(r["card"]["clarifications"][0]["id"], "budget")
+        r = intake.intake("1000/50", r["card"])
+        self.assertTrue(r["card"]["ready"])
+        self.assertEqual(r["card"]["clarifications"], [])
+
+    def test_bare_number_fills_asked_slot(self):
+        card = intake.intake("강남역 근처 월세 50")["card"]
+        self.assertEqual(card["missing"], ["deposit"])
+        c = intake.intake("500 정도요", card)["card"]["conditions"]
+        self.assertEqual(c["deposit_manwon"]["value"], 500)
+
+    def test_jeonse_needs_no_rent(self):
+        card = intake.intake("마포 쪽 전세 2억")["card"]
+        self.assertTrue(card["ready"])
+
+    def test_greeting_asks_minimum(self):
+        r = intake.intake("안녕하세요!")
+        self.assertEqual(r["guard"], "greeting")
+        self.assertIn("어느 동네", r["reply"])
 
     def test_follow_up_avoid(self):
         first = intake.intake("홍대 근처 1000/50 오피스텔 찾아줘")["card"]
