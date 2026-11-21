@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>살구 채팅 시험</title>
+<style>
+  :root { --bg:#fbf7f2; --panel:#fff; --ink:#2b2622; --muted:#8a8078; --line:#ece4da; --accent:#f08a3c; --soft:#fff1e5; --inf:#6b7fd7; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:15px/1.55 system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif; color:var(--ink); background:var(--bg); }
+  .wrap { max-width:1100px; margin:0 auto; padding:20px; display:grid; grid-template-columns:1fr 380px; gap:16px; height:100vh; }
+  .chat, .side { background:var(--panel); border:1px solid var(--line); border-radius:14px; display:flex; flex-direction:column; min-height:0; }
+  header { padding:14px 16px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:10px; }
+  header h1 { font-size:16px; margin:0; } header .sid { color:var(--muted); font-size:12px; margin-left:auto; }
+  button { font:inherit; border:1px solid var(--line); background:#fff; border-radius:8px; padding:6px 10px; cursor:pointer; }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .log { flex:1; overflow:auto; padding:16px; display:flex; flex-direction:column; gap:10px; }
+  .msg { max-width:80%; padding:10px 13px; border-radius:14px; white-space:pre-wrap; }
+  .user { align-self:flex-end; background:var(--accent); color:#fff; border-bottom-right-radius:4px; }
+  .bot { align-self:flex-start; background:var(--soft); border-bottom-left-radius:4px; }
+  .meta { font-size:11px; color:var(--muted); margin-top:4px; }
+  form { display:flex; gap:8px; padding:12px; border-top:1px solid var(--line); }
+  input { flex:1; font:inherit; padding:10px 12px; border:1px solid var(--line); border-radius:10px; }
+  .side .body { padding:14px 16px; overflow:auto; }
+  .row { display:flex; justify-content:space-between; gap:8px; padding:7px 0; border-bottom:1px dashed var(--line); }
+  .row b { font-weight:600; } .row .ev { color:var(--muted); font-size:12px; }
+  .tag { font-size:11px; padding:1px 6px; border-radius:6px; background:#eee; margin-left:6px; }
+  .tag.inf { background:#eceffd; color:var(--inf); } .tag.new { background:var(--soft); color:var(--accent); }
+  .note { color:var(--muted); font-size:13px; } h2 { font-size:14px; margin:14px 0 6px; }
+  .ex { display:flex; flex-wrap:wrap; gap:6px; padding:0 12px 12px; }
+  .ex button { font-size:12px; color:var(--muted); }
+  @media (max-width: 860px) { .wrap { grid-template-columns:1fr; height:auto; } .log { min-height:50vh; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <section class="chat">
+    <header><h1>🍑 살구 채팅 시험</h1><button id="reset">새 대화</button><span class="sid" id="sid"></span></header>
+    <div class="log" id="log"></div>
+    <div class="ex" id="ex"></div>
+    <form id="f"><input id="m" autocomplete="off" placeholder="원하는 집을 편하게 말해 보세요" autofocus><button class="primary">보내기</button></form>
+  </section>
+  <aside class="side">
+    <header><h1>조건 카드</h1></header>
+    <div class="body" id="card"><p class="note">대화를 시작하면 이해한 조건이 여기에 보여요.</p></div>
+  </aside>
+</div>
+<script>
+const NAMES = {
+  preferred_areas:"살고 싶은 곳", avoid_areas:"피할 곳", workplace:"회사·학교", lease_types:"계약 형태",
+  deposit_manwon:"보증금(만원)", monthly_rent_manwon:"월세(만원)", housing_types:"주택 유형", price_band:"가격 구간",
+  max_building_age_years:"준공 후 최대(년)", min_area_m2:"전용면적 최소(㎡)", min_floor:"최저 층",
+  max_walk_to_station_min:"역까지 걸어서(분)", max_commute_min:"통근 최대(분)", max_transfers:"환승 최대(회)",
+  max_bus_headway_min:"버스 배차 최대(분)"
+};
+const VALS = { officetel:"오피스텔", villa:"빌라", monthly:"월세", jeonse:"전세", semi_jeonse:"반전세", median_or_below:"시세 이하" };
+const EXAMPLES = ["홍대 근처 1000/50 오피스텔 찾아줘", "홍대는 좀?", "회사 강남역인데 전세 1억 5천, 반지하 싫어", "ㅂㅈㄱ 천 ㅇㅅ 오십 역세권 투룸", "오늘 점심 뭐 먹지?"];
+let sid = localStorage.getItem("salgu_sid") || null;
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const show = v => Array.isArray(v) ? v.map(x => VALS[x] || x).join(", ") : (VALS[v] || v);
+
+function bubble(text, who, meta) {
+  const d = document.createElement("div");
+  d.className = "msg " + who;
+  d.innerHTML = esc(text) + (meta ? `<div class="meta">${esc(meta)}</div>` : "");
+  $("log").appendChild(d); $("log").scrollTop = 1e9;
+}
+function renderCard(card, changed) {
+  if (!card) return;
+  const c = card.conditions || {};
+  let h = "";
+  for (const k of Object.keys(NAMES)) {
+    if (!c[k]) continue;
+    const x = c[k], v = k === "workplace" ? x.label : show(x.value);
+    h += `<div class="row"><div><b>${NAMES[k]}</b>${x.source === "inferred" ? '<span class="tag inf">추론</span>' : ""}${changed.includes(k) ? '<span class="tag new">방금 바뀜</span>' : ""}
+          <div class="ev">${esc(x.evidence ? "“" + x.evidence + "”" : "")}${x.reason ? " · " + esc(x.reason) : ""}</div></div><div>${esc(v)}</div></div>`;
+  }
+  if (!h) h = '<p class="note">아직 알아낸 조건이 없어요.</p>';
+  if ((card.unverifiable || []).length) h += "<h2>데이터로 확인할 수 없어요</h2>" + card.unverifiable.map(u => `<div class="note">· ${esc(u.phrase)}</div>`).join("");
+  h += `<h2>JSON</h2><pre style="font-size:11px;white-space:pre-wrap">${esc(JSON.stringify(card, null, 2))}</pre>`;
+  $("card").innerHTML = h;
+}
+async function send(text) {
+  bubble(text, "user");
+  const r = await fetch("/api/chat", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ message:text, session_id:sid }) });
+  const j = await r.json();
+  if (!r.ok) { bubble("오류: " + JSON.stringify(j), "bot"); return; }
+  sid = j.session_id; localStorage.setItem("salgu_sid", sid); $("sid").textContent = sid;
+  bubble(j.reply, "bot", `${j.via}${j.guard ? " · 막음:" + j.guard : ""} · ${j.seconds}초${j.fixes.length ? " · 고침 " + j.fixes.length : ""}`);
+  renderCard(j.card, j.changed || []);
+}
+$("f").onsubmit = e => { e.preventDefault(); const t = $("m").value.trim(); if (t) { $("m").value = ""; send(t); } };
+$("reset").onclick = async () => {
+  if (sid) await fetch("/api/reset", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ session_id:sid }) });
+  sid = null; localStorage.removeItem("salgu_sid"); $("sid").textContent = ""; $("log").innerHTML = "";
+  $("card").innerHTML = '<p class="note">대화를 시작하면 이해한 조건이 여기에 보여요.</p>';
+};
+EXAMPLES.forEach(t => { const b = document.createElement("button"); b.type = "button"; b.textContent = t; b.onclick = () => send(t); $("ex").appendChild(b); });
+$("sid").textContent = sid || "";
+</script>
+</body>
+</html>
