@@ -180,7 +180,7 @@ function lines(quotes: Record<string, AgentQuote> | undefined): CallLine[] {
 /** 전화 에이전트가 통화를 거절·실패한 이유(error 코드) -> 화면 문구 */
 const FAIL_REASON: Record<string, string> = {
   already_called_today: '오늘 이미 같은 사무소에 문의해서 다시 걸지 않았어요(같은 곳은 하루 한 번).',
-  daily_limit: '오늘 걸 수 있는 통화(하루 10통)를 다 써서 걸지 않았어요.',
+  daily_limit: '오늘 걸 수 있는 통화 수를 다 써서 걸지 않았어요.',
   confirm_limit: '이 방의 확정 통화 횟수를 다 써서 걸지 않았어요.',
   window_passed: '보여 줄 수 있는 시간이 이미 지나 걸지 않았어요.',
   phone_not_allowed: '휴대폰 번호가 아니라서 걸지 않았어요.',
@@ -309,10 +309,7 @@ export async function startRealCalls(
   const total = plan.reduce((n, p) => n + p.brokers.length, 0);
   const allowed = ctx.useCalls(total);
   if (allowed === 0)
-    throw new DialogError(
-      'daily_limit',
-      '오늘 걸 수 있는 통화(하루 10통)를 다 썼어요. 내일 다시 시도해 주세요.',
-    );
+    throw new DialogError('daily_limit', '오늘 걸 수 있는 통화 수를 다 썼어요. 내일 다시 시도해 주세요.');
 
   const real: RealCalls = { batches: [], confirmIds: [], refs: {}, visitRefs: {} };
   const calls: Call[] = [];

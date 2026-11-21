@@ -95,6 +95,8 @@ fi
 touch "$B/phone.env" && chmod 600 "$B/phone.env"
 # 화면에서 사용자가 입력한 본인 번호로 걸어요(시연 번호 대신). 휴대폰이 아닌 번호는 전화 에이전트가 거절해요
 put_env "$B/phone.env" PHONE_AGENT_DIAL_REQUESTED 1
+# 하루 통화 한도(기본 10통)를 시연용으로 넉넉히
+put_env "$B/phone.env" PHONE_AGENT_DAILY_LIMIT 1000
 venv312 "$B" "'fastapi>=0.110' 'uvicorn>=0.29' 'httpx>=0.27' 'pydantic>=2.6'"
 ln -sfn "$B/phone.env" "$D/phone_agent/.env"
 ln -sfn "$B/data" "$D/phone_agent/.data"
@@ -141,7 +143,8 @@ if [ -f "$FE_ENV" ]; then
   # 카카오톡 알림(나에게 보내기)은 알림 전용 카카오 앱 키를 써요(로컬 FE/.env 에서 올린 값)
   sed -i '/^KAKAO_CLIENT_ID=/d; /^KAKAO_CLIENT_SECRET=/d' "$FE_ENV"
   if [ -s "$IN/secrets/fe.env" ]; then
-    sed -i 's/$//' "$IN/secrets/fe.env"
+    sed -i 's/
+$//' "$IN/secrets/fe.env"
     while IFS='=' read -r k v; do [ -n "$k" ] && put_env "$FE_ENV" "$k" "$v"; done < "$IN/secrets/fe.env"
   fi
   if systemctl is-active --quiet salgu-fe; then sudo -n systemctl restart salgu-fe; fi

@@ -37,7 +37,8 @@ interface DB {
 export const LIMITS = {
   chatsPerUser: 50,
   messagesPerChat: 400,
-  callsPerDay: 10,
+  // 하루 통화 수 한도(사용자마다). PHONE_DAILY_LIMIT 로 바꿀 수 있어요
+  callsPerDay: Number(process.env.PHONE_DAILY_LIMIT) || 1000,
   sessionDays: 30,
 };
 
@@ -192,7 +193,7 @@ export class Store {
 
   /** 시험 전화 하루 3번 */
 
-  /** 하루 통화 수 한도(10통) 확인 후 더하기 */
+  /** 하루 통화 수 한도(LIMITS.callsPerDay) 확인 후 더하기 */
   useCalls(userId: string, n: number, today: string): number {
     const u = this.db.users[userId];
     if (!u) return 0;
