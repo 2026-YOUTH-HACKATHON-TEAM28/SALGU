@@ -218,8 +218,11 @@ class _Runner:
             url = URL.create("postgresql+asyncpg", username=_env("SALGU_DB_USER"),
                              password=_env("SALGU_DB_PASSWORD"), host=_env("SALGU_DB_HOST"),
                              port=int(_env("SALGU_DB_PORT", "5432")), database=_env("SALGU_DB_NAME", "postgres"))
+            # 공용 Supabase 풀러(세션 모드)는 팀 전체 동시 접속이 15개로 제한된다.
+            # 기본 풀(최대 15개)이면 한도를 혼자 다 쓸 수 있어, 챗봇 서버는 최대 3개만 쓴다.
             self._engine = create_async_engine(url, connect_args={"ssl": "require"}, hide_parameters=True,
-                                               pool_pre_ping=True)
+                                               pool_pre_ping=True, pool_size=2, max_overflow=1,
+                                               pool_recycle=300, pool_timeout=10)
         return self._engine
 
     async def _run(self, card):
