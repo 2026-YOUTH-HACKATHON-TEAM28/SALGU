@@ -294,9 +294,24 @@ def find_time(dt: datetime, text: str) -> Optional[TimeMention]:
     return None
 
 
+_KMONTH_DAY = re.compile(r"(?:([일이삼사오육칠팔구십유시]+)\s*월\s*)?([일이삼사오육칠팔구십]+)\s*일(?!\s*(?:간|정도|째|이내|안에))")
+
+
+def _korean_month(token: str) -> Optional[int]:
+    return {"유": 6, "시": 10}.get(token) or parse_korean(token)
+
+
 def _date_matches(day: date, text: str, called_at: Optional[datetime]) -> Optional[bool]:
-    """그 글에 날짜 표현이 있으면 맞는지(True/False), 없으면 None."""
+    """그 글에 날짜 표현이 있으면 맞는지(True/False), 없으면 None. '11월 23일'과 '십일월 이십삼일' 모두."""
     seen = None
+    for m in _KMONTH_DAY.finditer(text):  # 실시간 전사는 AI가 읽은 대로 한글로 적음(11-21)
+        month = _korean_month(m.group(1)) if m.group(1) else None
+        dom = parse_korean(m.group(2))
+        if not dom or dom > 31 or (m.group(1) and not month):
+            continue
+        seen = False
+        if dom == day.day and (not month or month == day.month):
+            return True
     for m in _WEEKDAY.finditer(text):
         seen = False
         if DAYS.index(m.group(2)) == day.weekday():
@@ -1007,6 +1022,9 @@ def decide(request: CallRequest, raw: Optional[dict], transcript: list[dict],
     return result
 
 
+# 상대에게 하는 말이 아닌 지시에 대한 대답·상태 보고(11-21: "네, 지금 하겠습니다", "통화 마쳤습니다")
+_META_TALK = re.compile(r"(지금\s*하겠습니다|통화(를)?\s*(마쳤|마치겠|종료|끝났|끝내겠)|정리하겠습니다|마무리하겠습니다"
+                        r"|종료하겠습니다|확인\s*말씀드릴게요|차근차근\s*여쭤볼게요)")
 _DISCLOSURE = re.compile(r"(AI\s*비서|에이아이\s*비서|인공지능|살구)")
 
 
@@ -1017,9 +1035,12 @@ def call_warnings(lines: list[dict]) -> list[str]:
     first_ai = next((line for line in lines if line.get("speaker") == "ai"
                      and not (PICKUP.search(line.get("text") or "") and len(line.get("text") or "") <= 20
                               and not _DISCLOSURE.search(line.get("text") or ""))), None)
-    if first_ai is None or _DISCLOSURE.search(first_ai.get("text") or ""):
-        return []
-    return ["ai_disclosure_missing"]
+    warnings = []
+    if first_ai is not None and not _DISCLOSURE.search(first_ai.get("text") or ""):
+        warnings.append("ai_disclosure_missing")
+    if any(_META_TALK.search(line.get("text") or "") for line in lines if line.get("speaker") == "ai"):
+        warnings.append("ai_meta_talk")
+    return warnings
 
 
 # ------------------------------------------------------------------ LLM
