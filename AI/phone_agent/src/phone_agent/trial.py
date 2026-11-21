@@ -75,9 +75,9 @@ def wait(service: CallService, call_id: str, out=print) -> dict:
 
 def summary(result: dict) -> dict:
     if result.get("kind") == "confirm":
-        keys = ("call_id", "status", "outcome", "error", "visit_status", "rooms", "unverified", "sms_draft")
+        keys = ("call_id", "status", "outcome", "error", "warnings", "visit_status", "rooms", "unverified", "sms_draft")
     else:
-        keys = ("call_id", "status", "outcome", "error", "listings", "broker_slots", "availability_note",
+        keys = ("call_id", "status", "outcome", "error", "warnings", "listings", "broker_slots", "availability_note",
                 "registry_reply", "pet_allowed", "unverified", "corrections", "sms_draft")
     return {k: result.get(k) for k in keys}
 

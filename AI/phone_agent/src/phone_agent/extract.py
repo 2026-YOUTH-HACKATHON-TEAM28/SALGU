@@ -635,7 +635,7 @@ def empty_result() -> dict:
     return {
         "listings": [], "broker_slots": [], "availability_note": None, "pet_allowed": None,
         "registry_reply": None, "unverified": [], "corrections": [], "evidence": {}, "quotes": {},
-        "transcript": [], "sms_draft": None, "timing": None,
+        "transcript": [], "sms_draft": None, "timing": None, "warnings": [],
     }
 
 
@@ -960,7 +960,20 @@ def decide(request: CallRequest, raw: Optional[dict], transcript: list[dict],
         result = decide_inquiry(request, raw, lines, called_at)
     result["timing"] = turn_timing(lines)
     result["transcript"] = lines if request.keep_transcript else []
+    result["warnings"] = call_warnings(lines)
     return result
+
+
+_DISCLOSURE = re.compile(r"(AI\s*비서|에이아이\s*비서|인공지능|살구)")
+
+
+def call_warnings(lines: list[dict]) -> list[str]:
+    """반드시 지킬 것을 어긴 통화 표시. ai_disclosure_missing: 첫 AI 말에 'AI 비서 살구' 고지가 없음
+    (11-21 리허설에서 살구가 엉뚱한 이야기로 통화를 시작함)."""
+    first_ai = next((line for line in lines if line.get("speaker") == "ai"), None)
+    if first_ai is None or _DISCLOSURE.search(first_ai.get("text") or ""):
+        return []
+    return ["ai_disclosure_missing"]
 
 
 # ------------------------------------------------------------------ LLM

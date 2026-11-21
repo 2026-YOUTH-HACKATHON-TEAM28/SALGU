@@ -507,3 +507,23 @@ def test_unrelated_ai_question_is_not_a_read_back():
                    ("a", "등기부등본을 미리 받아 볼 수 있을까요?"), ("b", "네, 보내 드릴게요."))
     result = decide(request(), raw([room(move_in="다음 달 초부터", evidence={"move_in": 1})]), segments)
     assert result["listings"][0]["move_in"] == "다음 달 초부터" and result["evidence"]["listings[0].move_in"] == 1
+
+
+# ---------------------------------------------------------------- 첫마디 AI 고지 확인
+def test_real_call_1121_rehearsal_missing_disclosure_is_warned():
+    # 11-21 리허설: 살구가 지시문 첫마디 대신 엉뚱한 이야기로 시작하고, "누구세요?" 뒤에야 AI임을 밝힘
+    segments = seg(
+        ("a", "있잖아요. 저 아직도 그때 일이 기억나요. 예전에 낯선 도시에서 길을 완전히 잃어버렸던 적이 있었어요."),
+        ("b", "그렇군요."),
+        ("a", "혹시 비슷하게 힘들 때 도움받았던 순간 있으셨나요?"),
+        ("b", "네, 누구세요, 근데?"),
+        ("a", "아, 소개가 늦었습니다. 집을 구하는 분의 요청으로 한빛 공인중개사에 전화 드린 AI 비서 살구입니다."),
+    )
+    result = decide(request(), raw(available=None), segments)
+    assert result["warnings"] == ["ai_disclosure_missing"]
+    assert label_speakers(segments)[0]["speaker"] == "ai"
+
+
+def test_disclosure_in_first_line_has_no_warning():
+    assert decide(request(), raw(available=None), CALL_1121)["warnings"] == []   # 첫 줄이 합쳐져도 고지 있음
+    assert decide(request(), None, [])["warnings"] == []                          # 안 받음
