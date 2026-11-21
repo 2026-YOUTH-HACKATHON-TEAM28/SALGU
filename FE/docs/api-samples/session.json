@@ -1,0 +1,11 @@
+{
+  "user": {
+    "id": "u_59vl2eFniTJh",
+    "name": "예시 사용자",
+    "kind": "mock",
+    "photo": null
+  },
+  "version": 1,
+  "kakaoMapKey": "",
+  "kakaoTalk": false
+}

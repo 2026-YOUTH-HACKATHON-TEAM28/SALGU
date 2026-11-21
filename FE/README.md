@@ -5,6 +5,7 @@
 - 화면 버전: v1 (`src/shared/version.ts`)
 - 기준 문서: 화면 정의서 S-00~S-12
 - 요청 기록: [PROMPTS.md](./PROMPTS.md)
+- BE 전달 문서: [docs/BACKEND_HANDOFF.md](./docs/BACKEND_HANDOFF.md) (API, JSON 모양, 테이블 제안, 실제 응답 예시)
 
 ## 구성
 

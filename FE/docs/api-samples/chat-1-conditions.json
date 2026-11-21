@@ -1,0 +1,60 @@
+{
+  "id": "cmwpsyw4o0",
+  "title": "여의도역으로 출근해요. 월세 60만 원 이하…",
+  "createdAt": "2026-11-21T02:42:36.456Z",
+  "updatedAt": "2026-11-21T02:42:36.462Z",
+  "rev": 2,
+  "stage": "cond",
+  "conditions": {
+    "workplace": {
+      "value": "yeouido",
+      "source": "said"
+    },
+    "deposit": {
+      "value": 1000,
+      "source": "said"
+    },
+    "rent": {
+      "value": 60,
+      "source": "said"
+    }
+  },
+  "messages": [
+    {
+      "id": "mmwpsyw4v1",
+      "role": "user",
+      "text": "여의도역으로 출근해요. 월세 60만 원 이하, 보증금 1000만 원이면 좋겠어요",
+      "cards": [],
+      "chips": [],
+      "sources": [],
+      "at": "2026-11-21T02:42:36.462Z"
+    },
+    {
+      "id": "mmwpsyw4y3",
+      "role": "bot",
+      "text": "알려 주신 조건을 정리했어요. 맞으면 [이대로 찾기]를 눌러 주세요.",
+      "cards": [
+        {
+          "kind": "cond",
+          "id": "kmwpsyw4y2"
+        }
+      ],
+      "chips": [
+        "출퇴근이 제일 중요해"
+      ],
+      "sources": [],
+      "at": "2026-11-21T02:42:36.466Z"
+    }
+  ],
+  "search": null,
+  "selectedDongIds": [],
+  "prep": null,
+  "batch": null,
+  "listings": [],
+  "selectedListingIds": [],
+  "testCall": null,
+  "visits": [],
+  "plan": null,
+  "brokers": [],
+  "live": false
+}
