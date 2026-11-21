@@ -30,7 +30,7 @@ class FrontGuardTest(unittest.TestCase):
                 self.assertEqual(guards.check_input(t)[:2], (False, "off_topic"))
 
     def test_passes_housing(self):
-        for t in ("홍대 근처 1000/50", "자취방 구해요", "ㅂㅈㄱ 1000 ㅇㅅ 50", "투룸 있어요?"):
+        for t in ("홍대 근처 1000/50", "자취방 구해요", "ㅂㅈㄱ 1000 ㅇㅅ 50", "투룸 있어요?", "강아지 키울 수 있으면 좋겠어"):
             with self.subTest(text=t):
                 self.assertTrue(guards.check_input(t)[0])
 

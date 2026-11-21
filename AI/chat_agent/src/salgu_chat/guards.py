@@ -57,7 +57,8 @@ def check_input(text, has_prev=False):
         return False, "too_long", TOO_LONG
     if _INJECTION.search(t):
         return False, "injection", BLOCKED
-    if _HOUSING.search(t) or rules.parse(t)["card"]["conditions"]:
+    card = rules.parse(t)["card"]
+    if _HOUSING.search(t) or card["conditions"] or card["unverifiable"]:
         return True, None, None
     if has_prev and _FOLLOW_UP.search(t):
         return True, None, None  # 이전 카드를 고치는 말일 수 있으니 Gemini가 판단
