@@ -22,6 +22,7 @@ UNIT_ASK = "호수가 몇 호예요?"
 INQUIRY_CLOSING = "손님께 여쭤보고 보러 갈 시간 정해서 다시 연락드릴게요. 감사합니다."
 REGISTRY_GUIDE = "지금 전화드린 이 번호로 문자 주시면 돼요"
 NOT_CONFIRMED = "본인께 확인하고 다시 연락드리겠습니다"
+MOVE_IN_READ_BACK = "다음 달 초부터요?"  # 전사가 중개사 말을 틀려도 AI 쪽 되읽기로 확인(11-21)
 AFTER_CLOSING = "계약과 가격 이야기는 방문 때 본인이 직접 하실 거예요. 감사합니다."
 
 
@@ -149,6 +150,7 @@ def _inquiry(request: CallRequest) -> str:
     if s.area_m2:
         body.append(f"면적: 전용 {s.area_m2:g}㎡ 안팎 (상대가 물을 때만 말할 것)")
     body.append("방이 있으면: 건물 이름과 층(호수를 알려 주시면 호수도), 보증금·월세·관리비·입주 가능일을 확인")
+    body.append(f'입주 가능일: 들으면 들은 표현 그대로 한 번만 짧게 되물을 것(예: "{MOVE_IN_READ_BACK}"). 다른 조건은 되풀이하지 않음')
     if request.share.conditions and request.prep.pet:
         body.append("반려동물: 손님이 반려동물을 키움. 방이 있으면 반려동물이 되는지 여쭤볼 것")
     body.append(f'등기부: 방이 있으면 등기부등본을 방문 전에 미리 받아 볼 수 있는지 물을 것. 된다고 하면 "{REGISTRY_GUIDE}"라고 안내')

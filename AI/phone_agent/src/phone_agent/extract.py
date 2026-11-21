@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import re
+from difflib import SequenceMatcher
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Any, Optional
@@ -22,6 +23,7 @@ from .config import KST, ROOT, Settings
 from .instruction import when, window_text
 from .schemas import CallRequest
 from .timing import turn_timing
+from .dedupe import building_key
 
 # ------------------------------------------------------------------ 자료
 
@@ -327,6 +329,73 @@ def date_confirmed(day: date, lines: list[dict], n: int, before: str, called_at:
     return candidate_days == {day}
 
 
+# ------------------------------------------------------------------ 전사 보정(건물 이름·되읽기)
+
+_CHO = "ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ"
+_JUNG = "ㅏㅐㅑㅒㅓㅔㅕㅖㅗㅘㅙㅚㅛㅜㅝㅞㅟㅠㅡㅢㅣ"
+_JONG = ("", *"ㄱㄲㄳㄴㄵㄶㄷㄹㄺㄻㄼㄽㄾㄿㅀㅁㅂㅄㅅㅆㅇㅈㅊㅋㅌㅍㅎ")
+
+
+def jamo(text: str) -> str:
+    """'해든' → 'ㅎㅐㄷㅡㄴ'."""
+    out = []
+    for ch in text:
+        if "가" <= ch <= "힣":
+            code = ord(ch) - 0xAC00
+            out.append(_CHO[code // 588] + _JUNG[code % 588 // 28] + _JONG[code % 28])
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
+def _edit_distance(a: str, b: str) -> int:
+    prev = list(range(len(b) + 1))
+    for i, x in enumerate(a, 1):
+        cur = [i]
+        for j, y in enumerate(b, 1):
+            cur.append(min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (x != y)))
+        prev = cur
+    return prev[-1]
+
+
+def match_known_name(heard: Optional[str], known: list[str]) -> Optional[str]:
+    """전사된 건물 이름을 아는 이름(요청의 참고 건물 등)에 맞춘다.
+
+    일반 단어(빌라·오피스텔…)를 뺀 글자 수가 같고 자모가 거의 같을 때만: 3글자까지 자모 1개, 4글자부터 2개.
+    '헤든빌라' → '해든빌라'는 맞추고, '해변빌라'는 다른 건물일 수 있어 맞추지 않는다.
+    """
+    heard_key = building_key(heard)
+    if not heard_key:
+        return None
+    for name in known:
+        key = building_key(name)
+        if not key:
+            continue
+        if key == heard_key:
+            return name
+        limit = 1 if len(key) <= 3 else 2
+        if len(key) == len(heard_key) and _edit_distance(jamo(key), jamo(heard_key)) <= limit:
+            return name
+    return None
+
+
+_FILLER = re.compile(r"^\s*(?:네|예|아|아네|그럼|그러면)[,.\s]+")
+_MOVE_IN_PREFIX = re.compile(r"^\s*입주\s*(?:는|가|일은|일이|가능일은|가능일이|가능\s*시기는|시기는)?\s*")
+_READ_BACK_TAIL = re.compile(
+    r"\s*(?:가능(?:한|하신)?\s*)?(?:거|건)?\s*"
+    r"(?:이요|요|인가요|이죠|죠|이시죠|맞죠|맞으시죠|맞나요|이신가요|시죠|인\s*거죠|맞으세요)?\s*[?.!]*\s*$")
+_READ_BACK_END = re.compile(r"(\?|요|죠)[.!]?\s*$")
+
+
+def read_back_phrase(text: str) -> str:
+    """'네, 다음 달 초부터요?' → '다음 달 초부터'."""
+    phrase = text.strip()
+    while _FILLER.match(phrase):
+        phrase = _FILLER.sub("", phrase, count=1)
+    phrase = _MOVE_IN_PREFIX.sub("", phrase)
+    return _READ_BACK_TAIL.sub("", phrase).strip()
+
+
 # ------------------------------------------------------------------ 근거 대조
 
 
@@ -457,6 +526,29 @@ class _Checker:
                         return m.value, k, "corrected"
         return None
 
+    # 되읽기 -------------------------------------------------------------
+    def read_back(self, heard: Optional[str], n: Optional[int]) -> Optional[tuple[str, int]]:
+        """중개사 말(n) 바로 뒤 AI가 들은 표현을 되묻고('다음 달 초부터요?') 중개사가 거절·정정 없이 '네'로
+        받으면, 또렷하게 전사된 AI 쪽 표현과 그 대답 줄. 전사가 중개사 말을 틀리게 적은 경우를 위해(11-21 '추석')."""
+        if n is None:
+            return None
+        for k in range(n + 1, min(n + 3, len(self.lines) - 1)):
+            if self.lines[k].get("speaker") != "ai":
+                continue
+            text = (self.lines[k].get("text") or "").strip()
+            answer = self.lines[k + 1]
+            phrase = read_back_phrase(text)
+            if not _READ_BACK_END.search(text) or not phrase:
+                return None
+            if heard and SequenceMatcher(None, norm(phrase), norm(heard)).ratio() < 0.5:
+                return None  # 다른 질문
+            reply = answer.get("text") or ""
+            if (answer.get("speaker") == "broker" and _ACCEPT.search(reply)
+                    and not _REFUSE.search(reply) and not _CORRECTION.search(reply)):
+                return phrase, k + 1
+            return None
+        return None
+
     # 글자·면적 ----------------------------------------------------------
     def text(self, key: str, field: str, value: Any, n: Optional[int]) -> Optional[str]:
         if value in (None, ""):
@@ -583,6 +675,7 @@ def decide_inquiry(request: CallRequest, raw: Optional[dict], lines: list[dict],
             else:
                 room[field] = check.text(key, field, item.get(field), _line_no(ev.get(field)))
         if any(v is not None for v in room.values()):
+            _fix_transcription(check, request, room, item, ev, i)
             listings.append(room)
         else:  # 확인된 값이 하나도 없는 방은 결과에 넣지 않음
             check.unverified = check.unverified[:before[0]]
@@ -635,6 +728,35 @@ def decide_inquiry(request: CallRequest, raw: Optional[dict], lines: list[dict],
         evidence=check.evidence, quotes=_quotes(lines, check.evidence, check.corrections),
     )
     return result
+
+
+def _fix_transcription(check: "_Checker", request: CallRequest, room: dict, item: dict, ev: dict, i: int) -> None:
+    """전사 보정: 건물 이름은 아는 이름에, 입주 시기는 AI가 되읽고 중개사가 '네'라고 한 표현으로."""
+    known = [name for name in (request.search.ref_building,) if name]
+    heard = room.get("building")
+    name = match_known_name(heard, known) if heard else None
+    if name and name != heard:
+        key = f"listings[{i}].building"
+        check.corrections.append({"field": key, "value": name, "heard": heard, "reason": "name_matched",
+                                  "line": check.evidence.get(key)})
+        room["building"] = name
+        if room.get("location"):
+            room["location"] = room["location"].replace(heard, name)
+
+    key = f"listings[{i}].move_in"
+    heard = room.get("move_in") or (str(item["move_in"]) if item.get("move_in") else None)
+    if not heard:
+        return
+    found = check.read_back(heard, check.evidence.get(key, _line_no(ev.get("move_in"))))
+    if not found:
+        return
+    phrase, line = found
+    if norm(phrase) != norm(heard):
+        check.corrections.append({"field": key, "value": phrase, "heard": heard, "reason": "read_back", "line": line})
+        room["move_in"] = phrase
+    check.evidence[key] = line
+    if key in check.unverified:
+        check.unverified.remove(key)
 
 
 def _num_or_none(value: Optional[float]):

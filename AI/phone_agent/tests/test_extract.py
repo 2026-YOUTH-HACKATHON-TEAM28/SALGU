@@ -85,7 +85,10 @@ def test_real_call_1121_correction_keeps_seven_even_if_llm_says_five():
         listing = result["listings"][0]
         assert listing["maintenance_fee_manwon"] == 7
         assert (listing["deposit_manwon"], listing["monthly_rent_manwon"]) == (1000, 60)
-        assert listing["building"] == "헤든빌라" and listing["floor"] == "3층"
+        assert listing["building"] == "해든빌라" and listing["floor"] == "3층"  # 전사 '헤든' → 참고 건물 이름
+        assert listing["location"] == "해든빌라 3층"
+        assert {"field": "listings[0].building", "value": "해든빌라", "heard": "헤든빌라", "reason": "name_matched",
+                "line": 5} in result["corrections"]
         assert listing["move_in"] == "다음 달 추석"  # 전사 그대로(지어내지 않음)
         assert {"field": "listings[0].maintenance_fee_manwon", "value": 7, "reason": "corrected_value", "line": 7} in result["corrections"]
         assert {"field": "listings[0].maintenance_fee_manwon", "dropped": 5, "reason": "corrected", "line": 7} in result["corrections"]
@@ -444,3 +447,63 @@ def test_confirm_voicemail_declined_and_no_extraction():
     assert decide(confirm_request(), confirm_raw(voicemail=True), segments)["outcome"] == "no_answer"
     unclear = decide(confirm_request(), None, segments)
     assert unclear["outcome"] == "unclear" and unclear["rooms"][0]["outcome"] == "unclear"
+
+
+# ---------------------------------------------------------------- 전사 보정: 건물 이름·입주 시기 되읽기
+from phone_agent.extract import match_known_name, read_back_phrase  # noqa: E402
+
+
+def test_building_name_matches_only_near_spellings():
+    assert match_known_name("헤든빌라", ["해든빌라"]) == "해든빌라"    # 모음 하나
+    assert match_known_name("해든 빌라", ["해든빌라"]) == "해든빌라"
+    assert match_known_name("해든", ["해든빌라"]) == "해든빌라"
+    assert match_known_name("해변빌라", ["해든빌라"]) is None          # 자모 둘: 다른 건물일 수 있음
+    assert match_known_name("새솔빌", ["해든빌라"]) is None
+    assert match_known_name("헤든빌라", []) is None
+
+
+def test_building_name_is_left_alone_without_reference():
+    segments = seg(("a", "AI 비서 살구입니다."), ("b", "헤든빌라 3층이요."))
+    req = request()
+    req.search.ref_building = ""
+    result = decide(req, raw([room(building="헤든빌라", evidence={"building": 1})]), segments)
+    assert result["listings"][0]["building"] == "헤든빌라" and result["corrections"] == []
+
+
+def test_read_back_phrase():
+    assert read_back_phrase("네, 다음 달 초부터요?") == "다음 달 초부터"
+    assert read_back_phrase("아, 입주는 다음 달 초부터 가능한 거죠?") == "다음 달 초부터"
+    assert read_back_phrase("12월 1일부터요?") == "12월 1일부터"
+
+
+def _move_in_call(answer):
+    return seg(("a", "AI 비서 살구입니다. 입주는 언제부터 되나요?"),
+               ("b", "다음 달 추석부터 가능해요."),           # 실제로는 '초부터'인데 전사가 틀림
+               ("a", "네, 다음 달 초부터요?"),
+               ("b", answer))
+
+
+def _move_in_raw():
+    return raw([room(building="해든빌라", move_in="다음 달 추석부터", evidence={"building": 1, "move_in": 1})])
+
+
+def test_move_in_read_back_confirmed_by_yes_replaces_garbled_transcript():
+    result = decide(request(), _move_in_raw(), _move_in_call("네, 맞아요."))
+    assert result["listings"][0]["move_in"] == "다음 달 초부터"
+    assert {"field": "listings[0].move_in", "value": "다음 달 초부터", "heard": "다음 달 추석부터",
+            "reason": "read_back", "line": 3} in result["corrections"]
+    assert result["evidence"]["listings[0].move_in"] == 3
+
+
+def test_move_in_read_back_needs_a_plain_yes():
+    for answer in ("아니요, 다음 달 중순이요.", "글쎄요, 확인해 볼게요.", "그건 좀 어렵고요."):
+        result = decide(request(), _move_in_raw(), _move_in_call(answer))
+        assert result["listings"][0]["move_in"] == "다음 달 추석부터", answer   # 들은 그대로
+        assert not [c for c in result["corrections"] if c["reason"] == "read_back"]
+
+
+def test_unrelated_ai_question_is_not_a_read_back():
+    segments = seg(("a", "AI 비서 살구입니다. 입주는요?"), ("b", "다음 달 초부터요."),
+                   ("a", "등기부등본을 미리 받아 볼 수 있을까요?"), ("b", "네, 보내 드릴게요."))
+    result = decide(request(), raw([room(move_in="다음 달 초부터", evidence={"move_in": 1})]), segments)
+    assert result["listings"][0]["move_in"] == "다음 달 초부터" and result["evidence"]["listings[0].move_in"] == 1
