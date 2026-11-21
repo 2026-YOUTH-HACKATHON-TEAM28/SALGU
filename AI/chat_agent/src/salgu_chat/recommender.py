@@ -83,7 +83,8 @@ def resolve_area(label):
         return [gu], gu
     if name in AREA_MAP:
         dongs, gu = AREA_MAP[name]
-        return (dongs or [gu]), gu
+        # 엔진은 주소에 글자가 들어 있는지로 찾는다: '창동'만 주면 염창동·평창동도 걸리므로 '도봉구 창동'으로 넘긴다
+        return ([f"{gu} {d}" for d in dongs] or [gu]), gu
     return [name], None  # 동 이름("역삼동") 등은 그대로 주소에서 찾는다
 
 
@@ -117,13 +118,14 @@ def plan(card):
     conds = base.setdefault("conditions", {})
     notes = []
     work = (conds.get("workplace") or {}).get("label")
+    way = "통학" if (conds.get("workplace") or {}).get("kind") == "school" else "통근"
 
     # 통근 계산기가 아직 없다: 통근 조건을 빼고 알린다
     if work:
         for key in ("workplace", "max_commute_min", "max_transfers", "max_bus_headway_min"):
             conds.pop(key, None)
         base["priorities"] = [p for p in base.get("priorities") or [] if p not in ("commute", "bus_headway")]
-        notes.append(f"{work}까지 통근 시간·환승은 아직 계산하지 못해요(교통 데이터 연결 전).")
+        notes.append(f"{work}까지 {way} 시간·환승은 아직 계산하지 못해요(교통 데이터 연결 전).")
 
     pref = (conds.get("preferred_areas") or {}).get("value") or []
     avoid = (conds.get("avoid_areas") or {}).get("value") or []
@@ -158,8 +160,12 @@ def plan(card):
 def to_candidate(item):
     """엔진 후보(PropertyRecommendation) → 챗봇 후보 dict."""
     d = item.model_dump(mode="json")
+    name = d["name"]
+    if re.fullmatch(r"\(.*\)|[\d-]+", name or ""):  # 건물명이 없으면 엔진이 지번을 이름으로 쓴다 → '창천동 4-121'
+        parts = d["address"].split()
+        name = f"{parts[-2]} {name.strip('()')}" if len(parts) >= 2 else name
     return {
-        "name": d["name"], "address": d["address"], "housing_type": d["housing_type"], "rent_type": d["rent_type"],
+        "name": name, "address": d["address"], "housing_type": d["housing_type"], "rent_type": d["rent_type"],
         "deposit_manwon": d["deposit_manwon"], "monthly_rent_manwon": d["monthly_rent_manwon"],
         "area_m2": d["area_m2"], "floor": d["floor"], "construction_year": d["construction_year"],
         "contract_date": d["contract_date"], "transaction_count": d["transaction_count"],
@@ -183,8 +189,9 @@ async def recommend_async(card, repository):
         used_note = note
         if out.count:
             break
-    notes = ([used_note] if used_note else []) + notes + list(out.unapplied_conditions) + [
-        f"예산을 '정도'로 말씀하셔서 {t}까지 봤어요." for t in out.applied_tolerances]
+    caps = [t.split(" 상한")[0] for t in out.applied_tolerances]  # ["보증금 상한 +10%", "월세 상한 +10%"]
+    tolerance = [f"예산을 '정도'로 말씀하셔서 {'·'.join(caps)} 상한을 10% 넉넉히 봤어요."] if caps else []
+    notes = ([used_note] if used_note else []) + notes + list(out.unapplied_conditions) + tolerance
     return {"count": out.count, "candidates": [to_candidate(c) for c in out.candidates], "notes": notes,
             "query": out.query.model_dump(mode="json")}
 

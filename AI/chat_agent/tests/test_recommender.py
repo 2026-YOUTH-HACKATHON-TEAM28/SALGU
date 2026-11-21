@@ -55,7 +55,7 @@ class RecommenderTest(unittest.TestCase):
 
     def test_area_labels_become_dong_then_gu(self):
         res, repo = self.run_engine("신촌 1000/50 오피스텔")
-        self.assertEqual(repo.calls[0].preferred_areas, ["창천동", "대현동", "신촌동"])  # 먼저 동으로
+        self.assertEqual(repo.calls[0].preferred_areas, ["서대문구 창천동", "서대문구 대현동", "서대문구 신촌동"])  # 먼저 동으로
         self.assertEqual(repo.calls[1].preferred_areas, ["서대문구"])  # 없으면 구 전체로
         self.assertEqual(res["count"], 2)
         self.assertIn("서대문구 전체에서", res["notes"][0])
@@ -79,7 +79,7 @@ class RecommenderTest(unittest.TestCase):
     def test_avoid_neighborhood_not_whole_gu(self):
         stages, _ = recommender.plan(intake.intake("마포구 1000/50 홍대는 빼고")["card"])
         conds = stages[0][0]["conditions"]
-        self.assertEqual(conds["avoid_areas"]["value"], ["서교동", "동교동", "합정동", "연남동"])
+        self.assertEqual(conds["avoid_areas"]["value"], ["마포구 서교동", "마포구 동교동", "마포구 합정동", "마포구 연남동"])
         self.assertEqual(conds["preferred_areas"]["value"], ["마포구"])
 
     def test_jeonse_card(self):
@@ -99,9 +99,25 @@ class RecommenderTest(unittest.TestCase):
         self.assertIn("2026년 10월 계약", text)
 
 
+@unittest.skipIf(pr is None, "추천 엔진 의존성이 없어 건너뜀 (.venv 파이썬으로 실행)")
+class OutputTest(unittest.TestCase):
+    def test_lot_only_name_and_school_wording(self):
+        class Repo(FakeRepository):
+            async def find_candidates(self, criteria, *a, **k):
+                c = candidate("서울특별시 서대문구 창천동", None)
+                return [c.model_copy(update={"building_name": None, "lot_address": "4-121"})]
+        card = intake.intake("학교 근처 원룸 1000/50")["card"]
+        card = intake.intake("연세대", card)["card"]
+        res = asyncio.run(recommender.recommend_async(card, Repo()))
+        self.assertEqual(res["candidates"][0]["name"], "창천동 4-121")
+        self.assertTrue(any("통학 시간" in n for n in res["notes"]))
+
+
 class AreaTest(unittest.TestCase):
     def test_resolve(self):
-        self.assertEqual(recommender.resolve_area("홍대입구역"), (["서교동", "동교동", "합정동", "연남동"], "마포구"))
+        self.assertEqual(recommender.resolve_area("홍대입구역"),
+                         (["마포구 서교동", "마포구 동교동", "마포구 합정동", "마포구 연남동"], "마포구"))
+        self.assertEqual(recommender.resolve_area("창동")[0], ["도봉구 창동"])  # 염창동·평창동이 섞이지 않게
         self.assertEqual(recommender.resolve_area("강남"), (["강남구"], "강남구"))
         self.assertEqual(recommender.resolve_area("강남역")[1], "강남구")
         self.assertEqual(recommender.resolve_area("마포구"), (["마포구"], "마포구"))
