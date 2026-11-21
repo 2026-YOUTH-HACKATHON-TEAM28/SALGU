@@ -8,7 +8,8 @@
 #   AI/phone_agent/.env                         -> ~/salgu-phone/phone.env
 #   BE/src/main/resources/application-secret.yml -> ~/salgu-be/config/application.yml (jar 에는 넣지 않음)
 # 일부만 올리려면 PARTS=be 처럼(chat, phone, be 중에서).
-# 전화 에이전트 모드는 PHONE_MODE(기본 mock). demo 로 올리면 시연 번호로 실제 전화가 가요.
+# 전화 에이전트 모드는 PHONE_MODE(기본 mock). demo 로 올리면 화면에서 사용자가 입력한 본인 휴대폰으로 실제 전화가 가요
+# (PHONE_AGENT_DIAL_REQUESTED=1, 휴대폰이 아닌 번호는 전화 에이전트가 거절).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

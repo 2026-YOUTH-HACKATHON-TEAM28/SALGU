@@ -342,7 +342,7 @@ export interface SessionInfo {
   kakaoTalk: boolean;
   /** 서버에 카카오톡 알림(앱 키)이 준비돼 있는지 */
   kakaoTalkReady: boolean;
-  /** 전화: null 시뮬레이션(전화 에이전트 없음), mock 에이전트가 걸지 않음, demo 시연 번호로 실제 발신 */
+  /** 전화: null 시뮬레이션(전화 에이전트 없음), mock 에이전트가 걸지 않음, demo 입력한 본인 번호로 실제 발신 */
   phoneMode: 'mock' | 'demo' | 'live' | null;
   /** 동네마다 실제로 전화할 중개사무소 수(목록 앞에서부터) */
   brokersPerDong: number;

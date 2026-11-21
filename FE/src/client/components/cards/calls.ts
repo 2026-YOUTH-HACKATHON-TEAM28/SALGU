@@ -42,7 +42,7 @@ function seg<T extends string | boolean>(
 /** 통화 안내: 전화 에이전트 모드에 따라 */
 function phoneNote(): string {
   const m = state.session?.phoneMode;
-  if (m === 'demo' || m === 'live') return 'AI 실제 통화 · 시험 서버라 등록해 둔 시연 번호로만 걸려요.';
+  if (m === 'demo' || m === 'live') return 'AI 실제 통화 · 실제 중개사무소 대신 입력하신 본인 번호로 걸려요.';
   if (m === 'mock') return 'AI 통화(전화 서버 시험 모드) · 실제로 전화를 걸지 않아요.';
   return 'AI 통화 시뮬레이션 · 실제로 전화를 걸지 않아요.';
 }

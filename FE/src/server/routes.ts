@@ -213,7 +213,8 @@ export async function registerRoutes(app: FastifyInstance, config: Config, store
       }
     }
   };
-  /* 본인 번호 확인: 휴대폰 번호 형식, 전화 서버 연결(mock 모드는 쓰지 않음), demo 는 등록된 시연 번호만 */
+  /* 본인 번호 확인: 휴대폰 번호 형식, 전화 서버 연결(mock 모드는 쓰지 않음).
+   * 전화 에이전트(PHONE_AGENT_DIAL_REQUESTED=1)가 이 번호로 걸고, 휴대폰이 아니면 거절해요 */
   const callablePhone = async (raw: unknown): Promise<string> => {
     const digits = String(raw ?? '').replace(/\D/g, '');
     if (!/^01[016789]\d{7,8}$/.test(digits))
@@ -221,11 +222,6 @@ export async function registerRoutes(app: FastifyInstance, config: Config, store
     if (!phone.enabled) throw new DialogError('phone_off', PHONE_OFF);
     const mode = await phoneMode();
     if (mode !== 'demo' && mode !== 'live') throw new DialogError('phone_off', PHONE_OFF);
-    if (mode === 'demo' && !config.phoneTestNumbers.includes(digits))
-      throw new DialogError(
-        'test_number',
-        '시험 서버에서는 등록된 시연 번호로만 전화가 가요. 등록된 본인 번호를 적어 주세요.',
-      );
     return digits;
   };
   const sync = async (rec: ChatRecord) => {

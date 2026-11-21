@@ -89,6 +89,8 @@ if [ -s "$IN/secrets/phone.env" ]; then
   sed -i 's/\r$//' "$B/phone.env"
 fi
 touch "$B/phone.env" && chmod 600 "$B/phone.env"
+# 화면에서 사용자가 입력한 본인 번호로 걸어요(시연 번호 대신). 휴대폰이 아닌 번호는 전화 에이전트가 거절해요
+put_env "$B/phone.env" PHONE_AGENT_DIAL_REQUESTED 1
 venv312 "$B" "'fastapi>=0.110' 'uvicorn>=0.29' 'httpx>=0.27' 'pydantic>=2.6'"
 ln -sfn "$B/phone.env" "$D/phone_agent/.env"
 ln -sfn "$B/data" "$D/phone_agent/.data"
@@ -132,9 +134,6 @@ if [ -f "$FE_ENV" ]; then
   # 화면 서버도 동네·회사 이름을 좌표로 바꿀 때 카카오 REST 키를 써요
   KK="$(grep -E '^KAKAO_REST_API_KEY=.+' "$HOME/salgu-chat/agent.env" | head -1 | cut -d= -f2-)"
   [ -n "$KK" ] && put_env "$FE_ENV" KAKAO_REST_API_KEY "$KK"
-  # 시험 전화(내 번호로 먼저 받아 보기)는 전화 에이전트 demo 의 시연 번호로만 실제로 걸려요
-  DT="$(grep -E '^PHONE_AGENT_DEMO_TO=.+' "$HOME/salgu-phone/phone.env" 2>/dev/null | head -1 | cut -d= -f2- | tr -d ' ')"
-  [ -n "$DT" ] && put_env "$FE_ENV" PHONE_TEST_NUMBERS "$DT"
   # 카카오톡 알림(나에게 보내기)은 카카오 로그인 앱의 REST API 키·시크릿을 써요(BE 비밀 설정에서 가져와요)
   BEY="$HOME/salgu-be/config/application.yml"
   if [ -f "$BEY" ]; then
