@@ -28,12 +28,18 @@ class CommuteProvider(Protocol):
         self,
         workplace: str,
         regions: Sequence[str],
+        *,
+        max_transfers: int | None = None,
+        max_bus_headway_min: int | None = None,
     ) -> Mapping[str, CommuteMetric]: ...
 
     async def measure_properties(
         self,
         workplace: str,
         candidates: Sequence[PropertyCandidate],
+        *,
+        max_transfers: int | None = None,
+        max_bus_headway_min: int | None = None,
     ) -> Mapping[str, CommuteMetric]: ...
 
 
@@ -73,8 +79,6 @@ class PropertyRecommendationService:
         scored = []
         for candidate in candidates:
             commute = property_commutes.get(candidate.key)
-            if commute is None:
-                commute = region_commutes.get(candidate.region_address)
             if criteria.workplace and not _passes_commute(commute, criteria):
                 continue
             scored.append(score_candidate(candidate, criteria, commute, end_date))
@@ -93,6 +97,7 @@ class PropertyRecommendationService:
                 source_tables=["officetel_rentals", "multifamily_rentals"],
                 evaluated_count=len(candidates),
                 evaluated_region_count=region_count,
+                commute_evaluated_count=len(property_commutes),
             ),
             unapplied_conditions=_unapplied_conditions(criteria),
             applied_tolerances=_applied_tolerances(criteria),
@@ -112,7 +117,12 @@ class PropertyRecommendationService:
             )
 
         regions = await self._repository.find_regions(criteria, start_date, end_date)
-        metrics = await self._commute_provider.measure_regions(criteria.workplace, regions)
+        metrics = await self._commute_provider.measure_regions(
+            criteria.workplace,
+            regions,
+            max_transfers=criteria.max_transfers,
+            max_bus_headway_min=criteria.max_bus_headway_min,
+        )
         allowed = [
             region
             for region in regions
@@ -128,7 +138,10 @@ class PropertyRecommendationService:
         if not criteria.workplace or self._commute_provider is None or not candidates:
             return {}
         return await self._commute_provider.measure_properties(
-            criteria.workplace, candidates
+            criteria.workplace,
+            candidates,
+            max_transfers=criteria.max_transfers,
+            max_bus_headway_min=criteria.max_bus_headway_min,
         )
 
 

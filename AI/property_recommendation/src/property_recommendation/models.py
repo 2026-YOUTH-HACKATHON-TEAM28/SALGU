@@ -180,6 +180,7 @@ class QueryInfo(BaseModel):
     source_tables: list[str]
     evaluated_count: int
     evaluated_region_count: int
+    commute_evaluated_count: int = 0
 
 
 class RecommendationOutput(BaseModel):
