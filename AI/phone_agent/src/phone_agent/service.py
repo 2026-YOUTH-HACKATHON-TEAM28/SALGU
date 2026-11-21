@@ -14,6 +14,7 @@ from typing import Any, Callable, Optional
 
 from . import policy
 from .config import KST, Settings
+from .instruction import build_instruction, build_sms_draft
 from .policy import PolicyError
 from .provider import ProviderError
 from .schemas import VERSION, BatchRequest, CallRequest
@@ -232,13 +233,11 @@ class CallService:
         return CallRequest.model_validate(rec["request"])
 
     def _instruction(self, request: CallRequest) -> str:
-        """통화별 지시문. C3에서 instruction.build_instruction으로 만든다."""
-        return ""
+        return build_instruction(request, now=self.now(), registry_number=self.settings.registry_number)
 
     def _sms_draft(self, request: CallRequest) -> str:
-        """두 번 걸어도 안 받았을 때의 문자 초안(보내지 않음). C3에서 instruction.build_sms_draft로 만든다."""
-        return (f"안녕하세요, {request.broker.name}이죠? 집을 구하는 분의 요청으로 연락드린 AI 비서 살구입니다. "
-                f"{request.search.dong}에 볼 수 있는 방이 있는지 여쭤보려고 전화드렸어요.")
+        """두 번 걸어도 안 받았을 때의 문자 초안(보내지 않음)."""
+        return build_sms_draft(request)
 
     def _dial_to(self, rec: dict, request: CallRequest) -> str:
         """mock은 요청 번호, demo는 시연 번호로만(사무소 순서대로 돌아가며, 재발신·확정은 처음 번호)."""

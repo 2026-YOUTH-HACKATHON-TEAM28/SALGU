@@ -14,7 +14,7 @@ from pydantic import BaseModel, ValidationError
 
 from .config import Settings
 from .policy import PolicyError
-from .provider import MockProvider
+from .provider import KatProvider, MockProvider
 from .schemas import BatchRequest
 from .service import CallService, Store
 
@@ -24,7 +24,7 @@ TICK_SEC = 5
 def build_service(settings: Settings) -> CallService:
     if settings.mode == "mock":
         return CallService(settings, MockProvider(), store=Store())
-    raise RuntimeError("demo 모드의 실제 공급사(KatProvider)는 아직 없습니다. PHONE_AGENT_MODE=mock으로 띄우세요.")
+    return CallService(settings, KatProvider(settings), store=Store(settings.store_path))
 
 
 def _notify_channel(settings: Settings) -> str:

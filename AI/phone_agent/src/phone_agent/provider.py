@@ -13,39 +13,17 @@ import re
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
+import httpx
+
 from .config import KST, ROOT
+from .instruction import DAYS, time_of, when
 from .schemas import CallRequest
 
 MOCK_FILE = ROOT / "specs" / "assets" / "mock_scenarios.json"
-DAYS = "월화수목금토일"
 
 
 class ProviderError(Exception):
     """공급사 실패. 서비스는 그 통화만 failed로 둔다."""
-
-
-# ---------------------------------------------------------------- 시각 말하기
-
-
-def spoken_time(dt: datetime) -> str:
-    """'오후 2시', '오전 10시 30분'."""
-    hour = dt.hour
-    half = "오전" if hour < 12 else "오후"
-    h12 = hour % 12 or 12
-    text = f"{half} {h12}시"
-    if dt.minute:
-        text += f" {dt.minute}분"
-    return text
-
-
-def spoken_day(dt: datetime) -> str:
-    return f"{DAYS[dt.weekday()]}요일"
-
-
-def spoken_datetime(dt: datetime) -> str:
-    """'2026년 11월 21일 토요일 오후 2시'."""
-    dt = dt.astimezone(KST)
-    return f"{dt.year}년 {dt.month}월 {dt.day}일 {spoken_day(dt)} {spoken_time(dt)}"
 
 
 # ---------------------------------------------------------------- mock
@@ -84,6 +62,18 @@ def _base_time(request: CallRequest) -> datetime:
         return request.broker.visit_windows[0].start
     tomorrow = datetime.now(KST) + timedelta(days=1)
     return tomorrow.replace(hour=14, minute=0, second=0, microsecond=0)
+
+
+def spoken_time(dt: datetime) -> str:
+    return time_of(dt)
+
+
+def spoken_day(dt: datetime) -> str:
+    return f"{DAYS[dt.astimezone(KST).weekday()]}요일"
+
+
+def spoken_datetime(dt: datetime) -> str:
+    return when(dt)
 
 
 def _iso(dt: datetime) -> str:
@@ -230,3 +220,104 @@ class MockProvider:
         if index != 0 or not any(m["message_id"] == message_id for m in self.inbox):
             raise ProviderError(f"없는 첨부: {message_id}/{index}")
         return REGISTRY_MEDIA
+
+
+# ---------------------------------------------------------------- 한국AI통신
+
+
+def digits(number: str) -> str:
+    return re.sub(r"\D", "", number or "")
+
+
+class KatProvider:
+    """한국AI통신 REST. 주소는 KAT_BASE_URL(도메인까지) + /v1/accounts/{KAT_ACCOUNT_ID}.
+
+    통화·이벤트·대화록은 11-18~21 실제 응답으로 확인. 문자(/messages)는 공식 문서 기준(미확인).
+    """
+
+    REQUIRED = ("kat_base_url", "kat_api_key", "kat_account_id", "kat_agent_id", "kat_from_number")
+    ENDED = ("completed", "busy", "no_answer", "failed", "canceled", "cancelled", "rejected")
+
+    def __init__(self, settings, client=None):
+        missing = [name.upper() for name in self.REQUIRED if not getattr(settings, name)]
+        if missing:
+            raise ValueError(f".env에 값이 없습니다: {', '.join(missing)}")
+        self.settings = settings
+        self.agent_id = settings.kat_agent_id
+        self.from_number = digits(settings.kat_from_number)
+        base = settings.kat_base_url.rstrip("/")
+        self.client = client or httpx.Client(
+            base_url=f"{base}/v1/accounts/{settings.kat_account_id}",
+            headers={"Authorization": f"Bearer {settings.kat_api_key}"},
+            timeout=20,
+        )
+
+    def _request(self, method: str, path: str, ok: tuple[int, ...] = (), **kwargs) -> httpx.Response:
+        try:
+            response = self.client.request(method, path, **kwargs)
+        except httpx.HTTPError as exc:
+            raise ProviderError(f"{method} {path}: {type(exc).__name__}") from exc
+        if response.status_code >= 400 and response.status_code not in ok:
+            raise ProviderError(f"{method} {path}: {response.status_code} {response.text[:200]}")
+        return response
+
+    # 통화 -----------------------------------------------------------------
+    def create_call(self, to: str, instruction: str, request: Optional[CallRequest] = None,
+                    scenario: Optional[str] = None) -> str:
+        body = {"To": digits(to), "From": self.from_number, "AgentId": self.agent_id,
+                "CallContext": {"Instruction": instruction}}
+        data = self._request("POST", "/calls", json=body).json()
+        call_id = data.get("callId") or (data.get("data") or {}).get("callId")
+        if not call_id:
+            raise ProviderError("발신 응답에 callId가 없습니다")
+        return call_id
+
+    def get_call(self, call_id: str) -> dict:
+        call = self._request("GET", f"/calls/{call_id}").json()
+        events = {e.get("event") for e in self._request("GET", f"/calls/{call_id}/events").json().get("data", [])}
+        status = str(call.get("status", "")).lower().replace("-", "_")
+        answered = "call.answered" in events or status in ("in_progress", "answered")
+        if "call.completed" in events or status in self.ENDED:
+            return {"phase": "ended", "answered": "call.answered" in events}
+        if answered:
+            return {"phase": "in_progress", "answered": True}
+        if "call.ringing" in events or status == "ringing":
+            return {"phase": "ringing", "answered": False}
+        return {"phase": "queued", "answered": False}
+
+    # 대화록 ---------------------------------------------------------------
+    def request_transcript(self, call_id: str) -> None:
+        self._request("POST", f"/calls/{call_id}/transcript", ok=(409,))  # 409: 이미 요청됨
+
+    def get_transcript(self, call_id: str) -> dict:
+        response = self._request("GET", f"/calls/{call_id}/transcript", ok=(404,))
+        if response.status_code == 404:
+            return {"status": "pending", "segments": []}
+        data = response.json()
+        segments = [{k: seg.get(k) for k in ("speaker", "text", "start", "end") if seg.get(k) is not None}
+                    for seg in data.get("segments") or []]
+        return {"status": data.get("status", "pending"), "segments": segments}
+
+    # 문자 (미확인) --------------------------------------------------------
+    def send_sms(self, to: str, body: str, subject: str = "") -> str:
+        payload = {"To": digits(to), "From": self.from_number, "Body": body}
+        if len(body.encode("euc-kr", errors="replace")) > 90:  # 90바이트 넘으면 LMS
+            payload.update(Type="lms", Subject=subject or "[살구]")
+        data = self._request("POST", "/messages", json=payload).json()
+        message_id = data.get("messageId") or data.get("id") or (data.get("data") or {}).get("messageId")
+        if not message_id:
+            raise ProviderError("문자 응답에 messageId가 없습니다")
+        return message_id
+
+    def list_inbound(self, page_size: int = 50) -> list[dict]:
+        params = {"status": "received", "number": self.from_number, "PageSize": page_size}
+        items = self._request("GET", "/messages", params=params).json().get("data", [])
+        return [{
+            "message_id": m.get("messageId") or m.get("id"),
+            "from": m.get("from"), "to": m.get("to"), "type": m.get("type"), "body": m.get("body") or "",
+            "num_media": m.get("numMedia") or 0, "received_at": m.get("dateCreated") or m.get("receivedAt"),
+        } for m in items]
+
+    def get_media(self, message_id: str, index: int) -> tuple[bytes, str]:
+        response = self._request("GET", f"/messages/{message_id}/media/{index}")
+        return response.content, response.headers.get("content-type", "application/octet-stream")
