@@ -79,7 +79,11 @@ npm run test:e2e       # 빌드 후 화면 동작 시험(설치된 Chrome 사용
 ```bash
 bash deploy/deploy.sh                 # 서버 주소는 FE/.deploy-host(Git 제외) 또는 DEPLOY_HOST
 STOP_OLD=1 bash deploy/deploy.sh      # 옛 zipsa 서비스가 8080을 쓰고 있으면 멈추고 배포
+bash deploy/deploy-agent.sh           # 대화 에이전트(AI/chat_agent)를 salgu-chat(127.0.0.1:8095)로 배포하고 화면 서버에 주소 연결
 ```
+
+- 두 스크립트 모두 SSH 를 두 번만 열어요(파일 한 번에 올리기, 서버 설치 한 번). 짧은 시간에 SSH 를 여러 번 열면 서버 보호 장치에 잠시 막힐 수 있어요.
+- 에이전트 설정(Gemini 키)은 서버 `~/salgu-chat/agent.env`(600)에만 있어요. 처음 배포 때 로컬 `AI/chat_agent/.env` 의 GEMINI 줄을 옮겨요.
 
 - 서버에 `~/salgu-fe/releases/<시각>` 으로 올리고 `current` 링크를 바꾼 뒤 systemd `salgu-fe` 를 다시 띄워요. 최근 5개만 남겨요.
 - 설정은 서버 `~/salgu-fe/salgu-fe.env`(권한 600)에만 있어요. 처음 배포 때 예시로 만들어지고, 카카오맵 키(`KAKAO_MAP_KEY`)는 서버에서 직접 넣어요.

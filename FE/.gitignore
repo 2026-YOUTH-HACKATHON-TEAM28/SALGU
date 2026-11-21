@@ -14,3 +14,5 @@ test-results/
 # 배포 서버 주소
 .deploy-host
 *.tgz
+agent-upload-*/
+fe-upload-*/

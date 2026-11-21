@@ -1,0 +1,26 @@
+# 살구 대화 에이전트(AI/chat_agent). deploy-agent.sh 가 __HOME__·__USER__ 를 바꿔 /etc/systemd/system 에 둬요.
+# 127.0.0.1:8095 에서만 열려요(밖에서는 화면 서버 salgu-fe 를 거쳐서만 써요).
+[Unit]
+Description=Salgu chat agent (AI/chat_agent)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=__HOME__/salgu-chat/current
+ExecStart=__HOME__/salgu-chat/venv/bin/python run_server.py 8095
+Restart=on-failure
+RestartSec=3
+User=__USER__
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=__HOME__/salgu-chat/data
+ProtectControlGroups=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target
