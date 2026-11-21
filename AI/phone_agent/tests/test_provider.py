@@ -126,7 +126,9 @@ def test_trial_table_row_and_lines():
 
     timing = {"response_median": 1.9, "response_p90": 2.08, "response_max": 2.5, "ai_turn_avg": 5.74,
               "ai_turn_max": 9.1, "ai_cut_ins": 0, "broker_barge_ins": 1, "call_seconds": 130.7}
-    assert table_row("live", "CA1", timing) == "| live | CA1 | 1.9 | 2.08 | 2.5 | 5.74 | 9.1 | 0 | 1 | 130.7 |"
+    assert table_row("live", "CA1", timing) == "| live | CA1 | 1.9 | 2.08 | 2.5 | 5.74 | 9.1 | 0 | 1 | 130.7 | — | — | — |"
+    timing.update(ai_syllables_per_sec=4.8, broker_syllables_per_sec=6.5, ai_talk_seconds=55.0)
+    assert table_row("live", "CA1", timing).endswith("| 130.7 | 4.8 | 6.5 | 55.0 |")
     assert table_row("mock", "CA2", None) == "| mock | CA2 | (시각 없음) |"
     out = []
     print_lines([{"speaker": "broker", "text": "여보세요", "start": 0.0, "end": 1.0},

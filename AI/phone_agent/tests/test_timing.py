@@ -1,7 +1,7 @@
 from phone_agent.timing import response_gaps, turn_timing
 
 
-def line(speaker, start, end, text="…"):
+def line(speaker, start, end, text="가나다"):
     return {"speaker": speaker, "start": start, "end": end, "text": text}
 
 
@@ -22,7 +22,22 @@ def test_turn_timing():
     assert timing["ai_turn_avg"] == 1.9 and timing["ai_turn_max"] == 4.0
     assert timing["ai_cut_ins"] == 1 and timing["broker_barge_ins"] == 1
     assert timing["call_seconds"] == 20.0
+    assert timing["ai_talk_seconds"] == 9.5
     assert response_gaps(transcript) == [None, None, 1.0, None, 2.5, None, None, -0.2]
+
+
+def test_speaking_rate_per_speaker():
+    from phone_agent.timing import syllables_per_sec
+    transcript = [
+        line("ai", 0.0, 2.0, "안녕하세요 살구입니다"),        # 10음절 / 2초 = 5.0
+        line("broker", 2.5, 3.0, "네"),                        # 1초 미만은 뺌
+        line("broker", 3.5, 5.5, "하나 있긴 한데요 삼층이에요"),  # 12음절 / 2초 = 6.0
+        line("ai", 6.0, 8.0, "관리비는 얼마인가요?"),          # 9음절 / 2초 = 4.5
+    ]
+    assert syllables_per_sec(transcript, "ai") == 4.75  # 5.0과 4.5의 중앙값
+    assert syllables_per_sec(transcript, "broker") == 6.0
+    timing = turn_timing(transcript)
+    assert timing["ai_syllables_per_sec"] == 4.75 and timing["broker_syllables_per_sec"] == 6.0
 
 
 def test_no_times_means_no_timing():

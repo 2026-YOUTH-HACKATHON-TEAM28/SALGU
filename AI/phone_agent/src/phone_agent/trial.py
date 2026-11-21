@@ -94,7 +94,8 @@ def print_transcript(result: dict, out=print) -> None:
         out(f"  {i:>2} [{line.get('speaker')}] {line.get('text')}")
 
 
-TABLE_HEAD = "| 설정 | callId | 응답 중앙값(초) | p90 | 최대 | AI 발화 평균(초) | AI 발화 최대 | AI가 끊음 | 중개사가 끊음 | 통화 길이(초) |"
+TABLE_HEAD = ("| 설정 | callId | 응답 중앙값(초) | p90 | 최대 | AI 발화 평균(초) | AI 발화 최대 | AI가 끊음 | 중개사가 끊음 "
+              "| 통화 길이(초) | AI 말 빠르기(음절/초) | 중개사 말 빠르기 | AI가 말한 시간(초) |")
 
 
 def table_row(label: str, provider_call_id: str, timing: Optional[dict]) -> str:
@@ -102,8 +103,9 @@ def table_row(label: str, provider_call_id: str, timing: Optional[dict]) -> str:
     if not timing:
         return f"| {label} | {provider_call_id} | (시각 없음) |"
     keys = ("response_median", "response_p90", "response_max", "ai_turn_avg", "ai_turn_max",
-            "ai_cut_ins", "broker_barge_ins", "call_seconds")
-    return "| " + " | ".join([label, provider_call_id] + ["—" if timing[k] is None else str(timing[k]) for k in keys]) + " |"
+            "ai_cut_ins", "broker_barge_ins", "call_seconds", "ai_syllables_per_sec", "broker_syllables_per_sec",
+            "ai_talk_seconds")
+    return "| " + " | ".join([label, provider_call_id] + ["—" if timing.get(k) is None else str(timing[k]) for k in keys]) + " |"
 
 
 def print_lines(lines: list[dict], out=print) -> None:

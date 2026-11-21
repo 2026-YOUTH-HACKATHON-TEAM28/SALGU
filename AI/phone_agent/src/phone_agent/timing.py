@@ -1,4 +1,4 @@
-"""통화 속도 측정(초): 응답 지연, AI 한 번 발화 길이, 끊은 횟수, 통화 길이.
+"""통화 속도 측정(초): 응답 지연, AI 한 번 발화 길이, 말 빠르기(음절/초), 끊은 횟수, 통화 길이.
 
 대화록 시각은 녹음을 나중에 전사한 값이라 0.1~0.3초 오차가 있다. 설정끼리 비교하는 용도.
 """
@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import math
+import re
 import statistics
 from typing import Optional
 
@@ -17,6 +18,19 @@ def _r(value: float) -> float:
 def _p90(values: list[float]) -> float:
     ordered = sorted(values)
     return ordered[max(0, math.ceil(0.9 * len(ordered)) - 1)]
+
+
+_HANGUL = re.compile(r"[가-힣]")
+MIN_SPEECH_SEC = 1.0  # 이보다 짧은 말("네")은 빠르기 계산에서 뺌
+
+
+def syllables_per_sec(transcript: list[dict], speaker: str) -> Optional[float]:
+    """그 화자의 말 빠르기: 줄마다 한글 글자 수 ÷ 말한 시간, 그 중앙값. 사람끼리 대화는 대략 초당 6~7음절."""
+    rates = [len(_HANGUL.findall(line.get("text") or "")) / (line["end"] - line["start"])
+             for line in transcript
+             if line.get("speaker") == speaker and line.get("start") is not None and line.get("end") is not None
+             and line["end"] - line["start"] >= MIN_SPEECH_SEC]
+    return _r(statistics.median(rates)) if rates else None
 
 
 def response_gaps(transcript: list[dict]) -> list[Optional[float]]:
@@ -52,6 +66,9 @@ def turn_timing(transcript: list[dict]) -> Optional[dict]:
         "response_gaps": gaps,
         "ai_turn_avg": _r(statistics.mean(ai_turns)) if ai_turns else None,
         "ai_turn_max": _r(max(ai_turns)) if ai_turns else None,
+        "ai_syllables_per_sec": syllables_per_sec(transcript, "ai"),
+        "broker_syllables_per_sec": syllables_per_sec(transcript, "broker"),
+        "ai_talk_seconds": _r(sum(ai_turns)),
         "ai_cut_ins": cut_ins,
         "broker_barge_ins": barge_ins,
         "call_seconds": _r(max(line["end"] for line in transcript)),
