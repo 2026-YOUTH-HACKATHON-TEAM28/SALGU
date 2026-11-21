@@ -45,14 +45,14 @@ def answer(res):
     return text + " 다른 곳도 볼까요, 아니면 조건을 바꿔 볼까요?"
 
 
-def turn(message, prev_card=None):
+def turn(message, prev_card=None, session_id=None):
     """→ intake 결과 + {"messages", "backend"}. reply는 말풍선을 이어 붙인 글."""
     r = intake.intake(message, prev_card)
     messages = [{"kind": "reply", "text": r["reply"]}]
     res = None
     card = r["card"]
     if r["intent"] == "search" and card and card.get("ready") and r["changed"]:
-        res = backend.search(card)
+        res = backend.search(card, session_id)
         req = "살구 검색 서버에 조건을 보내 집을 요청했습니다."
         if res["mock"]:
             req += " (로컬 시험이라 예시 응답을 씁니다)"

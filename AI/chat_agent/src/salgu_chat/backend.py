@@ -1,6 +1,7 @@
 """BE 집 검색 요청. 챗봇은 계산하지 않는다: ready인 조건 카드를 BE에 보내고 받은 결과를 그대로 전한다.
 
-- config.BACKEND_SEARCH_URL이 있으면: POST {"card": 조건 카드} → BE 응답(아래 형식)
+- config.BACKEND_SEARCH_URL이 있으면: POST {"session_id", "keywords", "card"} → BE 응답(아래 형식)
+  BE의 추천 계산 메서드는 세션 캐시(session_cache, contracts/session_cache.md)를 session_id로 읽어도 된다.
 - 비어 있으면(로컬 시험): 로컬 예시 응답을 만든다. mock=true로 표시하며 실제 매물이 아니다.
 
 BE 응답 형식 (초안, BE와 합의 필요). 후보는 BE가 추천 순서대로 정렬해 준다.
@@ -16,7 +17,7 @@ import urllib.request
 from . import config
 
 
-def search(card):
+def search(card, session_id=None):
     """→ {"ok", "mock", "count", "candidates", "error", "seconds"}"""
     started = time.time()
     if not config.BACKEND_SEARCH_URL:
@@ -24,7 +25,8 @@ def search(card):
         return {"ok": True, "mock": True, "error": None, **res, "seconds": round(time.time() - started, 3)}
     req = urllib.request.Request(
         config.BACKEND_SEARCH_URL,
-        data=json.dumps({"card": card}, ensure_ascii=False).encode("utf-8"),
+        data=json.dumps({"session_id": session_id, "keywords": _keywords(card), "card": card},
+                        ensure_ascii=False).encode("utf-8"),
         headers={"Content-Type": "application/json"}, method="POST")
     try:
         with urllib.request.urlopen(req, timeout=config.BACKEND_TIMEOUT_S) as r:
@@ -35,6 +37,11 @@ def search(card):
     except Exception as e:
         return {"ok": False, "mock": False, "error": f"{type(e).__name__}: {e}", "count": 0, "candidates": [],
                 "seconds": round(time.time() - started, 3)}
+
+
+def _keywords(card):
+    conds = card.get("conditions") or {}
+    return {k: (c.get("label") if k == "workplace" else c.get("value")) for k, c in sorted(conds.items())}
 
 
 def mock_search(card):
