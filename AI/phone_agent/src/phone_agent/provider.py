@@ -310,6 +310,8 @@ class KatProvider:
                     scenario: Optional[str] = None) -> str:
         body = {"To": digits(to), "From": self.from_number, "AgentId": self.agent_id,
                 "CallContext": {"Instruction": instruction}}
+        if self.settings.record is not None:  # False면 녹음·사후 전사를 만들지 않음(실시간 전사로 대신)
+            body["Record"] = self.settings.record
         data = self._request("POST", "/calls", json=body).json()
         call_id = data.get("callId") or (data.get("data") or {}).get("callId")
         if not call_id:
@@ -341,6 +343,30 @@ class KatProvider:
         segments = [{k: seg.get(k) for k in ("speaker", "text", "start", "end") if seg.get(k) is not None}
                     for seg in data.get("segments") or []]
         return {"status": data.get("status", "pending"), "segments": segments}
+
+    def get_live_transcript(self, call_id: str) -> dict:
+        """통화 중 실시간 전사(에이전트 설정 liveEvents에 transcript.final). 에이전트가 들은 그대로라
+        사후 녹음 전사보다 오류가 적고 화자(agent/user)가 붙어 온다. stream.ended가 오면 completed."""
+        events, after = [], None
+        for _ in range(20):
+            params = {"after": after} if after else {}
+            data = self._request("GET", f"/calls/{call_id}/live-events", ok=(404,), params=params)
+            if data.status_code == 404:
+                return {"status": "not_available", "segments": []}
+            body = data.json()
+            events += body.get("data") or []
+            if not body.get("hasMore") or not events:
+                break
+            after = events[-1].get("id")
+        segments = [
+            {"speaker": "ai" if (e.get("detail") or {}).get("role") == "agent" else "broker",
+             "text": (e.get("detail") or {}).get("text") or "", "at": e.get("timestamp")}
+            for e in events if e.get("event") == "transcript.final" and (e.get("detail") or {}).get("text")
+        ]
+        if not events:  # 이 에이전트에 실시간 전사(liveEvents)가 꺼져 있음
+            return {"status": "not_available", "segments": []}
+        ended = any(e.get("event") == "stream.ended" for e in events)
+        return {"status": "completed" if ended else "pending", "segments": segments}
 
     # 문자 (미확인) --------------------------------------------------------
     def send_sms(self, to: str, body: str, subject: str = "") -> str:

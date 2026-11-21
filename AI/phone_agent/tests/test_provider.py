@@ -134,3 +134,48 @@ def test_trial_table_row_and_lines():
     print_lines([{"speaker": "broker", "text": "여보세요", "start": 0.0, "end": 1.0},
                  {"speaker": "ai", "text": "안녕하세요", "start": 2.2, "end": 4.0}], out.append)
     assert out[1].endswith("← 1.2초 뒤 응답")
+
+
+def test_record_flag_is_sent_only_when_set():
+    import dataclasses
+    seen = []
+
+    def handler(request: httpx.Request):
+        seen.append(json.loads(request.content))
+        return httpx.Response(201, json={"callId": "CA1"})
+
+    kat(handler).create_call("010", "x")
+    off = KatProvider(dataclasses.replace(SETTINGS, record=False),
+                      client=httpx.Client(base_url="https://api.example.test/v1/accounts/AC1",
+                                          transport=httpx.MockTransport(handler)))
+    off.create_call("010", "x")
+    assert "Record" not in seen[0] and seen[1]["Record"] is False
+
+
+def test_live_transcript_from_live_events():
+    pages = {
+        None: {"data": [
+            {"id": "1", "event": "stream.started", "timestamp": "t0", "detail": {}},
+            {"id": "2", "event": "transcript.partial", "timestamp": "t1", "detail": {"role": "agent", "text": "안녕"}},
+            {"id": "3", "event": "transcript.final", "timestamp": "t2",
+             "detail": {"utteranceId": "u1", "role": "agent", "text": "안녕하세요, AI 비서 살구입니다."}},
+        ], "hasMore": True},
+        "3": {"data": [
+            {"id": "4", "event": "transcript.final", "timestamp": "t3",
+             "detail": {"utteranceId": "u2", "role": "user", "text": "다음 달 초부터요."}},
+            {"id": "5", "event": "stream.ended", "timestamp": "t4", "detail": {}},
+        ], "hasMore": False},
+    }
+
+    def handler(request: httpx.Request):
+        assert request.url.path.endswith("/calls/CA1/live-events")
+        return httpx.Response(200, json=pages[request.url.params.get("after")])
+
+    assert kat(handler).get_live_transcript("CA1") == {"status": "completed", "segments": [
+        {"speaker": "ai", "text": "안녕하세요, AI 비서 살구입니다.", "at": "t2"},
+        {"speaker": "broker", "text": "다음 달 초부터요.", "at": "t3"},
+    ]}
+    pending = kat(lambda r: httpx.Response(200, json={"data": pages[None]["data"], "hasMore": False}))
+    assert pending.get_live_transcript("CA1")["status"] == "pending"
+    gone = kat(lambda r: httpx.Response(404, json={}))
+    assert gone.get_live_transcript("CA1") == {"status": "not_available", "segments": []}

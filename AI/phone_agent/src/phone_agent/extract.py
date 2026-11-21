@@ -990,14 +990,15 @@ def decide_confirm(request: CallRequest, raw: Optional[dict], lines: list[dict],
 
 
 def decide(request: CallRequest, raw: Optional[dict], transcript: list[dict],
-           called_at: Optional[datetime] = None) -> dict:
-    """대화록과 추출 값 → 결과(outcome 포함). 문의·확정을 자동으로 고른다."""
+           called_at: Optional[datetime] = None, timing_transcript: Optional[list[dict]] = None) -> dict:
+    """대화록과 추출 값 → 결과(outcome 포함). 문의·확정을 자동으로 고른다.
+    timing_transcript: 줄마다 시각이 있는 대화록(사후 전사). 실시간 전사로 판정할 때 속도 측정에만 쓴다."""
     lines = label_speakers(transcript)
     if request.kind == "confirm":
         result = decide_confirm(request, raw, lines, called_at)
     else:
         result = decide_inquiry(request, raw, lines, called_at)
-    result["timing"] = turn_timing(lines)
+    result["timing"] = turn_timing(label_speakers(timing_transcript) if timing_transcript else lines)
     result["transcript"] = lines if request.keep_transcript else []
     result["warnings"] = call_warnings(lines)
     return result

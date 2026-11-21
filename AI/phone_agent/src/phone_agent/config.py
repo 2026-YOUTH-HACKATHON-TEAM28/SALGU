@@ -6,6 +6,7 @@ import os
 from dataclasses import dataclass, field
 from datetime import timedelta, timezone
 from pathlib import Path
+from typing import Optional
 
 KST = timezone(timedelta(hours=9))
 ROOT = Path(__file__).resolve().parents[2]  # AI/phone_agent
@@ -40,6 +41,13 @@ def _flag(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
 
 
+def _optional_flag(name: str) -> Optional[bool]:
+    value = os.environ.get(name, "").strip().lower()
+    if not value:
+        return None
+    return value in ("1", "true", "yes", "on")
+
+
 @dataclass(frozen=True)
 class Settings:
     mode: str = "mock"  # "mock" | "demo"
@@ -71,6 +79,7 @@ class Settings:
     store_path: Path = field(default=ROOT / ".data" / "calls.json")
     cors_origins: tuple[str, ...] = ("*",)
     mcp_host: str = "127.0.0.1"
+    record: Optional[bool] = None  # None이면 발신 번호의 녹음 설정을 따름, False면 녹음·사후 전사 없음
 
     @property
     def demo_numbers(self) -> tuple[str, ...]:
@@ -125,4 +134,5 @@ class Settings:
             llm_model=get("PHONE_AGENT_LLM_MODEL"),
             cors_origins=_split(get("PHONE_AGENT_CORS_ORIGINS", "*")) or ("*",),
             mcp_host=get("PHONE_AGENT_MCP_HOST", "127.0.0.1") or "127.0.0.1",
+            record=_optional_flag("PHONE_AGENT_RECORD"),
         )

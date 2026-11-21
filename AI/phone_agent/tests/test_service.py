@@ -603,3 +603,76 @@ def test_transcript_days_setting(provider, clock):
     clock.advance(days=1)
     service.tick()
     assert service.to_result(service.store.calls[call["call_id"]])["transcript"] == []
+
+
+# ---------------------------------------------------------------- 실시간 전사(live-events)
+def test_live_transcript_is_used_first_without_waiting_for_recording(settings, clock):
+    class Live(MockProvider):
+        def get_transcript(self, call_id):           # 녹음 전사는 아직(또는 녹음 안 함)
+            return {"status": "pending", "segments": []}
+
+        def get_live_transcript(self, call_id):
+            segments = [{"speaker": "ai" if s["speaker"] == "speaker_0" else "broker", "text": s["text"]}
+                        for s in super().get_transcript(call_id)["segments"]]
+            return {"status": "completed", "segments": segments}
+
+    service = CallService(settings, Live(), now=clock)
+    batch, _ = service.create_batch(make_batch(1, approval_id="ap-live", keep_transcript=True), scenarios=["listing"])
+    call = run_until_done(service, batch, clock)["calls"][0]   # 녹음 전사를 기다리지 않고 끝남
+    assert call["outcome"] == "listing" and call["listings"][0]["maintenance_fee_manwon"] == 7
+    assert service.store.calls[call["call_id"]]["transcript_source"] == "live"
+    assert call["transcript"][0]["speaker"] == "ai" and call["timing"] is None
+
+
+def test_recording_transcript_used_when_live_is_not_available(settings, clock):
+    class NoLive(MockProvider):
+        def get_live_transcript(self, call_id):
+            return {"status": "not_available", "segments": []}
+
+    service = CallService(settings, NoLive(), now=clock)
+    batch, _ = service.create_batch(make_batch(1, approval_id="ap-nolive"), scenarios=["listing"])
+    call = run_until_done(service, batch, clock)["calls"][0]
+    assert call["outcome"] == "listing"
+    assert service.store.calls[call["call_id"]]["transcript_source"] == "recording"
+
+
+def test_waits_for_live_transcript_when_recording_is_off(settings, clock):
+    # 11-21 녹음 끈 리허설: 사후 전사는 바로 not_requested, 실시간 전사는 몇 초 뒤 stream.ended
+    class LiveLater(MockProvider):
+        ready_after = None
+
+        def get_transcript(self, call_id):
+            return {"status": "not_requested", "segments": []}
+
+        def get_live_transcript(self, call_id):
+            segments = [{"speaker": "ai" if s["speaker"] == "speaker_0" else "broker", "text": s["text"]}
+                        for s in super().get_transcript(call_id)["segments"]]
+            if self.ready_after is None:
+                self.ready_after = clock.now + timedelta(seconds=10)
+            done = clock.now >= self.ready_after
+            return {"status": "completed" if done else "pending", "segments": segments if done else segments[:2]}
+
+    service = CallService(settings, LiveLater(), now=clock)
+    batch, _ = service.create_batch(make_batch(1, approval_id="ap-live-later"), scenarios=["listing"])
+    call = run_until_done(service, batch, clock, step=5)["calls"][0]
+    assert call["outcome"] == "listing" and call["listings"][0]["maintenance_fee_manwon"] == 7
+    assert service.store.calls[call["call_id"]]["transcript_source"] == "live"
+
+
+def test_pending_live_transcript_is_used_after_waiting_limit(settings, clock):
+    class LiveStuck(MockProvider):
+        def get_transcript(self, call_id):
+            return {"status": "not_requested", "segments": []}
+
+        def get_live_transcript(self, call_id):
+            segments = [{"speaker": "ai" if s["speaker"] == "speaker_0" else "broker", "text": s["text"]}
+                        for s in super().get_transcript(call_id)["segments"]]
+            return {"status": "pending", "segments": segments}   # stream.ended가 끝내 안 옴
+
+    service = CallService(settings, LiveStuck(), now=clock)
+    batch, _ = service.create_batch(make_batch(1, approval_id="ap-live-stuck"), scenarios=["listing"])
+    for _ in range(5):
+        service.get_batch(batch["batch_id"])
+    assert service.batch_result(batch)["status"] == "running"   # 60초까지는 기다림
+    call = run_until_done(service, batch, clock, step=20)["calls"][0]
+    assert call["outcome"] == "listing"

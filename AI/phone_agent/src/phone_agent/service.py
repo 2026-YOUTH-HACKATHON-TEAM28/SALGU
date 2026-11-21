@@ -28,6 +28,7 @@ PENDING = ("waiting", "scheduled")
 ACTIVE = PENDING + ON_LINE + ("retry_wait", "analyzing")
 FINAL = ("done", "failed", "rejected")
 MAX_ATTEMPTS = 2  # 안 받으면 1번만 다시
+LIVE_WAIT_SEC = 60  # 실시간 전사 마무리(stream.ended)를 기다리는 최대 시간
 
 def iso(dt: Optional[datetime]) -> Optional[str]:
     return dt.astimezone(KST).isoformat() if dt else None
@@ -368,18 +369,40 @@ class CallService:
             pass
 
     def _analyze(self, rec: dict, now: datetime) -> None:
+        """대화록: 실시간 전사(live-events)가 끝났으면 그것으로, 아니면 사후 녹음 전사로 판정한다."""
+        pid = rec["provider_call_id"]
+        live = None
+        if hasattr(self.provider, "get_live_transcript"):
+            try:
+                live = self.provider.get_live_transcript(pid)
+            except ProviderError:
+                live = None
         try:
-            transcript = self.provider.get_transcript(rec["provider_call_id"])
+            transcript = self.provider.get_transcript(pid)
         except ProviderError:
             transcript = {"status": "failed", "segments": []}
         status = transcript.get("status")
+        live_ready = bool(live and live.get("status") == "completed" and live.get("segments"))
+        live_pending = bool(live and live.get("status") == "pending")
         waited = now - parse(rec["analyzing_since"])
-        if status not in ("completed", "failed") and waited < timedelta(seconds=self.settings.analyze_timeout_sec):
-            return
-        segments = transcript.get("segments", []) if status == "completed" else []
+        timeout = timedelta(seconds=self.settings.analyze_timeout_sec)
+        if not live_ready:
+            # 실시간 전사가 진행 중이면 먼저 기다림(녹음을 끄면 사후 전사는 바로 not_requested로 옴)
+            if live_pending and waited < min(timeout, timedelta(seconds=LIVE_WAIT_SEC)):
+                return
+            if status not in ("completed", "failed", "not_requested") and waited < timeout:
+                return
+        post_segments = transcript.get("segments", []) if status == "completed" else []
+        if live_ready or (not post_segments and live and live.get("segments")):
+            segments = live["segments"]
+            live_ready = True
+        else:
+            segments = post_segments
+        rec["transcript_source"] = "live" if live_ready else ("recording" if post_segments else None)
         request = self._request_of(rec)
         raw = self._extract(rec, request, segments)
-        outcome, result = self._build_result(request, raw, segments, parse(rec["started_at"]))
+        outcome, result = self._build_result(request, raw, segments, parse(rec["started_at"]),
+                                             timing_transcript=post_segments or None)
         if outcome == "no_answer":  # 자동응답
             self._no_answer(rec, now, result)
             return
@@ -419,9 +442,10 @@ class CallService:
         return visit_status(rec["outcome"] if rec["status"] == "done" else None)
 
     def _build_result(self, request: CallRequest, raw: Optional[dict], segments: list[dict],
-                      called_at: Optional[datetime] = None) -> tuple[str, dict]:
+                      called_at: Optional[datetime] = None,
+                      timing_transcript: Optional[list[dict]] = None) -> tuple[str, dict]:
         """근거 줄 대조로 결론을 정한다(extract.decide). LLM 값은 확인된 것만 쓴다."""
-        result = decide(request, raw, segments, called_at)
+        result = decide(request, raw, segments, called_at, timing_transcript)
         return result.pop("outcome"), result
 
     # ------------------------------------------------------------ 응답 모양
