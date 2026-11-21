@@ -50,7 +50,8 @@ _KNOWN_AREAS = {name[:-1] for name in DISTRICT_NAME.values() if len(name) > 2} |
 }
 
 # 어떤 말이 있으면 규칙만으로 확정하지 않고 Gemini에 맡긴다 (부정·대체·살 곳 지정·물음 등)
-_NEEDS_LLM = re.compile(r"말고|아니|대신|빼고|제외|살고\s*싶|근처에\s*살|쪽에\s*살|동네(?:에서|로)|\?|상관없")
+# 물음표는 여기 넣지 않는다: "홍대는 좀?"처럼 규칙이 다 읽은 물음은 바로 답하고, 못 읽은 말이 남으면 어차피 Gemini로 간다
+_NEEDS_LLM = re.compile(r"말고|아니|대신|빼고|제외|살고\s*싶|근처에\s*살|쪽에\s*살|동네(?:에서|로)|상관없")
 _QUESTION = re.compile(r"뭐(?:예요|에요|야|지)|뭔가요|무엇|이란|란\s*$|어떻게|왜|차이|설명|가능해|되나요|돼요\?")
 _SEARCH_VERB = re.compile(r"찾아|찾고|찾는|구해|구하|구함|알아봐|알아보|추천|보여|살\s*집|집\s*좀|매물|자취방|이사")
 _UNVERIFIABLE = {"조용": "조용한", "채광": "채광", "햇빛": "햇빛", "밝은": "밝은", "뷰": "뷰", "치안": "치안",
@@ -62,7 +63,7 @@ _FILLER = re.compile(r"찾아\s*줘?|구해\s*줘?|알아봐\s*줘?|추천해?\s
 # 남아도 뜻이 없는 낱말(조사·어미·맞장구)
 _OK_TOKEN = re.compile(r"(?:은|는|이|가|을|를|에|에서|도|로|으로|와|과|랑|이랑|고|의|만|면|이면|서|게|한|인|곳|데|거|것|"
                        r"되는|되고|되면|가능한|가능|좋겠어|좋겠다|좋겠|좋아|괜찮아|이었으면|였으면|했으면|쯤|짜리|낼|수|"
-                       r"있어|이상|어요|어|아요|아|예요|예|에요|이에요|야|임|구함|구합니다|합니다|부탁|자취방|자취|ㅎ+|ㅋ+|ㅠ+|ㅜ+|ㄱㄱ|ㄱ)+")
+                       r"있어|이상|더|어때요|어때|어요|어|아요|아|예요|예|에요|이에요|야|임|구함|구합니다|합니다|부탁|자취방|자취|ㅎ+|ㅋ+|ㅠ+|ㅜ+|ㄱㄱ|ㄱ)+")
 
 
 def _small(s):
@@ -132,12 +133,27 @@ def _near_work_word(t, start, end):
     return bool(_WORK_HINT.search(t[max(0, start - 5):start]) or _WORK_HINT.search(t[end:end + 6]))
 
 
+def _listed_before(t, start):
+    """"망원이나 합정 쪽"처럼 앞에 나열된 이름들 → [(label, 구절)]."""
+    out = []
+    while True:
+        m = re.search(r"(?<![가-힣A-Za-z0-9])([가-힣A-Za-z0-9]+?)\s*(?:이나|나|이랑|랑|하고|와|과|,|/|or)\s*$", t[:start])
+        if not m or not _is_area(m.group(1)):
+            return out
+        out.append((m.group(1), t[m.start():start]))
+        start = m.start()
+
+
 def _areas(t, work_label):
     """(살 곳 [(label, 근거)], 피할 곳 [(label, 근거)], 추론한 살 곳 [(label, 근거)])."""
     avoid, prefer, used = [], [], set()
     for m in re.finditer(rf"{_TOKEN}\s*(?:은|는|이랑|랑|쪽은|쪽|근처는|근처)?\s*{_AVOID}", t):
         label = m.group(1)
         if _is_area(label) and label not in used:
+            for prev, phrase in reversed(_listed_before(t, m.start(1))):
+                if prev not in used:
+                    avoid.append((prev, phrase))
+                    used.add(prev)
             avoid.append((label, m.group(0)))
             used.add(label)
     for pat in (rf"{_TOKEN}\s*{_NEAR}(?:\s*(?:에서|에|으로|로))?(?:\s*{_LIVE})?",
@@ -146,6 +162,10 @@ def _areas(t, work_label):
             label = m.group(1)
             if (_is_area(label) and label not in used and label != work_label
                     and not _near_work_word(t, m.start(1), m.end())):
+                for prev, phrase in reversed(_listed_before(t, m.start(1))):
+                    if prev not in used and prev != work_label:
+                        prefer.append((prev, phrase))
+                        used.add(prev)
                 prefer.append((label, m.group(0)))
                 used.add(label)
     # 회사라는 말이 전혀 없을 때 그냥 말한 동네·역 이름은 살고 싶은 곳으로 본다 (되묻지 않음)
@@ -212,6 +232,7 @@ def parse(text):
                                          "회사라는 말이 없어 살고 싶은 곳으로 해석")
     if avoid:
         conds["avoid_areas"] = _cond([a for a, _ in avoid], " ".join(e for _, e in avoid))
+    used.extend(e for _, e in prefer + avoid + guessed)  # 나열된 이름은 구절이 따로 떨어져 있다
 
     # ---- 통근 ----
     m = (re.search(r"(?:통근|출퇴근|출근|회사까지)[^\d]{0,12}(\d{1,3})\s*분", t)
@@ -289,7 +310,7 @@ def parse(text):
                                            "깨끗한 집을 오피스텔·빌라로 해석")
 
     # ---- 가격 구간 ----
-    m = re.search(r"싼|저렴|싸게|가성비", t)
+    m = re.search(r"싼|싸게|싸면|싸고|저렴|가성비", t)
     if m:
         conds["price_band"] = _cond("median_or_below", m.group(0), "inferred", "같은 조건 실거래의 가운데~아래 구간")
         priorities.append("price")

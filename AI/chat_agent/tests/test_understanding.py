@@ -60,10 +60,15 @@ CASES = [
     ("회사가 강남역 근처예요 1000/50", {"workplace": "강남역", "preferred_areas": None}, None),
     ("마포구쪽 오피스텔 보증금 1000", {"preferred_areas": ["마포구"], "housing_types": [OT], "workplace": None}, True),
     ("강남역 말고 선릉역 근처에 살고 싶어 1000/50", {"avoid_areas": ["강남역"], "preferred_areas": ["선릉역"]}, False),
+    ("망원이나 합정 쪽 원룸", {"preferred_areas": ["망원", "합정"]}, True),
+    ("신촌이랑 홍대는 별로", {"avoid_areas": ["신촌", "홍대"]}, True),
+    ("좀 더 싸면 좋겠어", {"price_band": "median_or_below"}, True),
     ("신림 말고 다른데 1000/40", {"avoid_areas": ["신림"], "deposit_manwon": 1000, "monthly_rent_manwon": 40}, False),
 
     # 다음 말로 고치기 (처음부터 다 묻지 않음)
-    ("홍대는 좀?", {"avoid_areas": ["홍대"], "preferred_areas": None}, False),
+    ("홍대는 좀?", {"avoid_areas": ["홍대"], "preferred_areas": None}, True),
+    ("망원 쪽은 어때?", {"preferred_areas": ["망원"]}, True),
+    ("1000/50도 가능해?", {"deposit_manwon": 1000}, False),
     ("홍대는 좀 별로", {"avoid_areas": ["홍대"], "preferred_areas": None}, True),
     ("신촌 쪽은 싫어요", {"avoid_areas": ["신촌"]}, True),
 
