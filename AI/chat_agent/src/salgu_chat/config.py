@@ -44,6 +44,10 @@ def _int(name, default):
 GEMINI_KEY = _first("GEMINI_API_KEY", *sorted(k for k in ENV if k.startswith("GEMINI_API_KEY")))
 GEMINI_MODEL = ENV.get("GEMINI_MODEL") or "gemini-3.1-flash-lite"
 
+# BE 집 검색 API. 비워 두면(로컬 시험) 로컬 예시 응답을 쓴다.
+BACKEND_SEARCH_URL = ENV.get("BACKEND_SEARCH_URL", "")
+BACKEND_TIMEOUT_S = _int("BACKEND_TIMEOUT_S", 10)
+
 API_HOST, API_PORT = "127.0.0.1", 8090
 ALLOWED_ORIGINS = {"http://127.0.0.1:8091", "http://localhost:8091"}
 
