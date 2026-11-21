@@ -13,12 +13,14 @@
 - ack   "ㅇㅇ", "좋아"   → 맞장구, 빠진 최소 조건이 있으면 그것만 묻기
 - more  "다른 거 더 보여줘" → 마지막 검색 결과의 다른 후보
 - pick  "2번째꺼 자세히"  → 마지막 검색 결과의 그 후보
+- call  "2번 집 보고 싶어", "전화해 줘" → 그 동 중개사무소에 물어볼 '전화 요청 초안'(action)을 만든다.
+        챗봇은 전화를 걸지 않는다. 사용자가 화면에서 승인하면 BE가 전화 서버(AI/phone_agent)에 보낸다.
 """
 
 import re
 import time
 
-from . import backend, guards, intake, rules
+from . import backend, call_request, guards, intake, rules
 
 _TYPES = {"officetel": "오피스텔", "villa": "빌라"}
 
@@ -83,8 +85,10 @@ def _control(kind, n, prev_card, last_search, started):
     cands = (last_search or {}).get("candidates") or []
     ready = bool((prev_card or {}).get("ready"))
     missing = (prev_card or {}).get("missing") or []
-    reset = False
-    if kind == "reset":
+    reset, action = False, None
+    if kind == "call":
+        text, action = _call_draft(n, prev_card, cands, missing)
+    elif kind == "reset":
         text, prev_card, reset = "좋아요, 처음부터 다시 해요! " + guards.ASK_MIN, None, True
     elif kind == "stop":
         text = "알겠어요. 필요할 때 언제든 다시 말해 주세요. 지금까지 말씀하신 조건은 기억해 둘게요."
@@ -117,13 +121,41 @@ def _control(kind, n, prev_card, last_search, started):
         else:
             text = "아직 보여 드린 후보가 없어요. 원하는 동네와 보증금·월세를 말해 주시면 찾아볼게요."
     return {"intent": "control", "control": kind, "card": prev_card, "reply": text, "via": "rules", "guard": None,
-            "fixes": [], "changed": [], "seconds": round(time.time() - started, 3), "reset": reset}
+            "fixes": [], "changed": [], "seconds": round(time.time() - started, 3), "reset": reset, "action": action}
+
+
+def _call_draft(n, card, cands, missing):
+    """'n번 집 보고 싶어' → (답, 전화 요청 초안). 전화는 걸지 않는다."""
+    if not cands:
+        return ("먼저 마음에 드는 집을 찾아볼게요. "
+                + intake._ask(missing or ["area", "deposit", "monthly_rent"])[0]), None
+    idx = n or 1
+    if idx > len(cands):
+        return f"{idx}번째 후보는 없어요. 지금은 {len(cands)}곳까지 있어요.", None
+    c = cands[idx - 1]
+    try:
+        agencies = call_request.find_agencies(c.get("address"))
+    except Exception:
+        agencies = []
+    action = call_request.build(card, c, agencies)
+    name = str(c.get("name"))
+    if not agencies:
+        return (f"'{name}' 근처 중개사무소 정보를 불러오지 못해 지금은 전화 요청을 준비할 수 없어요. "
+                "잠시 후 다시 말씀해 주세요."), action
+    dong = call_request.split_address(c.get("address"))[1] or "근처"
+    names = "·".join(a["name"] for a in agencies)
+    text = (f"'{name}'{intake._josa(name, '을를')[len(name):]} 볼 수 있는지 {dong} 중개사무소 {len(agencies)}곳"
+            f"({names})에 AI가 전화로 물어볼 수 있어요. 방문 가능한 시간을 고르고 [전화 요청]을 승인해 주시면 "
+            "순서대로 확인해 드릴게요. 전화는 승인한 뒤에만 걸고, 처음에 AI 비서라고 밝혀요.")
+    return text, action
 
 
 def turn(message, prev_card=None, session_id=None, last_search=None):
     """→ intake 결과 + {"messages", "backend"}. reply는 말풍선을 이어 붙인 글."""
     started = time.time()
     kind, n = rules.control(message or "")
+    if kind == "call" and not (last_search or {}).get("candidates") and rules.parse(message)["card"]["conditions"]:
+        kind = None  # 아직 보여 준 집이 없고 조건을 말한 것("신촌 원룸 보고 싶어") → 집 찾기로
     if kind:
         r = _control(kind, n, prev_card, last_search, started)
     else:
@@ -142,5 +174,6 @@ def turn(message, prev_card=None, session_id=None, last_search=None):
     r["messages"] = messages
     r["backend"] = res
     r.setdefault("reset", False)
+    r.setdefault("action", None)
     r["reply"] = "\n".join(m["text"] for m in messages)
     return r

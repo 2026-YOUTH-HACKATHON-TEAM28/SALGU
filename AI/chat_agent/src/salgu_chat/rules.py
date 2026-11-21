@@ -206,6 +206,10 @@ _CONTROL = [
                        r"[\s!.~ㅎㅋ^]*", re.I)),
     ("more", re.compile(r".{0,6}(?:다른\s*(?:거|것|곳|데|집|매물)|더\s*(?:보여|있어|없어|찾아|추천)|또\s*(?:있어|없어|보여)|"
                         r"다음\s*(?:거|꺼|곳)).{0,10}")),
+    # 중개사무소에 물어봐 달라는 말: "전화해 줘", "2번 집 보고 싶어", "이 집 문의해 줘" (번호가 없으면 1순위)
+    ("call", re.compile(r".{0,8}?(?:(\d|첫|두|세|네|다섯)\s*(?:번째|번|째)\s*(?:거|꺼|곳|집|매물|방)?\s*(?:은|는|을|를|이|가)?\s*)?"
+                        r".{0,6}?(?:보러\s*가|보고\s*싶|보러|방문|예약|문의|연락|전화|물어)"
+                        r"(?:해|하고|할래|좀|드려|부탁|걸어|싶|봐|가고|갈래|갈게|가볼래|가요|가자|하고\s*싶|해\s*줘|해줘|주세요|줘|요|어|봐\s*줘|\s)*[!.~?ㅎㅋ]*")),
     ("pick", re.compile(r".{0,4}?(\d|첫|두|세|네|다섯)\s*(?:번째|번|째)\s*(?:거|꺼|곳|집|매물)?.{0,12}")),
 ]
 _ORDINAL = {"첫": 1, "두": 2, "세": 3, "네": 4, "다섯": 5}
@@ -219,8 +223,10 @@ def control(text):
     for kind, pat in _CONTROL:
         m = pat.fullmatch(t)
         if m:
-            if kind == "pick":
+            if kind in ("pick", "call"):
                 g = m.group(1)
+                if g is None:
+                    return kind, None
                 return kind, int(g) if g.isdigit() else _ORDINAL[g]
             return kind, None
     return None, None
