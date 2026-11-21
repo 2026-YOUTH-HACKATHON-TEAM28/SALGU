@@ -1,0 +1,145 @@
+import type {
+  CallOutcome,
+  CallStatus,
+  CheckStatus,
+  CondKey,
+  ContactStatus,
+  PriceVerdict,
+  RegistryReply,
+  RiskLevel,
+  SourceKind,
+  Stage,
+  VisitStatus,
+} from './types.js';
+
+/* 화면 문구는 여기 한 곳에서만 정해요. 화면마다 따로 쓰면 같은 상태가 다르게 보여요. */
+
+export type Tone = 'ok' | 'warn' | 'bad' | 'info' | 'muted';
+
+export interface StatusLabel {
+  text: string;
+  tone: Tone;
+}
+
+/** 매물 카드 머리 오른쪽: 연락 상태 */
+export const CONTACT_LABEL: Record<ContactStatus, StatusLabel> = {
+  before: { text: '연락 전', tone: 'muted' },
+  contacting: { text: '연락 중', tone: 'info' },
+  no_answer: { text: '답변 없음', tone: 'warn' },
+  answered: { text: '답변 받음', tone: 'info' },
+  proposed: { text: '시간 제안 받음', tone: 'warn' },
+  confirmed: { text: '방문 확정', tone: 'ok' },
+  failed: { text: '연락 못 함', tone: 'bad' },
+};
+
+/** 매물 카드 가격 줄 아래: 확인 상태 */
+export const CHECK_LABEL: Record<CheckStatus, StatusLabel> = {
+  unchecked: { text: '확인 전', tone: 'muted' },
+  registry_wait: { text: '등기 대기', tone: 'muted' },
+  recommend: { text: '추천', tone: 'ok' },
+  caution: { text: '주의', tone: 'warn' },
+  exclude: { text: '제외 권장', tone: 'bad' },
+};
+
+/** AI 통화 카드(화면 정의서 S-05 방식) */
+export function callLabel(status: CallStatus, outcome: CallOutcome | null): StatusLabel {
+  switch (status) {
+    case 'waiting':
+      return { text: '차례를 기다리는 중', tone: 'muted' };
+    case 'queued':
+    case 'ringing':
+      return { text: '신호 가는 중', tone: 'info' };
+    case 'in_progress':
+      return { text: '통화 중', tone: 'info' };
+    case 'analyzing':
+      return { text: '통화 내용 정리 중', tone: 'info' };
+    case 'retry_wait':
+      return { text: '안 받음(다시 걸 예정)', tone: 'warn' };
+    case 'done':
+      switch (outcome) {
+        case 'listing':
+          return { text: '방 있음', tone: 'ok' };
+        case 'no_listing':
+          return { text: '비슷한 방 없음', tone: 'muted' };
+        case 'no_answer':
+          return { text: '안 받음', tone: 'warn' };
+        case 'declined':
+          return { text: 'AI 통화 거절', tone: 'bad' };
+        default:
+          return { text: '확인 못 함', tone: 'warn' };
+      }
+  }
+}
+
+export function isCallActive(status: CallStatus): boolean {
+  return status === 'queued' || status === 'ringing' || status === 'in_progress' || status === 'analyzing';
+}
+
+export const REGISTRY_REPLY_LABEL: Record<Exclude<RegistryReply, null>, string> = {
+  will_send: '살구 번호로 보내 줌',
+  at_visit: '방문 때 보여 줌',
+  refused: '못 줌',
+};
+
+export const PRICE_LABEL: Record<PriceVerdict, StatusLabel> = {
+  fair: { text: '적정', tone: 'ok' },
+  slightly_high: { text: '약간 비쌈', tone: 'warn' },
+  high: { text: '비쌈', tone: 'bad' },
+  unknown: { text: '비교 못 함', tone: 'muted' },
+};
+
+export const RISK_LABEL: Record<RiskLevel, StatusLabel> = {
+  good: { text: '양호', tone: 'ok' },
+  caution: { text: '주의', tone: 'warn' },
+  danger: { text: '위험', tone: 'bad' },
+};
+
+export const VISIT_LABEL: Record<VisitStatus, StatusLabel> = {
+  requesting: { text: '요청 중', tone: 'info' },
+  confirmed: { text: '확정', tone: 'ok' },
+  proposed: { text: '다른 시간 제안 받음', tone: 'warn' },
+  failed: { text: '일정 못 잡음', tone: 'bad' },
+  cancelled: { text: '취소함', tone: 'muted' },
+};
+
+export const SOURCE_KIND_LABEL: Record<SourceKind, string> = {
+  real: '실데이터',
+  example: '예시 값',
+  simulation: '시뮬레이션',
+  standard: '기준값',
+};
+
+export const STAGES: { id: Stage; label: string }[] = [
+  { id: 'cond', label: '조건' },
+  { id: 'dong', label: '동네' },
+  { id: 'call', label: '전화' },
+  { id: 'check', label: '확인' },
+  { id: 'meet', label: '미팅' },
+];
+
+export const NEXT_ACTION: Record<Stage, string> = {
+  cond: '회사와 월세를 알려 주세요',
+  dong: '전화할 동네를 골라 주세요',
+  call: '중개사무소 통화를 기다려요',
+  check: '미팅 잡을 매물을 골라 주세요',
+  meet: '방문 일정을 확인해 주세요',
+};
+
+/** 조건 항목: 순서와 이름. primary 는 카드 맨 위에 항상 보이는 항목 */
+export const COND_META: { key: CondKey; label: string; primary: boolean }[] = [
+  { key: 'workplace', label: '회사(학교)', primary: true },
+  { key: 'maxCommute', label: '출퇴근', primary: true },
+  { key: 'rent', label: '월세', primary: true },
+  { key: 'deposit', label: '보증금', primary: true },
+  { key: 'houseType', label: '유형', primary: false },
+  { key: 'builtAfter', label: '준공', primary: false },
+  { key: 'maxTransfer', label: '환승', primary: false },
+  { key: 'maxBusInterval', label: '버스 배차', primary: false },
+  { key: 'priceBand', label: '가격 구간', primary: false },
+  { key: 'priority', label: '우선순위', primary: false },
+  { key: 'commercial', label: '상권', primary: false },
+  { key: 'pet', label: '반려동물', primary: false },
+  { key: 'parking', label: '주차', primary: false },
+];
+
+export const REQUIRED_CONDS: CondKey[] = ['workplace', 'rent'];
