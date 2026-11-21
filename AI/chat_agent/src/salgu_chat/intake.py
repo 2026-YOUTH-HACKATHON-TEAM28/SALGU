@@ -338,4 +338,9 @@ def intake(message, prev_card=None, timeout=None):
     card, fixes = guards.check_card(card, rule["card"], text, prev_card)
     if prev_card and not card["conditions"] and prev_card.get("conditions"):
         card = merge(prev_card, rule["card"])  # Gemini가 이전 조건을 다 잃어버린 경우
+    if "workplace" not in card["conditions"]:
+        # '학교 근처'처럼 이름 없는 학교·회사 표시는 Gemini 카드에 없으므로 규칙·이전 카드에서 이어 준다
+        hint = rule["card"].get("workplace_hint") or (prev_card or {}).get("workplace_hint")
+        if hint:
+            card["workplace_hint"] = hint
     return _result("search", card, note + reply(card, bool(prev_card)), via, started, fixes=fixes, prev_card=prev_card)

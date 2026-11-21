@@ -19,7 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
-from . import config, dialog, guards, llm, session_cache
+from . import config, dialog, guards, llm, recommender, session_cache
 
 app = FastAPI(title="살구 채팅 API", version="0.3")
 app.add_middleware(
@@ -100,13 +100,14 @@ def session_keywords(session_id: str):
 def health():
     return {"ok": True, "model": config.GEMINI_MODEL, "gemini_key": bool(config.GEMINI_KEY),
             "gemini_available": llm.available(), "gemini_models": llm.status(),
-            "backend": config.BACKEND_SEARCH_URL or "로컬 예시 응답",
+            "backend": config.BACKEND_SEARCH_URL or ("추천 엔진(실거래 DB)" if recommender.configured() else "로컬 예시 응답"),
             "session_cache_dir": str(session_cache.CACHE_DIR), "sessions": session_cache.count()}
 
 
 @app.on_event("startup")
-def _purge():
+def _startup():
     session_cache.purge_expired()
+    recommender.warm()  # 추천 엔진 DB 연결을 미리 열어 첫 요청이 느리지 않게
 
 
 @app.get("/", response_class=HTMLResponse)

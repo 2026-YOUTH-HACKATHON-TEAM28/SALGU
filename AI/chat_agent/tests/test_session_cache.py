@@ -10,7 +10,7 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from salgu_chat import config, dialog, llm, session_cache  # noqa: E402
+from salgu_chat import config, dialog, llm, recommender, session_cache  # noqa: E402
 
 
 class SessionCacheTest(unittest.TestCase):
@@ -21,6 +21,9 @@ class SessionCacheTest(unittest.TestCase):
             p = mock.patch.object(target, value[0], value[1])
             p.start()
             self.addCleanup(p.stop)
+        p = mock.patch.object(recommender, "configured", return_value=False)  # .env에 DB가 있어도 네트워크 없이
+        p.start()
+        self.addCleanup(p.stop)
         p = mock.patch.object(llm, "generate_json", side_effect=llm.LLMError("시험: Gemini 없음"))
         p.start()
         self.addCleanup(p.stop)
