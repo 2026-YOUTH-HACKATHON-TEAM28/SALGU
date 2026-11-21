@@ -1,8 +1,8 @@
 import { html, nothing, type TemplateResult } from 'lit-html';
 import type { Call, CallPrep, Card } from '../../../shared/types.js';
 import { callLabel, isCallActive } from '../../../shared/labels.js';
-import { dateTime, depRent, hm } from '../../../shared/format.js';
-import { act, state, toast, update } from '../../store.js';
+import { dateTime, depRent, formatPhone, hm } from '../../../shared/format.js';
+import { act, askPhone, state, toast, update } from '../../store.js';
 import { badge, copyText } from '../common.js';
 import { dongName, typeName } from './listing.js';
 
@@ -37,14 +37,6 @@ function seg<T extends string | boolean>(
       )}
     </div>
   </fieldset>`;
-}
-
-/** 휴대폰 번호 입력 중 자동으로 하이픈 */
-function formatPhone(raw: string): string {
-  const d = raw.replace(/\D/g, '').slice(0, 11);
-  if (d.length < 4) return d;
-  if (d.length < 8) return `${d.slice(0, 3)}-${d.slice(3)}`;
-  return `${d.slice(0, 3)}-${d.slice(3, d.length - 4)}-${d.slice(-4)}`;
 }
 
 /** 중개사무소에 걸기 전에 내 번호로 먼저 받아 보기 */
@@ -240,22 +232,19 @@ export function callPrepCard(card: Extract<Card, { kind: 'callPrep' }>): Templat
     ${
       inBusinessHours()
         ? nothing
-        : html`<p class="hours">
-            지금은 영업시간(월~토 9~19시)이 아니에요. 실서비스에서는 다음 영업 시작에 걸도록 예약해요. 지금은
-            시험 서버라 바로 진행해요.
-          </p>`
+        : html`<p class="hours">지금은 영업시간(월~토 9~19시)이 아니에요. 전화는 다음 영업 시작에 걸려요.</p>`
     }
     <div class="card-foot">
       <button
         class="btn-primary"
         ?disabled=${!ready || state.pending}
-        @click=${() => act({ type: 'startCalls' })}
+        @click=${startCalls}
         data-testid="start-calls"
       >
         이대로 전화하기
       </button>
       <span class="note"
-        >${ready ? `중개사무소 ${dongs.length * 3}곳에 차례로 걸어요` : '입주 희망일과 계약 기간을 골라 주세요'}</span
+        >${ready ? '적어 주신 본인 번호로 걸어요(실제 중개사무소에는 연락하지 않아요)' : '입주 희망일과 계약 기간을 골라 주세요'}</span
       >
     </div>
   </article>`;
@@ -382,4 +371,14 @@ export function callsCard(_card: Extract<Card, { kind: 'calls' }>): TemplateResu
       걸어요.
     </p>
   </article>`;
+}
+
+/** 이대로 전화하기: 아직 실제 중개사무소에는 연락하지 않아서, 본인 번호를 받아 그 번호로만 걸어요 */
+async function startCalls(): Promise<void> {
+  const phone = await askPhone({
+    title: '본인 휴대폰 번호를 적어 주세요',
+    body: '지금은 실제 중개사무소에 연락하지 않아요. 중개사무소에 물어볼 통화를 이 번호로 대신 걸어요. 중개사 역할로 받아 주세요.',
+    ok: '이 번호로 전화하기',
+  });
+  if (phone) await act({ type: 'startCalls', phone });
 }

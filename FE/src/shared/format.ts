@@ -92,3 +92,11 @@ export function commuteLabel(d: { commute: { minutes: number; transfers: number 
 export function busLabel(d: { bus: { route: string; interval: number; last: string } | null }): string {
   return d.bus ? `${d.bus.route}번 배차 ${d.bus.interval}분 · 막차 ${d.bus.last}` : '버스 정보 없음';
 }
+
+/** 휴대폰 번호 입력 중 자동으로 하이픈 */
+export function formatPhone(raw: string): string {
+  const d = raw.replace(/\D/g, '').slice(0, 11);
+  if (d.length < 4) return d;
+  if (d.length < 8) return `${d.slice(0, 3)}-${d.slice(3)}`;
+  return `${d.slice(0, 3)}-${d.slice(3, d.length - 4)}-${d.slice(-4)}`;
+}

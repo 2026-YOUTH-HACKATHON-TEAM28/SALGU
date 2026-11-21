@@ -21,6 +21,8 @@ export interface ConfirmOptions {
   ok: string;
   cancel?: string;
   danger?: boolean;
+  /** 휴대폰 번호 입력칸을 함께 보여 줘요(확인을 누르면 번호를 돌려줘요) */
+  phone?: boolean;
 }
 
 export interface UiState {
@@ -146,7 +148,16 @@ export function askConfirm(opts: ConfirmOptions): Promise<boolean> {
   });
 }
 
-export function closeConfirm(ok: boolean): void {
+let confirmValue = '';
+
+/** 본인 휴대폰 번호를 화면 안 창으로 받아요. 취소하면 null */
+export async function askPhone(opts: Omit<ConfirmOptions, 'phone'>): Promise<string | null> {
+  const ok = await askConfirm({ ...opts, phone: true });
+  return ok ? confirmValue : null;
+}
+
+export function closeConfirm(ok: boolean, value = ''): void {
+  confirmValue = value;
   const r = confirmResolve;
   confirmResolve = null;
   ui({ confirm: null });

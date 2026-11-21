@@ -5,6 +5,7 @@ import type { Config } from './config.js';
 import { Store, type UserRecord } from './store.js';
 import {
   DialogError,
+  PHONE_OFF,
   advance,
   aiContext,
   applyAgentTurn,
@@ -135,6 +136,21 @@ export async function registerRoutes(app: FastifyInstance, config: Config, store
         d.brokersReal = true;
       }
     }
+  };
+  /* 본인 번호 확인: 휴대폰 번호 형식, 전화 서버 연결(mock 모드는 쓰지 않음), demo 는 등록된 시연 번호만 */
+  const callablePhone = async (raw: unknown): Promise<string> => {
+    const digits = String(raw ?? '').replace(/\D/g, '');
+    if (!/^01[016789]\d{7,8}$/.test(digits))
+      throw new DialogError('invalid_phone', '본인 휴대폰 번호를 010-1234-5678처럼 적어 주세요.');
+    if (!phone.enabled) throw new DialogError('phone_off', PHONE_OFF);
+    const mode = await phoneMode();
+    if (mode !== 'demo' && mode !== 'live') throw new DialogError('phone_off', PHONE_OFF);
+    if (mode === 'demo' && !config.phoneTestNumbers.includes(digits))
+      throw new DialogError(
+        'test_number',
+        '시험 서버에서는 등록된 시연 번호로만 전화가 가요. 등록된 본인 번호를 적어 주세요.',
+      );
+    return digits;
   };
   const sync = async (rec: ChatRecord) => {
     restoreAgentDongs(rec.state.search);
@@ -392,31 +408,25 @@ export async function registerRoutes(app: FastifyInstance, config: Config, store
       const a = req.body;
       try {
         // 전화 에이전트가 있으면 문의·확정 통화는 실제 에이전트로(없으면 시뮬레이션)
-        if (phone.enabled && a.type === 'startCalls') {
+        if (a.type === 'startCalls') {
+          // 이 프로젝트는 아직 실제 중개사무소에 연락하지 않아요. 사용자가 적은 본인 번호로만 걸어요.
+          const digits = await callablePhone(a.phone);
           userSays(rec.state, '이대로 전화하기', new Date());
-          await phoneMode();
           try {
             await startRealCalls(rec.state, rec.internal, phone, {
               now: new Date(),
               useCalls: ctxFor(req.user!).useCalls,
+              userPhone: digits,
             });
           } catch (err) {
             rec.state.messages.pop();
             throw err;
           }
-        } else if (phone.enabled && a.type === 'testCall') {
-          // 내 번호로 먼저 받아 보기: 전화 에이전트로 실제 통화(시험 서버는 등록된 시연 번호만)
-          const digits = String(a.phone ?? '').replace(/\D/g, '');
-          if (!/^01[016789]\d{7,8}$/.test(digits))
-            throw new DialogError('invalid_phone', '휴대폰 번호를 010-1234-5678처럼 적어 주세요.');
+        } else if (a.type === 'testCall') {
+          // 내 번호로 먼저 받아 보기: 전화 에이전트로 실제 통화
           if (rec.state.testCall && !rec.state.testCall.doneAt)
             throw new DialogError('testing', '지금 시험 전화가 진행 중이에요.');
-          await phoneMode();
-          if (phone.lastMode === 'demo' && !config.phoneTestNumbers.includes(digits))
-            throw new DialogError(
-              'test_number',
-              '시험 서버에서는 등록된 시연 번호로만 실제 전화가 가요. 등록된 번호를 적어 주세요.',
-            );
+          const digits = await callablePhone(a.phone);
           if (ctxFor(req.user!).useTestCalls() === 0)
             throw new DialogError('daily_limit', '시험 전화는 하루 3번까지 걸 수 있어요.');
           await startRealTestCall(rec.state, rec.internal, phone, digits, new Date());

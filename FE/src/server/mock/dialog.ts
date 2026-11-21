@@ -27,10 +27,7 @@ import {
   VISIT_SLOTS,
   emptyInternal,
   localIso,
-  planBatch,
-  planConfirmations,
   planRoute,
-  planTestCall,
   slotStart,
   viewCall,
   type SimInternal,
@@ -63,6 +60,8 @@ export class DialogError extends Error {
 
 let seq = 0;
 export const mid = (p: string) => `${p}${Date.now().toString(36)}${(seq++).toString(36)}`;
+
+export const PHONE_OFF = '지금 전화 서버에 연결하지 못했어요. 잠시 후 다시 시도해 주세요.';
 
 export const SRC = {
   market: { label: '추천 엔진 시세(실거래 DB)', kind: 'real' },
@@ -370,61 +369,9 @@ function prepCalls(chat: ChatState, dongIds: string[], now: Date): void {
   );
 }
 
-function startCalls(chat: ChatState, internal: SimInternal, ctx: Ctx): void {
-  const prep = chat.prep;
-  if (!prep) throw new DialogError('no_prep', '전화할 동네를 먼저 골라 주세요.');
-  if (!prep.moveIn || !prep.term)
-    throw new DialogError('prep_required', '입주 희망일과 계약 기간을 골라 주세요.');
-  if (chat.batch && !chat.batch.doneAt) throw new DialogError('calling', '지금 통화가 진행 중이에요.');
-  const brokers = prep.dongIds.flatMap((id) => brokersFor(chat, id));
-  const allowed = ctx.useCalls(brokers.length);
-  if (allowed === 0)
-    throw new DialogError(
-      'daily_limit',
-      '오늘 걸 수 있는 통화(하루 10통)를 다 썼어요. 내일 다시 시도해 주세요.',
-    );
-  const use = brokers.slice(0, allowed);
-  const seed = mid('b');
-  const { calls, plans } = planBatch({
-    brokers: use,
-    prep,
-    values: valuesOf(chat.conditions),
-    startNo: chat.listings.length + 1,
-    now: ctx.now.getTime(),
-    scale: ctx.scale,
-    seed,
-  });
-  chat.batch = { id: seed, startedAt: ctx.now.toISOString(), calls, doneAt: null };
-  chat.brokers = [...chat.brokers.filter((b) => !use.some((u) => u.id === b.id)), ...use];
-  internal.calls = plans;
-  internal.callsAnnounced = false;
-  for (const m of chat.messages) for (const c of m.cards) if (c.kind === 'callPrep') c.done = true;
-  const cut = brokers.length - use.length;
-  say(
-    chat,
-    `중개사무소 ${use.length}곳에 차례로 전화할게요. 통화 첫마디에 AI 비서라고 밝히고, 고르신 정보만 말해요.${
-      cut ? ` 하루 10통 한도 때문에 ${cut}곳은 빼고 걸어요.` : ''
-    }`,
-    { cards: [{ kind: 'calls', id: mid('k') }], sources: [SRC.calls, SRC.brokers] },
-    ctx.now,
-  );
-  chat.live = true;
-}
-
 /* ---------- 미팅 ---------- */
 
-function planVisits(chat: ChatState, internal: SimInternal, listingIds: string[] | null, ctx: Ctx): void {
-  const visits = preparePlan(chat, listingIds, ctx.now);
-  internal.visits = planConfirmations(
-    visits.map((v) => ({ visit: v, listing: chat.listings.find((l) => l.id === v.listingId) as Listing })),
-    ctx.now.getTime(),
-    ctx.scale,
-    mid('s'),
-  );
-  internal.visitsAnnounced = false;
-}
-
-/** 고른 방으로 방문 계획(동선 순서·시각)을 만들고 '요청 중'으로 둬요. 확정 통화는 부르는 쪽(시뮬레이션·전화 에이전트)이 해요.
+/** 고른 방으로 방문 계획(동선 순서·시각)을 만들고 '요청 중'으로 둬요. 확정 통화는 전화 에이전트가 해요.
  *  timeOf 를 주면 방마다 요청할 시각을 바꿀 수 있어요(예: 중개사가 된다고 한 시각). */
 export function preparePlan(
   chat: ChatState,
@@ -745,7 +692,8 @@ export function handleText(chat: ChatState, internal: SimInternal, raw: string, 
       openCondForm(chat, now, '바꿀 조건을 고쳐 주세요. 비워 둔 칸은 상관없는 걸로 볼게요.');
       break;
     case 'plan':
-      planVisits(chat, internal, null, ctx);
+      // 미팅 확정 전화는 전화 서버로만 걸어요(라우트가 처리). 여기까지 오면 아직 통화 결과가 없는 것
+      say(chat, '중개사무소 통화 결과가 있어야 미팅을 잡을 수 있어요. 먼저 [이대로 전화하기]로 물어볼게요.');
       break;
     case 'final':
       showFinal(chat, now);
@@ -999,13 +947,10 @@ export function handleAction(chat: ChatState, internal: SimInternal, action: Act
       break;
     }
     case 'startCalls':
-      userSays(chat, '이대로 전화하기', now);
-      startCalls(chat, internal, ctx);
-      break;
     case 'planVisits':
-      userSays(chat, '고른 방으로 미팅 잡아줘', now);
-      planVisits(chat, internal, action.listingIds ?? null, ctx);
-      break;
+    case 'testCall':
+      // 전화는 전화 서버(AI/phone_agent)로만 걸어요. 흉내 내는 통화는 쓰지 않아요.
+      throw new DialogError('phone_off', PHONE_OFF);
     case 'showFinal':
       userSays(chat, '최종 추천 보여줘', now);
       showFinal(chat, now);
@@ -1013,17 +958,8 @@ export function handleAction(chat: ChatState, internal: SimInternal, action: Act
     case 'widen':
       widen(chat, action.key, action.value, now);
       break;
-    case 'acceptProposal': {
-      const v = chat.visits.find((x) => x.id === action.visitId);
-      if (!v || v.status !== 'proposed' || !v.proposedAt)
-        throw new DialogError('not_found', '제안받은 일정을 찾지 못했어요.');
-      v.at = v.proposedAt;
-      v.status = 'confirmed';
-      v.brokerSaid = `${v.brokerSaid ?? ''} (제안한 시간으로 확정)`.trim();
-      const l = chat.listings.find((x) => x.id === v.listingId);
-      if (l) l.contact = 'confirmed';
-      break;
-    }
+    case 'acceptProposal':
+      throw new DialogError('phone_off', PHONE_OFF);
     case 'toggleListing': {
       if (!chat.listings.some((l) => l.id === action.listingId)) {
         throw new DialogError('not_found', '그 방을 찾지 못했어요.');
@@ -1032,29 +968,6 @@ export function handleAction(chat: ChatState, internal: SimInternal, action: Act
       if (picked.has(action.listingId)) picked.delete(action.listingId);
       else picked.add(action.listingId);
       chat.selectedListingIds = chat.listings.map((l) => l.id).filter((id) => picked.has(id));
-      break;
-    }
-    case 'testCall': {
-      if (!chat.prep) throw new DialogError('no_prep', '전화할 동네를 먼저 골라 주세요.');
-      const digits = String(action.phone ?? '').replace(/\D/g, '');
-      if (!/^01[016789]\d{7,8}$/.test(digits)) {
-        throw new DialogError('invalid_phone', '휴대폰 번호를 010-1234-5678처럼 적어 주세요.');
-      }
-      if (chat.testCall && !chat.testCall.doneAt)
-        throw new DialogError('testing', '지금 시험 전화가 진행 중이에요.');
-      if (ctx.useTestCalls() === 0)
-        throw new DialogError('daily_limit', '시험 전화는 하루 3번까지 걸 수 있어요.');
-      internal.test = planTestCall(chat.prep, valuesOf(chat.conditions), now.getTime(), ctx.scale);
-      // 번호는 가린 값만 남겨요. 실제 전화 서버를 붙이면 번호는 전화 서버로만 보내요.
-      chat.testCall = {
-        id: mid('t'),
-        phone: `${digits.slice(0, 3)}-****-${digits.slice(-4)}`,
-        status: 'queued',
-        lines: [],
-        startedAt: now.toISOString(),
-        doneAt: null,
-      };
-      chat.live = true;
       break;
     }
     case 'cancelVisit': {

@@ -378,7 +378,7 @@ export type Action =
   | { type: 'toggleDong'; dongId: string }
   | { type: 'prepCalls'; dongIds: string[] }
   | { type: 'updatePrep'; patch: Partial<CallPrep> }
-  | { type: 'startCalls' }
+  | { type: 'startCalls'; phone: string }
   | { type: 'toggleListing'; listingId: string }
   | { type: 'planVisits'; listingIds?: string[] }
   | { type: 'testCall'; phone: string }

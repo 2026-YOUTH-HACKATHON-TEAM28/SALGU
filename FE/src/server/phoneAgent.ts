@@ -270,7 +270,7 @@ export async function startRealCalls(
   chat: ChatState,
   internal: SimInternal,
   agent: PhoneAgent,
-  ctx: { now: Date; useCalls: (n: number) => number },
+  ctx: { now: Date; useCalls: (n: number) => number; userPhone: string },
 ): Promise<void> {
   const prep = chat.prep;
   if (!prep) throw new DialogError('no_prep', '전화할 동네를 먼저 골라 주세요.');
@@ -327,7 +327,8 @@ export async function startRealCalls(
           // 시연에서는 같은 사무소 하루 1번 규칙에 막히지 않게 등록번호에 시각을 붙여요.
           reg: agent.uniqueReg ? `${b.regNo}-${stamp}` : b.regNo,
           name: b.name,
-          phone: b.phone,
+          // 아직 실제 중개사무소에는 연락하지 않아요. 사용자가 적은 본인 번호로만 걸어요.
+          phone: ctx.userPhone,
           visit_windows: prep.share.slot ? [window] : [],
         })),
       });
@@ -354,10 +355,8 @@ export async function startRealCalls(
   say(
     chat,
     [
-      `중개사무소 ${used.length}곳에 차례로 전화할게요. 통화 첫마디에 AI 비서라고 밝히고, 고르신 정보만 말해요.`,
-      demo
-        ? '- 시험 서버라 등록해 둔 시연 번호로만 실제 전화가 가요'
-        : '- 전화 서버가 시험 모드라 실제로 전화를 걸지는 않아요',
+      `중개사무소 ${used.length}곳에 물어볼 통화를 적어 주신 번호(${ctx.userPhone.slice(0, 3)}-****-${ctx.userPhone.slice(-4)})로 차례로 걸게요. 통화 첫마디에 AI 비서라고 밝히고, 고르신 정보만 말해요.`,
+      '- 아직 실제 중개사무소에는 연락하지 않아요. 중개사 역할로 받아 주세요',
       ...(failures.length ? [`- 걸지 못한 곳: ${failures.join(', ')}`] : []),
     ].join('\n'),
     {
