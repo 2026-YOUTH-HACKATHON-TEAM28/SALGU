@@ -1,7 +1,7 @@
 import { html, nothing, type TemplateResult } from 'lit-html';
 import type { Call, CallPrep, Card } from '../../../shared/types.js';
 import { callLabel, isCallActive } from '../../../shared/labels.js';
-import { dateTime, depRent, formatPhone, hm } from '../../../shared/format.js';
+import { dateTime, depRent, hm } from '../../../shared/format.js';
 import { act, askPhone, state, toast, update } from '../../store.js';
 import { badge, copyText } from '../common.js';
 import { dongName, typeName } from './listing.js';
@@ -39,93 +39,6 @@ function seg<T extends string | boolean>(
   </fieldset>`;
 }
 
-/** 중개사무소에 걸기 전에 내 번호로 먼저 받아 보기 */
-function testCallBox(): TemplateResult {
-  const t = state.chat?.testCall;
-  const running = Boolean(t && !t.doneAt);
-  const onSubmit = async (e: Event) => {
-    e.preventDefault();
-    const form = e.currentTarget as HTMLFormElement;
-    const input = form.elements.namedItem('phone') as HTMLInputElement;
-    const digits = input.value.replace(/\D/g, '');
-    if (!/^01[016789]\d{7,8}$/.test(digits)) {
-      input.setCustomValidity('휴대폰 번호를 010-1234-5678처럼 적어 주세요.');
-      input.reportValidity();
-      return;
-    }
-    if (await act({ type: 'testCall', phone: digits })) input.value = '';
-  };
-  return html`<section class="test-call" data-testid="test-call">
-    <h4>내 번호로 먼저 받아 보기</h4>
-    <p class="note">
-      중개사무소에 걸기 전에, 같은 대본으로 내 휴대폰에 먼저 걸어서 어떻게 들리는지 확인해요.
-    </p>
-    <form class="test-call-form" @submit=${onSubmit} novalidate>
-      <label class="sr-only" for="test-phone">내 휴대폰 번호</label>
-      <input
-        id="test-phone"
-        name="phone"
-        type="tel"
-        inputmode="numeric"
-        autocomplete="tel"
-        maxlength="13"
-        placeholder="010-1234-5678"
-        ?disabled=${running}
-        @input=${(e: Event) => {
-          const el = e.currentTarget as HTMLInputElement;
-          el.setCustomValidity('');
-          el.value = formatPhone(el.value);
-        }}
-        data-testid="test-phone"
-      />
-      <button
-        class="btn-line"
-        type="submit"
-        ?disabled=${running || state.pending}
-        data-testid="test-call-start"
-      >
-        시험 전화 걸기
-      </button>
-    </form>
-    ${
-      t
-        ? html`<div class="test-call-status">
-            <p>
-              ${badge(callLabel(t.status, t.status === 'done' ? 'listing' : null), {
-                live: isCallActive(t.status),
-                testid: 'test-call-status',
-              })}
-              <span class="muted">${t.phone}</span>
-              ${t.status === 'done' ? html`<span class="note">시험 전화 끝</span>` : nothing}
-            </p>
-            ${
-              t.lines.length
-                ? html`<ol class="lines">
-                    ${t.lines.map(
-                      (l) =>
-                        html`<li class="line-${l.who}">
-                          <span class="who"
-                            >${l.who === 'agent' ? '살구' : l.who === 'broker' ? '나' : '시스템'}</span
-                          >${l.text}
-                        </li>`,
-                    )}
-                  </ol>`
-                : nothing
-            }
-          </div>`
-        : nothing
-    }
-    <p class="foot-note">
-      ${
-        state.session?.phoneMode === 'demo' || state.session?.phoneMode === 'live'
-          ? '실제로 전화가 가요. 시험 서버라 등록해 둔 시연 번호로만 받을 수 있어요.'
-          : '지금은 전화 서버가 시험 모드라 실제로 전화가 가지 않아요.'
-      }
-      번호는 가린 채로만 남기고, 시험 전화는 하루 3번까지예요.
-    </p>
-  </section>`;
-}
-
 /** 통화 안내: 전화 에이전트 모드에 따라 */
 function phoneNote(): string {
   const m = state.session?.phoneMode;
@@ -144,10 +57,13 @@ export function callPrepCard(card: Extract<Card, { kind: 'callPrep' }>): Templat
   const ready = Boolean(prep.moveIn && prep.term);
   const share = prep.share;
   const rent = chat?.conditions.rent?.value;
+  const perDong = Math.max(1, state.session?.brokersPerDong ?? 1);
   return html`<article class="card prep" data-testid="callprep-card">
     <header class="card-title">
       <h3>전화 전 준비</h3>
-      <span class="sub">동네마다 등록 중개사무소 3곳 · 비슷한 방과 보여 줄 수 있는 시간을 물어요</span>
+      <span class="sub"
+        >동네마다 등록 중개사무소 ${perDong}곳 · 비슷한 방과 보여 줄 수 있는 시간을 물어요</span
+      >
     </header>
     <section class="call-targets">
       ${dongs.map(
@@ -155,7 +71,14 @@ export function callPrepCard(card: Extract<Card, { kind: 'callPrep' }>): Templat
           html`<div class="target">
             <strong>${d.name}</strong>
             <ul class="plain">
-              ${d.brokers.map((b) => html`<li>${b.name} <span class="muted">등록 ${b.regNo}</span></li>`)}
+              ${d.brokers.map(
+                (b, i) =>
+                  html`<li class=${i < perDong ? 'to-call' : 'skip'} data-testid="prep-broker">
+                    <span class="b-name">${b.name}</span>
+                    <span class="b-phone">${b.phone}</span>
+                    <span class="muted">등록 ${b.regNo}${i < perDong ? '' : ' · 이번엔 걸지 않아요'}</span>
+                  </li>`,
+              )}
             </ul>
           </div>`,
       )}
@@ -228,7 +151,6 @@ export function callPrepCard(card: Extract<Card, { kind: 'callPrep' }>): Templat
         ${share.slot && prep.visitSlot ? html`<li>보여 주실 수 있는 시간이 언제일까요?</li>` : nothing}
       </ol>
     </details>
-    ${testCallBox()}
     ${
       inBusinessHours()
         ? nothing
@@ -244,7 +166,7 @@ export function callPrepCard(card: Extract<Card, { kind: 'callPrep' }>): Templat
         이대로 전화하기
       </button>
       <span class="note"
-        >${ready ? '적어 주신 본인 번호로 걸어요(실제 중개사무소에는 연락하지 않아요)' : '입주 희망일과 계약 기간을 골라 주세요'}</span
+        >${ready ? '위 번호 대신 적어 주신 본인 번호로 걸어요(실제 중개사무소에는 연락하지 않아요)' : '입주 희망일과 계약 기간을 골라 주세요'}</span
       >
     </div>
   </article>`;

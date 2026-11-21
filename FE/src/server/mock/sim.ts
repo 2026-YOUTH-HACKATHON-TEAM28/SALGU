@@ -45,11 +45,8 @@ export interface SimInternal {
   visits: VisitPlan[];
   callsAnnounced: boolean;
   visitsAnnounced: boolean;
-  test?: TestCallPlan | null;
   /** 실제 전화 에이전트로 건 통화(있으면 시뮬레이션 대신 이 묶음을 따라가요) */
   real?: RealCalls | null;
-  /** 전화 에이전트로 건 '내 번호로 먼저 받아 보기' 통화 */
-  realTest?: { batchId: string; callId: string } | null;
 }
 
 export interface RealCalls {
@@ -338,54 +335,6 @@ export function viewCall(
     },
     listings: done ? plan.listings : [],
     done,
-  };
-}
-
-/* ---------- 내 번호로 시험 전화 ---------- */
-
-export interface TestCallPlan {
-  segments: Segment[];
-  lines: { at: number; line: CallLine }[];
-  doneAt: number;
-}
-
-/** 중개사무소에 걸기 전에 내 번호로 먼저 받아 보는 통화. 대본은 문의 통화와 같아요. */
-export function planTestCall(prep: CallPrep, values: CondValues, now: number, scale: number): TestCallPlan {
-  const d = (sec: number) => (sec * SEC) / scale;
-  const rent = values.rent ?? 55;
-  const t = now + d(6);
-  const lines: TestCallPlan['lines'] = [
-    {
-      at: t,
-      line: {
-        who: 'agent',
-        text: '안녕하세요, 저는 살구의 AI 비서예요. 집을 구하는 분을 대신해 전화드렸어요. 원하지 않으시면 말씀해 주세요.',
-      },
-    },
-    {
-      at: t + d(4),
-      line: {
-        who: 'agent',
-        text: prep.share.condition
-          ? `근처에 월세 ${rent}만 원 이하, 보증금 ${values.deposit.toLocaleString('ko-KR')}만 원 정도 방이 있을까요?${prep.moveIn ? ` 입주는 ${prep.moveIn}이에요.` : ''}`
-          : '근처에 원룸이 있을까요?',
-      },
-    },
-    { at: t + d(8), line: { who: 'agent', text: '보여 주실 수 있는 시간이 언제일까요?' } },
-    {
-      at: t + d(11),
-      line: { who: 'system', text: '시험 전화가 끝났어요. 중개사무소에는 이 대본으로 걸어요.' },
-    },
-  ];
-  return {
-    segments: [
-      { status: 'queued', from: now },
-      { status: 'ringing', from: now + d(1) },
-      { status: 'in_progress', from: t },
-      { status: 'done', from: t + d(11) },
-    ],
-    lines,
-    doneAt: t + d(11),
   };
 }
 

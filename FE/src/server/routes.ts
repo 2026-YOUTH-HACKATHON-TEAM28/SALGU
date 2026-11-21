@@ -24,15 +24,7 @@ import { intentOf } from './mock/nlu.js';
 import { maskPersonal } from '../shared/format.js';
 import { Ai } from './ai.js';
 import { ChatAgent, mapAgentCard, mapRecs } from './chatAgent.js';
-import {
-  PhoneAgent,
-  acceptRealProposal,
-  planRealVisits,
-  startRealCalls,
-  startRealTestCall,
-  syncReal,
-  syncRealTest,
-} from './phoneAgent.js';
+import { PhoneAgent, acceptRealProposal, planRealVisits, startRealCalls, syncReal } from './phoneAgent.js';
 import type { ChatRecord } from './store.js';
 import { BeAuth } from './beAuth.js';
 import { agentSearch, brokersFromAction, condQuestion, locateDongs, restoreAgentDongs } from './dongAgent.js';
@@ -154,12 +146,11 @@ export async function registerRoutes(app: FastifyInstance, config: Config, store
   };
   const sync = async (rec: ChatRecord) => {
     restoreAgentDongs(rec.state.search);
-    if ((!rec.internal.real && !rec.internal.realTest) || !phone.enabled) return;
+    if (!rec.internal.real || !phone.enabled) return;
     const t = Date.now();
     if (t - (lastSync.get(rec.state.id) ?? 0) < 1000) return;
     lastSync.set(rec.state.id, t);
     if (await syncReal(rec.state, rec.internal, phone, new Date())) store.markDirty();
-    if (await syncRealTest(rec.state, rec.internal, phone, new Date())) store.markDirty();
   };
   // 에이전트가 맡는 말: 규칙이 흐름 명령으로 알아듣지 못한 자유로운 말
   const AGENT_INTENTS = new Set(['other', 'question', 'greeting', 'oneByOne']);
@@ -195,7 +186,6 @@ export async function registerRoutes(app: FastifyInstance, config: Config, store
     now: new Date(),
     scale: config.timeScale,
     useCalls: (n) => store.useCalls(user.id, n, new Date().toISOString().slice(0, 10)),
-    useTestCalls: () => store.useTestCall(user.id, new Date().toISOString().slice(0, 10)),
   });
 
   const sendDialogError = (reply: FastifyReply, err: unknown) => {
@@ -228,6 +218,7 @@ export async function registerRoutes(app: FastifyInstance, config: Config, store
       kakaoMapKey: config.kakaoMapKey,
       kakaoTalk: req.user?.kakaoTalk ?? false,
       phoneMode: await phoneMode(),
+      brokersPerDong: config.phoneBrokersPerDong,
       kakaoLogin: be.enabled,
     };
   });
@@ -422,14 +413,6 @@ export async function registerRoutes(app: FastifyInstance, config: Config, store
             rec.state.messages.pop();
             throw err;
           }
-        } else if (a.type === 'testCall') {
-          // 내 번호로 먼저 받아 보기: 전화 에이전트로 실제 통화
-          if (rec.state.testCall && !rec.state.testCall.doneAt)
-            throw new DialogError('testing', '지금 시험 전화가 진행 중이에요.');
-          const digits = await callablePhone(a.phone);
-          if (ctxFor(req.user!).useTestCalls() === 0)
-            throw new DialogError('daily_limit', '시험 전화는 하루 3번까지 걸 수 있어요.');
-          await startRealTestCall(rec.state, rec.internal, phone, digits, new Date());
         } else if (phone.enabled && rec.internal.real && a.type === 'planVisits') {
           userSays(rec.state, '고른 방으로 미팅 잡아줘', new Date());
           try {

@@ -130,30 +130,6 @@ describe('집 찾기 흐름(가짜 에이전트, 통화는 mock)', () => {
     expect(r.body.error).toBe('prep_required');
   });
 
-  it('내 번호로 시험 전화: 번호는 가려서 두고 대본대로 진행', async () => {
-    const bad = await call<{ error: string }>('POST', `/api/chats/${chat.id}/actions`, {
-      type: 'testCall',
-      phone: '123',
-    });
-    expect(bad.status).toBe(409);
-    expect(bad.body.error).toBe('invalid_phone');
-    chat = (
-      await call<ChatState>('POST', `/api/chats/${chat.id}/actions`, {
-        type: 'testCall',
-        phone: '010-1234-5678',
-      })
-    ).body;
-    expect(chat.testCall?.phone).toBe('010-****-5678');
-    expect(JSON.stringify(chat)).not.toContain('1234-5678');
-    for (let i = 0; i < 40 && chat.live; i++) {
-      await sleep(50);
-      chat = (await call<ChatState>('GET', `/api/chats/${chat.id}`)).body;
-    }
-    expect(chat.testCall?.status).toBe('done');
-    expect(chat.testCall?.lines[0]?.text).toContain('AI 비서');
-    expect(JSON.stringify(chat.testCall)).not.toContain('등기');
-  });
-
   it('통화가 끝나면 찾은 방 카드(등기 확인 없이)', async () => {
     await call('POST', `/api/chats/${chat.id}/actions`, {
       type: 'updatePrep',

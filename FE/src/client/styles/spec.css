@@ -683,46 +683,6 @@ button.pin-wrap {
   gap: 2px;
   margin-top: 4px;
 }
-.test-call {
-  border: 1px dashed #f0c3a3;
-  background: #fffaf6;
-  border-radius: 14px;
-  padding: 12px 14px;
-  display: grid;
-  gap: 8px;
-}
-.test-call h4 {
-  color: var(--ink);
-  font-size: 14.5px;
-}
-.test-call-form {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.test-call-form input {
-  flex: 1 1 180px;
-  min-height: 42px;
-  border: 1px solid var(--line);
-  border-radius: 11px;
-  padding: 0 12px;
-  font-size: 15px;
-  background: var(--surface);
-}
-.test-call-form input:focus {
-  border-color: var(--apricot);
-  outline: none;
-}
-.test-call-status {
-  display: grid;
-  gap: 6px;
-  font-size: 14px;
-}
-.test-call-status > p {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
 
 /* 찾은 방 */
 .pick {
@@ -1064,4 +1024,21 @@ body:has(.shell) {
 .confirm-field input:focus-visible {
   outline: 2px solid var(--apricot, #f08a4b);
   outline-offset: 1px;
+}
+
+/* 전화 전 준비: 중개사무소 이름·전화번호 */
+.call-targets .plain li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  align-items: baseline;
+}
+.call-targets .b-name {
+  font-weight: 600;
+}
+.call-targets .b-phone {
+  font-variant-numeric: tabular-nums;
+}
+.call-targets li.skip {
+  opacity: 0.55;
 }

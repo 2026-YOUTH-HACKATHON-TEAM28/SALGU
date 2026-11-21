@@ -38,8 +38,6 @@ export interface Ctx {
   scale: number;
   /** 하루 통화 한도 안에서 쓸 수 있는 통화 수를 돌려줘요 */
   useCalls: (n: number) => number;
-  /** 시험 전화(하루 3번)를 하나 쓸 수 있으면 1 */
-  useTestCalls: () => number;
   /** AI가 말에서 뽑은 조건(규칙이 못 뽑은 칸만 써요) */
   aiValues?: Partial<Record<CondKey, unknown>>;
 }
@@ -90,7 +88,6 @@ export function newChat(now: Date): { state: ChatState; internal: SimInternal } 
       batch: null,
       listings: [],
       selectedListingIds: [],
-      testCall: null,
       visits: [],
       plan: null,
       brokers: [],
@@ -486,20 +483,6 @@ export function advance(chat: ChatState, internal: SimInternal, now: Date): bool
       }
     }
   }
-  if (chat.testCall && !chat.testCall.doneAt && internal.test) {
-    let status = chat.testCall.status;
-    for (const seg of internal.test.segments) if (seg.from <= t) status = seg.status;
-    const lines = internal.test.lines.filter((x) => x.at <= t).map((x) => x.line);
-    if (status !== chat.testCall.status || lines.length !== chat.testCall.lines.length) {
-      chat.testCall = {
-        ...chat.testCall,
-        status,
-        lines,
-        doneAt: status === 'done' ? now.toISOString() : null,
-      };
-      changed = true;
-    }
-  }
   for (const vp of internal.visits) {
     const v = chat.visits.find((x) => x.id === vp.visitId);
     if (!v || v.status !== 'requesting' || vp.resolveAt > t) continue;
@@ -521,9 +504,7 @@ export function advance(chat: ChatState, internal: SimInternal, now: Date): bool
     changed = true;
   }
   const live = Boolean(
-    (chat.batch && !chat.batch.doneAt) ||
-    chat.visits.some((v) => v.status === 'requesting') ||
-    (chat.testCall && !chat.testCall.doneAt),
+    (chat.batch && !chat.batch.doneAt) || chat.visits.some((v) => v.status === 'requesting'),
   );
   if (live !== chat.live) {
     chat.live = live;
@@ -948,7 +929,6 @@ export function handleAction(chat: ChatState, internal: SimInternal, action: Act
     }
     case 'startCalls':
     case 'planVisits':
-    case 'testCall':
       // 전화는 전화 서버(AI/phone_agent)로만 걸어요. 흉내 내는 통화는 쓰지 않아요.
       throw new DialogError('phone_off', PHONE_OFF);
     case 'showFinal':

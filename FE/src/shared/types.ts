@@ -164,16 +164,6 @@ export interface Call {
   smsDraft: string | null;
 }
 
-/** 내 번호로 먼저 받아 보는 시험 전화(번호는 가린 값만 둬요) */
-export interface TestCall {
-  id: string;
-  phone: string;
-  status: CallStatus;
-  lines: CallLine[];
-  startedAt: string;
-  doneAt: string | null;
-}
-
 /** 매물 카드의 연락 상태(모든 화면에서 같은 문구) */
 export type ContactStatus =
   'before' | 'contacting' | 'no_answer' | 'answered' | 'proposed' | 'confirmed' | 'failed';
@@ -321,7 +311,6 @@ export interface ChatState {
   listings: Listing[];
   /** 미팅을 잡으려고 고른 방 */
   selectedListingIds: string[];
-  testCall: TestCall | null;
   visits: Visit[];
   plan: Plan | null;
   /** 브로커 정보(통화한 곳) */
@@ -353,6 +342,8 @@ export interface SessionInfo {
   kakaoTalk: boolean;
   /** 전화: null 시뮬레이션(전화 에이전트 없음), mock 에이전트가 걸지 않음, demo 시연 번호로 실제 발신 */
   phoneMode: 'mock' | 'demo' | 'live' | null;
+  /** 동네마다 실제로 전화할 중개사무소 수(목록 앞에서부터) */
+  brokersPerDong: number;
   /** BE 카카오 로그인을 쓸 수 있는지(아니면 예시 계정) */
   kakaoLogin: boolean;
 }
@@ -381,7 +372,6 @@ export type Action =
   | { type: 'startCalls'; phone: string }
   | { type: 'toggleListing'; listingId: string }
   | { type: 'planVisits'; listingIds?: string[] }
-  | { type: 'testCall'; phone: string }
   | { type: 'showFinal' }
   | { type: 'cancelVisit'; visitId: string }
   | { type: 'requestChange'; visitId: string };
