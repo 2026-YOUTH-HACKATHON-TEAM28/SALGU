@@ -31,7 +31,7 @@
       "value": 10,
       "source": "inferred",
       "evidence": "깨끗하고",
-      "reason": "준공 10년 이내, 건축물대장 사용승인일로 확인"
+      "reason": "준공 10년 이내"
     },
     "deposit_manwon": {
       "value": 1000,
