@@ -32,7 +32,7 @@
 
 ### 아직 정하지 않은 것
 
-- 이 서버를 어디에 띄울지(지금은 `AI/phone_agent/` 안의 서버, 화면과 다른 포트)
+- 서버는 BE 서버 담당 쪽에 별도 프로세스로 띄웁니다(11-21 결정). 실행·환경 변수·주의 사항은 [specs/deploy-be.md](specs/deploy-be.md)
 
 ## 실행
 
@@ -154,6 +154,7 @@ curl localhost:8090/api/visit-confirmations/<batch_id>
 | `contracts/io.md` | 인풋·아웃풋 형식 (v0.3) |
 | `contracts/call_broker.md` | 서버 정의: API, 발신 순서, 결과를 정하는 규칙, 알림, 등기부 수신, 구현 상태 (v0.3) |
 | `specs/api.md` | API 요약: 처음 붙이는 사람용 한 장 |
+| `specs/deploy-be.md` | BE 서버에 띄우기: 설치·실행(`--workers 1`), 환경 변수, 지킬 것 |
 | `specs/db-data.md` | DB 담당용: 요청에 꺼내 줄 데이터, DB에 저장할 테이블 4개와 조회만 할 값, ERD v3과 다른 점, Postgres 초안 |
 | `specs/00-overview.md` ~ `07-mcp-dedupe.md` | 기능별 spec(C1~C7): 규칙, 그대로 가져갈 자료, 완료 조건, 커밋 |
 | `specs/lessons.md`, `specs/prompts.md` | 실제로 겪은 함정 목록, 해커톤 당일 프롬프트 |
