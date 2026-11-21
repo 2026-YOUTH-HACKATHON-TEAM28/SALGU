@@ -27,7 +27,14 @@ import { ChatAgent, mapAgentCard, mapRecs } from './chatAgent.js';
 import { PhoneAgent, acceptRealProposal, planRealVisits, startRealCalls, syncReal } from './phoneAgent.js';
 import type { ChatRecord } from './store.js';
 import { BeAuth } from './beAuth.js';
-import { agentSearch, brokersFromAction, condQuestion, locateDongs, restoreAgentDongs } from './dongAgent.js';
+import {
+  agentSearch,
+  brokersFromAction,
+  brokersFromRealtors,
+  condQuestion,
+  locateDongs,
+  restoreAgentDongs,
+} from './dongAgent.js';
 import { KakaoLocal } from './kakaoLocal.js';
 import { KakaoTalk } from './kakaoTalk.js';
 import { randomBytes } from 'node:crypto';
@@ -199,6 +206,15 @@ export async function registerRoutes(app: FastifyInstance, config: Config, store
   const fillBrokers = async (rec: ChatRecord, dongIds: string[]) => {
     for (const d of rec.state.search?.dongs ?? []) {
       if (!dongIds.includes(d.id) || d.source !== 'agent' || d.brokersReal || !d.agentPick) continue;
+      // 1) 추천 엔진 중개사무소 검색(대표 후보 주소 기준 거리순, 중개업소 DB 와 대조해 영업 중인 곳만)
+      const offices = d.agentPick.address ? await agent.realtors(d.agentPick.address, 3) : null;
+      const near = offices ? brokersFromRealtors(offices, d.id) : [];
+      if (near.length) {
+        d.brokers = near;
+        d.brokersReal = true;
+        continue;
+      }
+      // 2) 못 받으면 대화 에이전트 전화 요청 초안(같은 동 중개업소 DB)
       const ask = () => agent.turn(rec.state.id, `${d.agentPick!.index}번 집 문의해 줘`);
       let turn = await ask();
       if (turn?.action?.listing?.address !== d.agentPick.address) {

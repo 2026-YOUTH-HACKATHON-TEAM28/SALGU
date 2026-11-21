@@ -1042,3 +1042,17 @@ body:has(.shell) {
 .call-targets li.skip {
   opacity: 0.55;
 }
+
+/* 동네 카드: 통근 요금·거리·경로 링크, 가까운 정류장 */
+.commute-extra {
+  display: block;
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.commute-extra a {
+  color: var(--apricot-ink, #b4541f);
+  text-decoration: underline;
+}
+.facts .stop {
+  display: block;
+}

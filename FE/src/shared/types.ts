@@ -75,6 +75,13 @@ export interface Commute {
   minutes: number;
   transfers: number;
   route: string[];
+  /** 추천 엔진(카카오 대중교통)이 준 값 */
+  distanceKm?: number | null;
+  fareWon?: number | null;
+  walkMin?: number | null;
+  routeUrl?: string | null;
+  /** 매물 반경 800m 버스정류장(이름, 거리 m, 지나는 노선) */
+  nearbyStops?: { name: string; distanceM: number; routes: string[] }[];
 }
 
 export interface BusInfo {

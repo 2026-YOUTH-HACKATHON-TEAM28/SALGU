@@ -15,6 +15,31 @@ function latestDongsCardId(): string | null {
   return null;
 }
 
+/** 요금·거리·역까지 도보·카카오맵 경로(추천 엔진이 준 값만) */
+function commuteExtra(d: DongResult): TemplateResult | typeof nothing {
+  const c = d.commute;
+  if (!c) return nothing;
+  const bits = [
+    c.walkMin !== null && c.walkMin !== undefined ? `역·정류장까지 도보 ${c.walkMin}분` : '',
+    c.distanceKm ? `${c.distanceKm.toFixed(1)}km` : '',
+    c.fareWon ? `요금 ${c.fareWon.toLocaleString('ko-KR')}원` : '',
+  ].filter(Boolean);
+  if (!bits.length && !c.routeUrl) return nothing;
+  return html`<span class="commute-extra"
+    >${bits.join(' · ')}${
+      c.routeUrl
+        ? html` <a
+            href=${c.routeUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            @click=${(e: Event) => e.stopPropagation()}
+            >카카오맵 경로</a
+          >`
+        : nothing
+    }</span
+  >`;
+}
+
 function commuteText(d: DongResult): string {
   return d.commute?.route.join(', ') ?? '';
 }
@@ -73,6 +98,7 @@ export function dongsCard(card: Extract<Card, { kind: 'dongs' }>): TemplateResul
                   >${d.commute ? `${wpName}까지 ${commuteLabel(d)}` : `${wpName}까지 통근 시간은 계산 전`}</strong
                 >
                 <span>${commuteText(d)}</span>
+                ${commuteExtra(d)}
               </div>
               <ul class="ticks">
                 ${d.bus ? html`<li>버스 ${busLabel(d)}</li>` : nothing}
@@ -124,8 +150,23 @@ export function dongDetailCard(card: Extract<Card, { kind: 'dongDetail' }>): Tem
     <dl class="facts">
       <div>
         <dt>출퇴근</dt>
-        <dd>${commuteLabel(d)}${d.commute ? ` · ${commuteText(d)}` : ''}</dd>
+        <dd>${commuteLabel(d)}${d.commute ? ` · ${commuteText(d)}` : ''} ${commuteExtra(d)}</dd>
       </div>
+      ${
+        d.commute?.nearbyStops?.length
+          ? html`<div>
+              <dt>가까운 버스정류장</dt>
+              <dd>
+                ${d.commute.nearbyStops.map(
+                  (b) =>
+                    html`<span class="stop"
+                      >${b.name} ${b.distanceM}m${b.routes.length ? ` · ${b.routes.join(', ')}` : ''}</span
+                    >`,
+                )}
+              </dd>
+            </div>`
+          : nothing
+      }
       <div>
         <dt>버스</dt>
         <dd>${busLabel(d)}</dd>

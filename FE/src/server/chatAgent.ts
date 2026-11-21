@@ -41,6 +41,20 @@ export interface AgentTurn {
   action?: AgentAction | null;
 }
 
+export interface AgentRealtor {
+  place_id: string;
+  name: string;
+  phone: string | null;
+  address: string;
+  road_address?: string | null;
+  distance_m: number;
+  longitude: number;
+  latitude: number;
+  place_url?: string;
+  registration_no?: string | null;
+  status?: string | null;
+}
+
 export interface AgentAction {
   type: string;
   status: 'needs_approval' | 'no_agencies' | string;
@@ -103,7 +117,8 @@ export interface MappedCard {
 export class ChatAgent {
   constructor(
     private readonly url: string,
-    private readonly timeoutMs = 15000,
+    // 추천 엔진이 카카오 통근 경로까지 계산하면 오래 걸려요(서버 RECOMMEND_TIMEOUT_S 와 맞춰 넉넉히)
+    private readonly timeoutMs = 75000,
   ) {}
 
   get enabled(): boolean {
@@ -131,6 +146,29 @@ export class ChatAgent {
       return null;
     } finally {
       clearTimeout(timer);
+    }
+  }
+
+  /** 확정 매물 주소 주변 공인중개사(추천 엔진 find_nearest_realtors: 카카오 AG2 + 중개업소 DB 대조) */
+  async realtors(address: string, limit = 3): Promise<AgentRealtor[] | null> {
+    if (!this.enabled) return null;
+    try {
+      const res = await fetch(`${this.url.replace(/\/$/, '')}/api/realtors`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ property_address: address, limit }),
+        signal: AbortSignal.timeout(30000),
+      });
+      if (!res.ok) return null;
+      const body = (await res.json()) as { ok: boolean; offices?: AgentRealtor[]; error?: string | null };
+      if (!body.ok) {
+        console.error(`[agent] 중개사무소 검색 실패: ${(body.error ?? '').slice(0, 160)}`);
+        return null;
+      }
+      return body.offices ?? [];
+    } catch (err) {
+      console.error(`[agent] 중개사무소 검색 실패: ${(err as Error).name}`);
+      return null;
     }
   }
 

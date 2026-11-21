@@ -4,7 +4,7 @@
  * 같은 건물·면적대 시세 중앙값(market_median_*)을 그 동네 가격 판단 기준으로 써요.
  * 중개사무소는 전화 준비 때 에이전트 전화 요청 초안에서 받아요(예시 목록은 쓰지 않아요). */
 import type { Broker, ChatState, Deal, DongResult, SearchResult, Workplace } from '../shared/types.js';
-import type { AgentAction, AgentBackend } from './chatAgent.js';
+import type { AgentAction, AgentBackend, AgentRealtor } from './chatAgent.js';
 import { STANDARD, hashString, registerAgentDong, rng } from './mock/data.js';
 import type { KakaoLocal } from './kakaoLocal.js';
 import { convRent, median, valuesOf } from './mock/engine.js';
@@ -51,10 +51,29 @@ export function condQuestion(chat: ChatState, workplaces: Workplace[]): string {
   if (v.houseType !== 'any') parts.push(TYPE_WORD[v.houseType]);
   if (v.builtAfter !== null) parts.push(`${v.builtAfter}년 이후 준공`);
   if (v.maxCommute) parts.push(`출퇴근 ${v.maxCommute}분 이내`);
+  if (v.maxTransfer !== null && v.maxTransfer !== undefined) parts.push(`환승 ${v.maxTransfer}회 이하`);
+  if (v.maxBusInterval) parts.push(`버스 배차 ${v.maxBusInterval}분 이내`);
   return `${parts.join(', ')} 조건으로 살 만한 동네와 실거래 기준 매물을 추천해줘`;
 }
 
+interface Leg {
+  mode?: 'bus' | 'subway' | 'walking';
+  minutes?: number;
+  start_name?: string | null;
+  end_name?: string | null;
+  route_names?: string[];
+  headway_min?: number | null;
+  first_time?: string | null;
+  last_time?: string | null;
+}
+
 interface Cand {
+  commute_distance_km?: number | null;
+  transit_fare_won?: number | null;
+  route_url?: string | null;
+  walk_to_station_min?: number | null;
+  transit_legs?: Leg[];
+  nearby_bus_stops?: { name?: string; distance_m?: number; route_names?: string[] }[];
   name?: string;
   address?: string;
   housing_type?: string;
@@ -132,7 +151,10 @@ export function agentSearch(
       );
     const priceRef = refs.length ? { conv: Math.round(median(refs)), n: refs.length } : null;
     const sorted = [...convs].sort((a, b) => a - b);
-    const commuteCand = g.cands.find((c) => num(c.commute_minutes) !== null);
+    // 통근: 동네 안 후보 중 가장 짧은 실제 경로(카카오 대중교통 + 교통 공공데이터)
+    const commuteCand = g.cands
+      .filter((c) => num(c.commute_minutes) !== null)
+      .sort((a, b) => (a.commute_minutes ?? 0) - (b.commute_minutes ?? 0))[0];
     const refDeals: Deal[] = g.cands.map((c, i) => ({
       id: `${id}-${i}`,
       dongId: id,
@@ -172,10 +194,8 @@ export function agentSearch(
       dealCount: g.cands.reduce((n, c) => n + (num(c.transaction_count) ?? 1), 0),
       rentRange: sorted.length ? [Math.round(sorted[0]!), Math.round(sorted[sorted.length - 1]!)] : [0, 0],
       median: priceRef?.conv ?? Math.round(convs.length ? median(convs) : 0),
-      commute: commuteCand
-        ? { minutes: commuteCand.commute_minutes!, transfers: num(commuteCand.transfers) ?? 0, route: [] }
-        : null,
-      bus: null,
+      commute: commuteCand ? toCommute(commuteCand) : null,
+      bus: commuteCand ? toBus(commuteCand) : null,
       brokers,
       buildings: [...new Set(g.cands.map((c) => c.name ?? ''))].filter(Boolean).slice(0, 4),
       source: 'agent',
@@ -268,4 +288,59 @@ export async function locateDongs(search: SearchResult, kakao: KakaoLocal): Prom
     }),
   );
   restoreAgentDongs(search);
+}
+
+/** 경로 구간 -> 화면 문구('2호선 신촌→강남 25분', '도보 4분') */
+function legText(l: Leg): string {
+  const m = l.minutes ? ` ${l.minutes}분` : '';
+  if (l.mode === 'walking') return `도보${m}`;
+  const names = (l.route_names ?? []).slice(0, 2).join('·');
+  const way = l.start_name && l.end_name ? ` ${l.start_name}→${l.end_name}` : '';
+  return `${l.mode === 'bus' ? `버스 ${names}` : names || '지하철'}${way}${m}`.trim();
+}
+
+function toCommute(c: Cand): DongResult['commute'] {
+  return {
+    minutes: c.commute_minutes ?? 0,
+    transfers: c.transfers ?? 0,
+    route: (c.transit_legs ?? []).filter((l) => l.mode !== 'walking' || (l.minutes ?? 0) >= 3).map(legText),
+    distanceKm: num(c.commute_distance_km),
+    fareWon: num(c.transit_fare_won),
+    walkMin: num(c.walk_to_station_min),
+    routeUrl: c.route_url ?? null,
+    nearbyStops: (c.nearby_bus_stops ?? []).slice(0, 3).map((b) => ({
+      name: b.name ?? '',
+      distanceM: b.distance_m ?? 0,
+      routes: (b.route_names ?? []).slice(0, 6),
+    })),
+  };
+}
+
+/** 경로의 첫 버스 구간(배차·막차는 서울시 버스 DB). 버스가 없으면 첫 지하철 구간 */
+function toBus(c: Cand): DongResult['bus'] {
+  const legs = c.transit_legs ?? [];
+  const l =
+    legs.find((x) => x.mode === 'bus' && x.headway_min) ??
+    legs.find((x) => x.mode === 'subway' && x.headway_min);
+  if (!l?.headway_min) return null;
+  return {
+    route: (l.route_names ?? []).slice(0, 2).join('·') || (l.mode === 'bus' ? '버스' : '지하철'),
+    interval: Math.round(l.headway_min),
+    last: l.last_time ? l.last_time.slice(0, 5) : '-',
+  };
+}
+
+/** 추천 엔진 중개사무소 검색 결과 -> 전화할 사무소(전화번호가 있는 곳만) */
+export function brokersFromRealtors(list: AgentRealtor[], dongId: string): Broker[] {
+  return list
+    .filter((o) => o.name && o.phone)
+    .map((o, i) => ({
+      id: `${dongId}-k${i + 1}`,
+      dongId,
+      name: o.name,
+      regNo: o.registration_no ?? o.place_id,
+      phone: o.phone!,
+      lat: o.latitude,
+      lng: o.longitude,
+    }));
 }

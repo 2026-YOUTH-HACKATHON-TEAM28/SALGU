@@ -65,6 +65,10 @@ if [ -s "$IN/secrets/chat.env" ]; then
   while IFS='=' read -r k v; do [ -n "$k" ] && put_env "$ENVF" "$k" "$v"; done < "$IN/secrets/chat.env"
 fi
 grep -q '^SESSION_CACHE_DIR=' "$ENVF" || put_env "$ENVF" SESSION_CACHE_DIR "$B/data/sessions"
+# 공용 Supabase 세션 모드(5432)는 팀 전체 15개 연결 한도가 있어 트랜잭션 모드(6543)로 붙어요(chat_agent 지원).
+# 추천 엔진이 카카오 통근 경로까지 계산하면 20초를 넘길 수 있어 넉넉히 둬요.
+put_env "$ENVF" SALGU_DB_PORT 6543
+put_env "$ENVF" RECOMMEND_TIMEOUT_S 60
 venv312 "$B" -r "$D/chat_agent/requirements.txt" "'httpx>=0.27'"  # 추천 엔진(카카오 통근)이 쓰는데 requirements 에 아직 없음
 ln -sfn "$ENVF" "$D/chat_agent/.env"
 ln -sfn "$D" "$B/current"
