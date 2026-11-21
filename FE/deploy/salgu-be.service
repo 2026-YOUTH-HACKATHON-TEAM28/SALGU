@@ -1,0 +1,31 @@
+# 살구 BE(Spring Boot, 팀 저장소 BE/). remote-stack.sh 가 __HOME__·__USER__·__JAVA__ 를 바꿔 둬요.
+# 127.0.0.1:8081 에서만 열려요. 화면 서버(salgu-fe)가 카카오 로그인 경로와 /api/me 를 이쪽으로 넘겨요.
+# 비밀 설정(DB, 카카오 키)은 __HOME__/salgu-be/config/application.yml(권한 600)에 있고, 작업 폴더 기준으로 읽혀요.
+[Unit]
+Description=Salgu BE (Spring Boot)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=__HOME__/salgu-be
+Environment=SERVER_PORT=8081
+Environment=SERVER_ADDRESS=127.0.0.1
+Environment=APP_FRONTENDURL=__SITE__
+ExecStart=__JAVA__ -Xms128m -Xmx512m -jar __HOME__/salgu-be/current/app.jar
+SuccessExitStatus=143
+Restart=on-failure
+RestartSec=5
+User=__USER__
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=__HOME__/salgu-be
+ProtectControlGroups=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

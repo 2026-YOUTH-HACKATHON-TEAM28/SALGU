@@ -1,0 +1,19 @@
+# 살구 파이썬 에이전트(AI/chat_agent, AI/phone_agent)를 python:3.12-slim 도커로 띄우는 틀.
+# remote-stack.sh 가 __NAME__ 등 자리를 바꿔 /etc/systemd/system/<이름>.service 로 둬요.
+# 서버 기본 파이썬(3.10)이 에이전트 요구(3.11 이상)보다 낮아서 도커를 써요.
+# --network host 로 띄우되 에이전트는 127.0.0.1 에서만 열려요(밖에서는 화면 서버를 거쳐서만).
+[Unit]
+Description=Salgu __NAME__ (python 3.12 docker)
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+ExecStartPre=-/usr/bin/docker rm -f __NAME__
+ExecStart=/usr/bin/docker run --rm --name __NAME__ --network host --user __UID__:__GID__ -e HOME=/tmp __ENV__ -v __BASE__:__BASE__ -w __WORKDIR__ python:3.12-slim __CMD__
+ExecStop=/usr/bin/docker stop -t 10 __NAME__
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

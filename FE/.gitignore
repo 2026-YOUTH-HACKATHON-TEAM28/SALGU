@@ -16,3 +16,4 @@ test-results/
 *.tgz
 agent-upload-*/
 fe-upload-*/
+stack-upload-*/
