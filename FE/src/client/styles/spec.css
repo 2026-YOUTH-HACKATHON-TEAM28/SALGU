@@ -837,3 +837,49 @@ button.pin-wrap {
   background: #efeafd;
   color: #6b4bd1;
 }
+
+/* 스크롤바: 얇고 둥글게, 살구색 손잡이(움직일 때만 진하게) */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #e9c9b3 transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: #ecd3c1;
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--apricot);
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+.log {
+  scrollbar-color: transparent transparent;
+  transition: scrollbar-color 0.2s;
+}
+.log:hover,
+.log:focus-within {
+  scrollbar-color: #e9c9b3 transparent;
+}
+.log::-webkit-scrollbar-thumb {
+  background: transparent;
+  background-clip: padding-box;
+}
+.log:hover::-webkit-scrollbar-thumb {
+  background: #ecd3c1;
+  background-clip: padding-box;
+}
+.log:hover::-webkit-scrollbar-thumb:hover {
+  background: var(--apricot);
+  background-clip: padding-box;
+}
