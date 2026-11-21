@@ -559,3 +559,31 @@ def test_no_slot_when_broker_refuses_or_names_another_time():
     for answer in ("그날은 좀 어려워요.", "네, 근데 4시가 좋아요.", "글쎄요."):
         segments = seg(("a", "AI 비서 살구입니다. 11월 23일 월요일 오후 2시에 볼 수 있을까요?"), ("b", answer))
         assert decide(request(), raw(available=True), segments)["broker_slots"] == [], answer
+
+
+# ---------------------------------------------------------------- 11-21 녹음 없는 최종 확인 통화(실시간 전사)
+def test_real_call_1121_final_unit_in_hangul_and_pickup_labeled_as_agent():
+    segments = [
+        {"speaker": "ai", "text": "네, 한빛입니다."},   # 실제로는 받는 쪽 말인데 agent로 붙어 옴
+        {"speaker": "ai", "text": "안녕하세요, 한빛공인중개사이죠? 아까 방 문의드렸던 AI 비서 살구입니다. 잠시 괜찮으실까요?"},
+        {"speaker": "broker", "text": "네, 괜찮습니다"},
+        {"speaker": "ai", "text": "혹시 아까 말씀하신 3층 방 아직 있나요?"},
+        {"speaker": "ai", "text": "호수가 몇 호예요?"},
+        {"speaker": "broker", "text": "네, 네, 있어요. 삼백일호고, 있어요, 아직 안 나왔습니다"},
+        {"speaker": "ai", "text": "네, 그럼 11월 23일 월요일 오후 2시에 한빛공인중개사 사무소에서 뵐 수 있을까요?"},
+        {"speaker": "broker", "text": "네, 네. 괜찮죠"},
+    ]
+    at_1123 = "2026-11-23T14:00:00+09:00"
+    room = TargetRoom(listing=ListingRef(location="해든빌라 3층", floor="3층"), at=at_1123)
+    result = decide(confirm_request(rooms=[room]), confirm_raw({
+        "index": 0, "still_available": True, "unit": "301호",
+        "agreed_visit": {"at": at_1123, "place": "한빛공인중개사 사무소"},
+        "evidence": {"still_available": 5, "unit": 5, "visit.at": 7}}), segments)
+    assert result["outcome"] == "confirmed" and result["unit"] == "301호"
+    assert result["unverified"] == [] and result["warnings"] == []
+
+
+def test_hangul_unit_and_floor_numbers():
+    from phone_agent.extract import text_in_line
+    assert text_in_line("unit", "301호", "삼백일호고 있어요") and text_in_line("unit", "302호", "302호예요")
+    assert text_in_line("floor", "12층", "십이층이에요") and not text_in_line("unit", "301호", "삼백이호예요")
