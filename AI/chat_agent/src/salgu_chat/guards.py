@@ -17,7 +17,10 @@ from . import rules
 MAX_LEN = 500
 
 # ---- 고정 안내 문구 ----
-GUIDE = "살구는 서울에서 살 집을 찾아 드려요. 예: '홍대 근처 1000/50 오피스텔', '회사 강남역, 전세 1억 5천'"
+ASK_MIN = "어느 동네에서 살고 싶으세요? 보증금이랑 월세도 대략 알려 주시면 바로 찾아볼게요. (예: 신촌, 1000/50)"
+GUIDE = "저는 서울에서 살 집 찾기를 도와 드려요. " + ASK_MIN
+GREETING = "안녕하세요! 살구예요. 서울에서 살 집을 같이 찾아 드릴게요. " + ASK_MIN
+THANKS = "천만에요! 더 원하는 조건이 있으면 편하게 말해 주세요."
 QUESTION_GUIDE = ("용어나 제도 설명은 아직 도와 드리지 못해요. 원하는 집을 편하게 말해 주시면 바로 찾아 드릴게요. "
                   "예: '신촌 쪽 깨끗한 원룸, 월세 50 이하'")
 BLOCKED = "그 요청은 도와 드릴 수 없어요. " + GUIDE
@@ -37,6 +40,8 @@ _HOUSING = re.compile(
     r"집|방|월세|전세|반전세|보증금|오피스텔|빌라|연립|다세대|원룸|투룸|쓰리룸|자취|이사|매물|부동산|중개|계약|"
     r"확정일자|전입|등기|관리비|역세권|역|동네|통근|출퇴근|출근|회사|직장|학교|평|층|반지하|살\s*곳|살고|구해|찾아|"
     r"전월세|임대|세입자|집주인|입주|신축|구축|ㅂㅈㄱ|ㅇㅅ|ㅈㅅ|ㅇㅍㅅㅌ|ㅂㄹ")
+_GREETING = re.compile(r"\s*(?:안녕(?:하세요|하십니까)?|하이|ㅎㅇ|헬로|hello|hi|반가워요?|반갑습니다|처음이에요|저기요?|살구야?)\s*[!.~?ㅎㅋ^]*\s*", re.I)
+_THANKS = re.compile(r"\s*(?:고마워요?|감사(?:합니다|해요)?|땡큐|thanks?|thank\s*you|ㄱㅅ|ㄳ)\s*[!.~ㅎㅋ^]*\s*", re.I)
 # 이전 카드가 있을 때 고치는 말 (예: "더 싼 데는?", "홍대는 좀?")
 _FOLLOW_UP = re.compile(r"더|말고|빼고|대신|별로|좀|싫|좋아|괜찮|바꿔|추가|넓|좁|싼|비싸|가까|멀|상관없|아니|그럼|그거|거기")
 
@@ -49,7 +54,7 @@ def mask_pii(text):
 
 
 def check_input(text, has_prev=False):
-    """앞단 확인 → (통과 여부, 사유, 안내 문구). 사유: empty, too_long, injection, off_topic."""
+    """앞단 확인 → (통과 여부, 사유, 안내 문구). 사유: empty, too_long, injection, greeting, thanks, off_topic."""
     t = text.strip()
     if not t:
         return False, "empty", EMPTY
@@ -57,11 +62,15 @@ def check_input(text, has_prev=False):
         return False, "too_long", TOO_LONG
     if _INJECTION.search(t):
         return False, "injection", BLOCKED
+    if _GREETING.fullmatch(t):
+        return False, "greeting", GREETING
+    if _THANKS.fullmatch(t):
+        return False, "thanks", THANKS
     card = rules.parse(t)["card"]
     if _HOUSING.search(t) or card["conditions"] or card["unverifiable"]:
         return True, None, None
-    if has_prev and _FOLLOW_UP.search(t):
-        return True, None, None  # 이전 카드를 고치는 말일 수 있으니 Gemini가 판단
+    if has_prev and (_FOLLOW_UP.search(t) or re.search(r"\d|[십백천억]", t)):
+        return True, None, None  # 이전 카드를 고치거나 되물음에 답하는 말("500")일 수 있다
     return False, "off_topic", GUIDE
 
 
