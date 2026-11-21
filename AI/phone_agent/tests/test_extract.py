@@ -527,3 +527,35 @@ def test_real_call_1121_rehearsal_missing_disclosure_is_warned():
 def test_disclosure_in_first_line_has_no_warning():
     assert decide(request(), raw(available=None), CALL_1121)["warnings"] == []   # 첫 줄이 합쳐져도 고지 있음
     assert decide(request(), None, [])["warnings"] == []                          # 안 받음
+
+
+# ---------------------------------------------------------------- 문의 통화: 시각 없이 '네'만 한 가능 시간
+SPEED1 = seg(  # 11-21 리허설(speed1): 중개사가 시각을 말하지 않고 "네, 괜찮습니다"만
+    ("a", "안녕하세요. 집을 구하는 분의 요청으로 전화드린 AI 비서 살구입니다."),
+    ("b", "네, 괜찮습니다."),
+    ("a", "네, 그럼 11월 23일 월요일 오후 2시 이후에 방을 볼 수 있을까요?"),
+    ("b", "네, 괜찮습니다."),
+    ("a", "네, 그럼 손님께 여쭤보고 보러 갈 시간 정해서 다시 연락드릴게요. 감사합니다."),
+)
+
+
+def test_real_call_1121_slot_from_plain_yes_when_llm_gave_none():
+    result = decide(request(), raw([room(building="해든빌라", evidence={})], []), SPEED1)
+    assert result["broker_slots"] == [{"start": "2026-11-23T14:00:00+09:00", "end": None, "in_user_window": True}]
+    assert result["evidence"]["broker_slots[0]"] == 3
+
+
+def test_slot_from_plain_yes_with_llm_slot_and_range_in_question():
+    segments = seg(("a", "AI 비서 살구입니다. 손님이 11월 23일 월요일 오후 2시부터 5시까지 되시는데 그 사이에 보여 주실 수 있나요?"),
+                   ("b", "네, 그럼요."))
+    result = decide(request(), _slot("2026-11-23T14:00:00+09:00", "2026-11-23T17:00:00+09:00", line=1), segments)
+    assert result["broker_slots"][0]["start"] == "2026-11-23T14:00:00+09:00"
+    assert result["broker_slots"][0]["end"] == "2026-11-23T17:00:00+09:00"
+    fallback = decide(request(), raw(available=True), segments)
+    assert fallback["broker_slots"][0]["end"] == "2026-11-23T17:00:00+09:00"
+
+
+def test_no_slot_when_broker_refuses_or_names_another_time():
+    for answer in ("그날은 좀 어려워요.", "네, 근데 4시가 좋아요.", "글쎄요."):
+        segments = seg(("a", "AI 비서 살구입니다. 11월 23일 월요일 오후 2시에 볼 수 있을까요?"), ("b", answer))
+        assert decide(request(), raw(available=True), segments)["broker_slots"] == [], answer

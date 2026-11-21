@@ -686,22 +686,19 @@ def decide_inquiry(request: CallRequest, raw: Optional[dict], lines: list[dict],
     candidate_days = {w.start.astimezone(KST).date() for w in windows} | {w.end.astimezone(KST).date() for w in windows}
     slots = []
     for j, slot in enumerate([s for s in (raw.get("broker_slots") or []) if isinstance(s, dict)][:MAX_SLOTS]):
-        start, n = check.slot_time(slot.get("start"), _line_no(slot.get("evidence")), candidate_days)
+        start, n = _confirm_time(check, slot.get("start"), _line_no(slot.get("evidence")), candidate_days, True)
         if start is None:
             check.unverified.append(f"broker_slots[{j}]")
             continue
-        end = None
-        if slot.get("end"):
-            try:
-                end_dt = datetime.fromisoformat(str(slot["end"]))
-                end_dt = end_dt.replace(tzinfo=KST) if end_dt.tzinfo is None else end_dt.astimezone(KST)
-                if end_dt > start and find_time(end_dt, lines[n]["text"]):
-                    end = end_dt
-            except ValueError:
-                pass
+        end = _slot_end(lines, n, start, _iso_dt(slot.get("end")))
         check.evidence[f"broker_slots[{len(slots)}]"] = n
         slots.append({"start": start.isoformat(), "end": end.isoformat() if end else None,
                       "in_user_window": in_user_window(start, windows)})
+    if not slots:  # LLM이 '구체적 시각 없음'으로 비워도, 시각을 넣어 물은 질문에 '네'만 했으면 그 시각
+        for start, end, n in _accepted_slots(lines, candidate_days, called_at)[:MAX_SLOTS]:
+            check.evidence[f"broker_slots[{len(slots)}]"] = n
+            slots.append({"start": start.isoformat(), "end": end.isoformat() if end else None,
+                          "in_user_window": in_user_window(start, windows)})
 
     top_ev = raw.get("evidence") or {}
     pet = check.plain("pet_allowed", raw.get("pet_allowed") if isinstance(raw.get("pet_allowed"), bool) else None,
@@ -757,6 +754,48 @@ def _fix_transcription(check: "_Checker", request: CallRequest, room: dict, item
     check.evidence[key] = line
     if key in check.unverified:
         check.unverified.remove(key)
+
+
+def _slot_end(lines: list[dict], n: int, start: datetime, end: Optional[datetime]) -> Optional[datetime]:
+    """끝 시각은 말했을 때만: 근거 줄에, 또는 '네'만 한 경우 바로 앞 AI 질문에 그 시각이 있어야 한다."""
+    if end is None or end <= start:
+        return None
+    if find_time(end, lines[n].get("text") or ""):
+        return end
+    if n > 0 and lines[n - 1].get("speaker") == "ai" and not time_mentions(lines[n].get("text") or ""):
+        if find_time(end, lines[n - 1].get("text") or ""):
+            return end
+    return None
+
+
+def _accepted_slots(lines: list[dict], candidate_days: set[date],
+                    called_at: Optional[datetime]) -> list[tuple[datetime, Optional[datetime], int]]:
+    """AI가 날짜·시각을 넣어 물은 질문('11월 23일 월요일 오후 2시부터 5시 사이에 볼 수 있을까요?')에
+    중개사가 거절·다른 시각 없이 '네'만 한 경우 → (시작, 끝, 대답 줄). 11-21 리허설."""
+    found = []
+    for n in range(1, len(lines)):
+        question = lines[n - 1]
+        if question.get("speaker") != "ai" or lines[n].get("speaker") != "broker":
+            continue
+        mentions = time_mentions(question.get("text") or "")
+        if not mentions:
+            continue
+        for day in sorted(candidate_days) or [None]:
+            if day is None:
+                break
+            first = mentions[0]
+            hour = next((h for h in first.hours if 7 <= h <= 21), first.hours[0])
+            start = datetime(day.year, day.month, day.day, hour, first.minute, tzinfo=KST)
+            if _accepted_time(start, lines, n, candidate_days, called_at):
+                end = None
+                if len(mentions) > 1:
+                    last = mentions[1]
+                    end_hour = next((h for h in last.hours if h > hour), last.hours[0])
+                    candidate = datetime(day.year, day.month, day.day, end_hour % 24, last.minute, tzinfo=KST)
+                    end = candidate if candidate > start else None
+                found.append((start, end, n))
+                break
+    return found
 
 
 def _num_or_none(value: Optional[float]):
