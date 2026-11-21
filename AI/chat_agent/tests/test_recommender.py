@@ -78,7 +78,12 @@ class RecommenderTest(unittest.TestCase):
 
     def test_walk_and_headway_limits_without_workplace(self):
         # 엔진은 workplace 없이 역 도보·배차 조건이 오면 ValueError → 빼고 알린다
-        res, repo = self.run_engine("신촌 1000/50 역에서 걸어서 10분 이내 버스 배차 10분 이하")
+        # 두 조건을 카드에 직접 넣는다(문장 해석이 Gemini 유무에 따라 달라지지 않게)
+        card = intake.intake("신촌 1000/50")["card"]
+        card["conditions"]["max_walk_to_station_min"] = {"value": 10, "source": "stated"}
+        card["conditions"]["max_bus_headway_min"] = {"value": 10, "source": "stated"}
+        repo = FakeRepository()
+        res = asyncio.run(recommender.recommend_async(card, repo))
         self.assertIsNone(repo.calls[-1].max_walk_to_station_min)
         self.assertIsNone(repo.calls[-1].max_bus_headway_min)
         self.assertEqual(res["count"], 2)
