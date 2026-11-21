@@ -16,7 +16,7 @@ import html
 import uuid
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel, Field
@@ -119,7 +119,22 @@ def dev_ui():
 
 
 # ---- 카카오톡 알림 시험 (kakao_notify.py) ----
-# 이 서버는 127.0.0.1에서만 열린다. 실서비스에서는 BE가 로그인·토큰 저장·발송을 맡는다.
+# 실서비스에서는 BE가 로그인·토큰 저장·발송을 맡는다. 이 화면은 그 전 시연용이다.
+# 바깥(프록시 Caddy)에서 오는 요청은 /notify/login, /notify/callback과 안내 화면만 쓸 수 있다.
+# 목록·보내기는 서버 안에서 직접 부를 때(프록시 헤더 없음, 127.0.0.1)나 NOTIFY_ADMIN_TOKEN이 맞을 때만.
+
+def _internal(request: Request):
+    token = config.ENV.get("NOTIFY_ADMIN_TOKEN")
+    if token and request.headers.get("x-notify-token") == token:
+        return True
+    proxied = any(h in request.headers for h in ("x-forwarded-for", "x-forwarded-host", "forwarded", "x-real-ip"))
+    return not proxied and (request.client and request.client.host) in ("127.0.0.1", "::1", "testclient")
+
+
+def _require_internal(request: Request):
+    if not _internal(request):
+        raise HTTPException(403, "서버 안에서만 쓸 수 있습니다")
+
 
 class NotifyIn(BaseModel):
     text: str = Field(min_length=1, max_length=1000)
@@ -137,7 +152,10 @@ textarea{{width:100%;box-sizing:border-box;font-size:15px;padding:8px}} li{{marg
 
 
 @app.get("/notify")
-def notify_page():
+def notify_page(request: Request):
+    if not _internal(request):
+        return _page("살구 카톡 알림", "<p>카카오로 로그인하고 <b>카카오톡 메시지 전송</b>에 동의하면, 살구 알림이 "
+                     "내 카톡 '나와의 채팅'으로 와요.</p><p><a class=btn href=/notify/login>카카오로 알림 받기</a></p>")
     if not kakao_notify.rest_key():
         return _page("카톡 알림 시험", "<p class=err>.env에 KAKAO_REST_API_KEY가 없습니다.</p>")
     subs = kakao_notify.subscribers()
@@ -155,10 +173,15 @@ body:JSON.stringify({{text:document.getElementById('t').value}})}});document.get
 
 
 @app.get("/notify/login")
-def notify_login():
+def notify_login(request: Request):
     if not kakao_notify.rest_key():
         raise HTTPException(500, ".env에 KAKAO_REST_API_KEY가 없습니다")
-    return RedirectResponse(kakao_notify.login_url())
+    # 프록시(Caddy) 뒤에서는 원래 주소(https://sample.localhostbar.com)로 돌아오게 전달 헤더를 본다.
+    # 8095는 127.0.0.1에만 열려 있어 바깥에서 이 헤더를 직접 꾸밀 수 없다(항상 Caddy를 거침).
+    h = request.headers
+    proto = (h.get("x-forwarded-proto") or request.url.scheme).split(",")[0].strip()
+    host = (h.get("x-forwarded-host") or h.get("host") or request.url.netloc).split(",")[0].strip()
+    return RedirectResponse(kakao_notify.login_url(f"{proto}://{host}/"))
 
 
 @app.get("/notify/callback")
@@ -167,25 +190,27 @@ def notify_callback(code: str | None = None, state: str | None = None, error: st
     if error:
         return _page("연결 실패", f"<p class=err>{html.escape(error)}: {html.escape(error_description or '')}</p>"
                      "<p>동의 화면에서 취소했거나 콘솔 설정이 빠졌습니다. <a href=/notify>돌아가기</a></p>")
-    if not code or not kakao_notify.check_state(state):
+    uri = kakao_notify.check_state(state)
+    if not code or not uri:
         return _page("연결 실패", "<p class=err>로그인 요청이 만료되었거나 잘못되었습니다.</p><p><a href=/notify>다시 하기</a></p>")
     try:
-        tok = kakao_notify.exchange(code)
+        tok = kakao_notify.exchange(code, uri)
         kakao_id, nick = kakao_notify.me(tok["access_token"])
     except kakao_notify.KakaoError as e:
-        return _page("연결 실패", f"<p class=err>{html.escape(kakao_notify.explain(e))}</p><p><a href=/notify>돌아가기</a></p>")
+        return _page("연결 실패", f"<p class=err>{html.escape(kakao_notify.explain(e, uri))}</p><p><a href=/notify>돌아가기</a></p>")
     if "talk_message" not in (tok.get("scope") or ""):
         return _page("메시지 동의가 필요해요", "<p class=err>'카카오톡 메시지 전송'에 동의하지 않아 알림을 보낼 수 없어요.</p>"
                      "<p><a class=btn href=/notify/login>다시 동의하기</a></p>")
-    kakao_notify.save(kakao_id, nick, tok)
+    kakao_notify.save(kakao_id, nick, tok, site=uri.rsplit("/notify/callback", 1)[0] + "/")
     res = kakao_notify.send(kakao_id, f"[살구] {nick or ''}님, 카톡 알림이 연결됐어요. 전화 결과와 새 매물을 여기로 알려 드릴게요.")
     msg = ("<p class=ok>카톡 '나와의 채팅'에 시험 메시지를 보냈어요. 확인해 보세요.</p>" if res["ok"]
            else f"<p class=err>연결은 됐지만 보내기 실패: {html.escape(res['error'] or '')}</p>")
-    return _page("카톡 알림 연결 완료", f"<p>{html.escape(nick or '')}님 연결됨.</p>{msg}<p><a href=/notify>목록 보기</a></p>")
+    return _page("카톡 알림 연결 완료", f"<p>{html.escape(nick or '')}님 연결됨.</p>{msg}<p><a href=/>살구로 돌아가기</a></p>")
 
 
 @app.post("/notify/send")
-def notify_send(body: NotifyIn):
+def notify_send(body: NotifyIn, request: Request):
+    _require_internal(request)
     if body.kakao_id:
         return {"results": [kakao_notify.send(body.kakao_id, body.text, body.link)]}
     results = kakao_notify.send_all(body.text, body.link)
@@ -193,5 +218,6 @@ def notify_send(body: NotifyIn):
 
 
 @app.get("/notify/subscribers")
-def notify_subscribers():
+def notify_subscribers(request: Request):
+    _require_internal(request)
     return {"subscribers": kakao_notify.subscribers()}

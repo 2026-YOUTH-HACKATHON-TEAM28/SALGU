@@ -7,7 +7,8 @@
 이 모듈은 그 전에 팀이 직접 받아 보는 시험용이다. 토큰은 Git에 올리지 않는 로컬 캐시
 (.cache/notify/subscribers.json)에만 둔다.
 
-.env: KAKAO_REST_API_KEY(살구 앱 REST 키), NOTIFY_REDIRECT_URI(기본 http://localhost:8090/notify/callback),
+.env: KAKAO_REST_API_KEY(살구 앱 REST 키), NOTIFY_REDIRECT_URI(비우면 요청이 들어온 주소 + /notify/callback,
+      예: https://sample.localhostbar.com/notify/callback, 로컬은 http://localhost:8090/notify/callback),
       KAKAO_CLIENT_SECRET(콘솔에서 Client Secret을 켠 경우에만)
 카카오 콘솔: 비즈 앱 + 동의항목 '카카오톡 메시지 전송(talk_message)' + 리다이렉트 URI + Web 도메인 등록
 """
@@ -18,6 +19,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from pathlib import Path
 
 from . import config
 
@@ -27,7 +29,8 @@ ME_URL = "https://kapi.kakao.com/v2/user/me"
 MEMO_URL = "https://kapi.kakao.com/v2/api/talk/memo/default/send"
 SCOPES = "profile_nickname,talk_message"
 TEXT_MAX = 200  # 카카오 텍스트 템플릿 한도. 넘으면 400으로 통째로 실패한다
-STORE = config.ROOT / ".cache" / "notify" / "subscribers.json"
+# 세션 캐시 폴더 옆(서버에서는 배포마다 바뀌지 않는 ~/salgu-chat/data/notify)
+STORE = Path(config.ENV.get("SESSION_CACHE_DIR") or config.ROOT / ".cache" / "sessions").parent / "notify" / "subscribers.json"
 TIMEOUT_S = 10
 
 _lock = threading.Lock()
@@ -46,8 +49,12 @@ def rest_key():
     return config.ENV.get("KAKAO_REST_API_KEY", "")
 
 
-def redirect_uri():
-    return config.ENV.get("NOTIFY_REDIRECT_URI") or f"http://localhost:{config.API_PORT}/notify/callback"
+def redirect_uri(base=None):
+    """카카오가 돌려보낼 주소. base는 요청이 들어온 사이트 주소(예: 'https://sample.localhostbar.com/')."""
+    if config.ENV.get("NOTIFY_REDIRECT_URI"):
+        return config.ENV["NOTIFY_REDIRECT_URI"]
+    base = base or f"http://localhost:{config.API_PORT}/"
+    return base.rstrip("/") + "/notify/callback"
 
 
 def _call(url, data=None, token=None):
@@ -72,29 +79,31 @@ def _client(data):
 
 # ---- 로그인(동의) ----
 
-def login_url():
-    """카카오 동의 화면 주소. talk_message 동의를 받는다."""
+def login_url(base=None):
+    """카카오 동의 화면 주소. talk_message 동의를 받는다. 돌아올 주소는 state와 함께 기억한다."""
+    uri = redirect_uri(base)
     state = secrets.token_urlsafe(16)
     now = time.time()
     with _lock:
         for s, t in list(_states.items()):
-            if now - t > 600:
+            if now - t[0] > 600:
                 _states.pop(s, None)
-        _states[state] = now
-    q = urllib.parse.urlencode({"client_id": rest_key(), "redirect_uri": redirect_uri(), "response_type": "code",
+        _states[state] = (now, uri)
+    q = urllib.parse.urlencode({"client_id": rest_key(), "redirect_uri": uri, "response_type": "code",
                                 "scope": SCOPES, "state": state})
     return f"{AUTH_URL}?{q}"
 
 
 def check_state(state):
+    """→ 로그인 때 쓴 돌아올 주소. 모르는 state거나 10분이 지났으면 None (한 번만 쓴다)."""
     with _lock:
         t = _states.pop(state or "", None)
-    return t is not None and time.time() - t <= 600
+    return t[1] if t and time.time() - t[0] <= 600 else None
 
 
-def exchange(code):
-    """인가 코드 → 토큰 {"access_token", "refresh_token", "scope", ...}"""
-    return _call(TOKEN_URL, _client({"grant_type": "authorization_code", "redirect_uri": redirect_uri(),
+def exchange(code, uri=None):
+    """인가 코드 → 토큰 {"access_token", "refresh_token", "scope", ...}. uri는 로그인 때 쓴 돌아올 주소."""
+    return _call(TOKEN_URL, _client({"grant_type": "authorization_code", "redirect_uri": uri or redirect_uri(),
                                      "code": code}))
 
 
@@ -122,11 +131,12 @@ def _write(data):
     tmp.replace(STORE)
 
 
-def save(kakao_id, nickname, token):
+def save(kakao_id, nickname, token, site=None):
+    """site: 그 사람이 연결한 사이트 주소. 메시지 버튼의 기본 링크로 쓴다."""
     with _lock:
         data = _read()
         data[str(kakao_id)] = {"nickname": nickname, "refresh_token": token["refresh_token"],
-                               "scope": token.get("scope", ""), "at": time.strftime("%Y-%m-%d %H:%M")}
+                               "scope": token.get("scope", ""), "site": site, "at": time.strftime("%Y-%m-%d %H:%M")}
         _write(data)
 
 
@@ -168,7 +178,7 @@ def template(text, link=None, button="살구에서 보기"):
     text = text.strip()
     if len(text) > TEXT_MAX:
         text = text[:TEXT_MAX - 1] + "…"
-    url = link or f"http://localhost:{config.API_PORT}/"
+    url = link or config.ENV.get("NOTIFY_LINK_URL") or f"http://localhost:{config.API_PORT}/"
     return {"object_type": "text", "text": text, "link": {"web_url": url, "mobile_web_url": url},
             "button_title": button}
 
@@ -180,9 +190,10 @@ def send_memo(access_token, text, link=None, button="살구에서 보기"):
 
 def send(kakao_id, text, link=None, button="살구에서 보기"):
     """한 사람에게. → {"kakao_id", "nickname", "ok", "error"}"""
-    nick = (_read().get(str(kakao_id)) or {}).get("nickname")
+    rec = _read().get(str(kakao_id)) or {}
+    nick = rec.get("nickname")
     try:
-        send_memo(_access(kakao_id), text, link, button)
+        send_memo(_access(kakao_id), text, link or rec.get("site"), button)
         return {"kakao_id": str(kakao_id), "nickname": nick, "ok": True, "error": None}
     except KakaoError as e:
         return {"kakao_id": str(kakao_id), "nickname": nick, "ok": False, "error": explain(e)}
@@ -194,11 +205,11 @@ def send_all(text, link=None, button="살구에서 보기"):
     return [send(s["kakao_id"], text, link, button) for s in subscribers()]
 
 
-def explain(e):
+def explain(e, uri=None):
     """자주 나오는 카카오 오류 → 고칠 곳."""
     b = e.body or ""
     hints = [
-        ("KOE006", "콘솔 > 카카오 로그인 > 리다이렉트 URI에 " + redirect_uri() + " 등록 필요"),
+        ("KOE006", "카카오 콘솔 리다이렉트 URI에 " + (uri or redirect_uri()) + " 등록 필요"),
         ("KOE010", "Client Secret이 켜져 있음 → .env에 KAKAO_CLIENT_SECRET 필요(또는 콘솔에서 끄기)"),
         ("invalid_client", "Client Secret 또는 REST 키 확인 필요"),
         ("KOE205", "콘솔 > 동의항목에서 '카카오톡 메시지 전송(talk_message)'을 켜야 함"),
