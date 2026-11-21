@@ -6,7 +6,7 @@
 # 비밀값은 로컬 Git 밖 파일에서 읽어 올리고, 서버에서는 권한 600 파일로만 둬요(값은 출력하지 않음).
 #   AI/chat_agent/.env 의 GEMINI_*, SALGU_DB_* 줄 -> ~/salgu-chat/agent.env
 #   AI/phone_agent/.env                         -> ~/salgu-phone/phone.env
-#   BE/src/main/resources/application-secret.yml -> ~/salgu-be/config/application.yml
+#   BE/src/main/resources/application-secret.yml -> ~/salgu-be/config/application.yml (jar 에는 넣지 않음)
 # 일부만 올리려면 PARTS=be 처럼(chat, phone, be 중에서).
 # 전화 에이전트 모드는 PHONE_MODE(기본 mock). demo 로 올리면 시연 번호로 실제 전화가 가요.
 set -euo pipefail
@@ -34,11 +34,29 @@ trap 'rm -rf "$STAGE"' EXIT
 EX=(--exclude=.venv --exclude=.cache --exclude=.env --exclude=__pycache__ --exclude=.pytest_cache --exclude=.data)
 tar "${EX[@]}" -czf "$STAGE/chat.tgz" -C "$AI" chat_agent property_recommendation
 tar "${EX[@]}" -czf "$STAGE/phone.tgz" -C "$AI" phone_agent
-tar --exclude=target --exclude=application-secret.yml -czf "$STAGE/be.tgz" -C "$BE" .
+if [[ " ${PARTS:-chat phone be} " == *" be "* ]]; then
+  # BE 는 로컬 JDK 21 로 jar 를 만들어 올리고 서버는 실행만 해요.
+  # 비밀 설정(application-secret.yml)이 jar 에 들어가지 않게 빌드하는 동안만 잠시 치워 둬요.
+  JDK="${JAVA21_HOME:-$(ls -d "$HOME"/.jdks/*21* 2>/dev/null | head -1)}"
+  [ -x "$JDK/bin/java" ] || { echo "JDK 21 이 필요해요(JAVA21_HOME 또는 ~/.jdks/*21*)"; exit 1; }
+  SECRET="$BE/src/main/resources/application-secret.yml"
+  if [ -f "$SECRET" ]; then
+    cp "$SECRET" "$STAGE/secrets/be.yml"
+    mv "$SECRET" "$SECRET.deploying"
+    trap 'mv -f "$SECRET.deploying" "$SECRET" 2>/dev/null || true; rm -rf "$STAGE"' EXIT
+  fi
+  echo "▶ BE jar 빌드(로컬 JDK 21)"
+  ( cd "$BE" && JAVA_HOME="$(cygpath -w "$JDK")" cmd.exe //c "$(cygpath -w "$PWD")\mvnw.cmd" -q -B -DskipTests clean package )
+  [ -f "$SECRET.deploying" ] && mv -f "$SECRET.deploying" "$SECRET"
+  JAR="$(ls "$BE"/target/*.jar | grep -v plain | head -1)"
+  if "$JDK/bin/jar" tf "$JAR" | grep -q 'application-secret.yml$'; then
+    echo "jar 에 비밀 설정이 들어 있어 올리지 않아요"; exit 1
+  fi
+  cp "$JAR" "$STAGE/app.jar"
+fi
 cp deploy/salgu-py.service deploy/salgu-be.service deploy/remote-stack.sh "$STAGE/"
 grep -E '^(GEMINI_|SALGU_DB_)' "$AI/chat_agent/.env" > "$STAGE/secrets/chat.env" 2>/dev/null || true
 [ -f "$AI/phone_agent/.env" ] && cp "$AI/phone_agent/.env" "$STAGE/secrets/phone.env"
-[ -f "$BE/src/main/resources/application-secret.yml" ] && cp "$BE/src/main/resources/application-secret.yml" "$STAGE/secrets/be.yml"
 ls "$STAGE/secrets" | sed 's/^/  비밀 파일: /'
 
 echo "▶ 올리기(연결 1)"

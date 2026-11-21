@@ -100,25 +100,17 @@ wait_http http://127.0.0.1:8090/api/health && echo "   $(curl -fsS http://127.0.
 fi
 
 if has be; then
-echo "▶ BE(Spring Boot, Java 21 빌드)"
+echo "▶ BE(Spring Boot, 로컬에서 만든 jar 실행)"
 B="$HOME/salgu-be"
-SRC="$B/build/$REL"
-mkdir -p "$SRC" "$B/config" "$B/releases/$REL"
+mkdir -p "$B/config" "$B/releases/$REL"
 chmod 700 "$B/config"
-tar -xzf "$IN/be.tgz" -C "$SRC"
+[ -f "$IN/app.jar" ] || { echo "  올린 jar 가 없어요"; exit 1; }
+cp "$IN/app.jar" "$B/releases/$REL/app.jar"
 if [ -s "$IN/secrets/be.yml" ]; then
   cp "$IN/secrets/be.yml" "$B/config/application.yml"
 fi
 [ -f "$B/config/application.yml" ] && chmod 600 "$B/config/application.yml" || echo "  BE 비밀 설정이 없어요($B/config/application.yml)"
 JAVA="$(readlink -f "$(command -v java)")"
-sed -i 's/\r$//' "$SRC/mvnw"
-chmod +x "$SRC/mvnw"
-# 서버 java 는 실행 전용(JRE)이라 빌드는 JDK 21 도커 이미지에서 해요. 내려받은 의존성은 ~/.m2 에 남겨요.
-mkdir -p "$HOME/.m2"
-$DOCKER run --rm --user "$UID_:$GID_" -e HOME=/tmp -v "$HOME/.m2:/tmp/.m2" -v "$SRC:$SRC" -w "$SRC" \
-  eclipse-temurin:21-jdk sh ./mvnw -q -B -Dmaven.repo.local=/tmp/.m2/repository -DskipTests package
-JAR="$(ls "$SRC"/target/*.jar | grep -v plain | head -1)"
-cp "$JAR" "$B/releases/$REL/app.jar"
 ln -sfn "$B/releases/$REL" "$B/current"
 sed -e "s#__HOME__#$HOME#g" -e "s#__USER__#$(whoami)#g" -e "s#__JAVA__#$JAVA#g" -e "s#__SITE__#$SITE#g" \
   "$IN/salgu-be.service" | sudo -n tee /etc/systemd/system/salgu-be.service >/dev/null
@@ -140,8 +132,10 @@ if [ -f "$FE_ENV" ]; then
 fi
 
 echo "▶ 정리(최근 3개만 남김, 올린 비밀 파일 삭제)"
-for d in "$HOME/salgu-chat/releases" "$HOME/salgu-phone/releases" "$HOME/salgu-be/releases" "$HOME/salgu-be/build"; do
+for d in "$HOME/salgu-chat/releases" "$HOME/salgu-phone/releases" "$HOME/salgu-be/releases"; do
+  [ -d "$d" ] || continue
   (cd "$d" && ls -1 | sort | head -n -3 | xargs -r rm -rf)
 done
+rm -rf "$HOME/salgu-be/build"
 rm -rf "$IN"
 echo "팀 서비스 배포 끝: $REL"
