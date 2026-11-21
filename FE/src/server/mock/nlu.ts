@@ -77,18 +77,23 @@ export function extractConds(text: string, workplaces: Workplace[]): Extracted {
   else if (/신축|새\s*집|새로\s*지은/.test(t) && !/중요/.test(t)) values.builtAfter = 2018;
   else if (/준공\S*\s*상관\s*없|오래\S*\s*괜찮|연식\S*\s*상관\s*없/.test(t)) values.builtAfter = null;
 
-  if (/(?:출퇴근|통근)\S*\s*(?:이|가)?\s*(?:제일|가장|젤)\s*중요/.test(t)) values.priority = 'commute';
+  if (/(?:출퇴근|통근)\S*\s*(?:이|가)?\s*(?:제일|가장|젤)\s*중요/.test(t)) values.priority = ['commute'];
   else if (/(?:가격|월세|싼\s*게|돈)\S*\s*(?:이|가)?\s*(?:제일|가장|젤)\s*중요/.test(t))
-    values.priority = 'price';
-  else if (/(?:새\s*집|신축)\S*\s*(?:이|가)?\s*(?:제일|가장|젤)\s*중요/.test(t)) values.priority = 'new';
+    values.priority = ['price'];
+  else if (/(?:새\s*집|신축)\S*\s*(?:이|가)?\s*(?:제일|가장|젤)\s*중요/.test(t))
+    values.priority = ['building_age'];
 
-  if (/번화|상권|맛집|먹자/.test(t)) values.commercial = 'lively';
-  else if (/주택가/.test(t)) values.commercial = 'quiet';
-
-  if (/고양이|강아지|반려|애완/.test(t)) values.pet = !/안\s*키|없어요|없음/.test(t);
-  if (/주차/.test(t)) values.parking = !/필요\s*없|안\s*해도/.test(t);
-
-  if (/싼\s*편|저렴한\s*편|하위/.test(t)) values.priceBand = 'low';
+  if (/싼\s*편|저렴한\s*편|시세보다\s*싼|중앙값\s*이하/.test(t)) values.priceBand = 'low';
+  const lease: ('monthly' | 'jeonse' | 'semi_jeonse')[] = [];
+  if (/반전세/.test(t)) lease.push('semi_jeonse');
+  if (/(?<!반)전세/.test(t)) lease.push('jeonse');
+  if (/월세/.test(t) && lease.length) lease.unshift('monthly');
+  if (lease.length) values.leaseTypes = lease;
+  const area = /(\d{2,3})\s*(?:㎡|제곱미터|m2)\s*(?:이상|넘|보다)/.exec(t);
+  if (area?.[1]) values.minArea = Number(area[1]);
+  if (/반지하\S*\s*(?:싫|말고|빼|제외|안)/.test(t)) values.minFloor = 1;
+  const walk = /역\S*\s*(?:까지)?\s*(?:걸어서|도보)\s*(\d{1,2})\s*분/.exec(t);
+  if (walk?.[1]) values.maxWalk = Number(walk[1]);
 
   if (/조용/.test(t)) unknowns.push('조용함');
   if (/채광|햇빛|해\s*잘\s*드/.test(t)) unknowns.push('채광');

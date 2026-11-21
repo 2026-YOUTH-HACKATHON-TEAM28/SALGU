@@ -33,18 +33,7 @@ function condSchema(workplaces: Workplace[]) {
   return {
     type: 'object',
     additionalProperties: false,
-    required: [
-      'workplace',
-      'rent',
-      'deposit',
-      'maxCommute',
-      'maxTransfer',
-      'houseType',
-      'builtAfter',
-      'pet',
-      'parking',
-      'commercial',
-    ],
+    required: ['workplace', 'rent', 'deposit', 'maxCommute', 'maxTransfer', 'houseType', 'builtAfter'],
     properties: {
       workplace: nullable({ type: 'string', enum: workplaces.map((w) => w.id) }),
       rent: nullable({ type: 'integer' }),
@@ -53,9 +42,6 @@ function condSchema(workplaces: Workplace[]) {
       maxTransfer: nullable({ type: 'integer' }),
       houseType: nullable({ type: 'string', enum: ['villa', 'officetel'] }),
       builtAfter: nullable({ type: 'integer' }),
-      pet: nullable({ type: 'boolean' }),
-      parking: nullable({ type: 'boolean' }),
-      commercial: nullable({ type: 'string', enum: ['lively', 'quiet'] }),
     },
   };
 }

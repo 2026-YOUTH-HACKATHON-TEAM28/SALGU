@@ -160,7 +160,10 @@ function fillDefaults(conds: Conditions): void {
 }
 
 function missingRequired(conds: Conditions): CondKey[] {
-  return REQUIRED_CONDS.filter((k) => conds[k] === undefined);
+  // 전세만 고르면 월세는 없어도 돼요(엔진: 월세·반전세일 때만 월세 필수)
+  const lease = conds.leaseTypes?.value ?? ['monthly'];
+  const jeonseOnly = lease.length > 0 && lease.every((l) => l === 'jeonse');
+  return REQUIRED_CONDS.filter((k) => conds[k] === undefined && !(k === 'rent' && jeonseOnly));
 }
 
 function condLabel(key: CondKey): string {
@@ -231,10 +234,12 @@ function runSearch(chat: ChatState, now: Date, exclude: string[] = [], lead?: st
 }
 
 /** 동네 추천 서버에 닿지 못했을 때 */
-export function searchUnavailable(chat: ChatState, now: Date): void {
+export function searchUnavailable(chat: ChatState, now: Date, why: 'down' | 'engine' = 'down'): void {
   say(
     chat,
-    '지금 동네 추천 서버에 연결하지 못했어요. 말씀하신 조건은 그대로 두었으니 잠시 후 [이대로 찾기]를 다시 눌러 주세요.',
+    why === 'engine'
+      ? '추천 엔진이 실거래·통근 계산을 마치지 못했어요(잠깐 붐비거나 오래 걸렸어요). 조건은 그대로 두었으니 잠시 후 [이대로 찾기]를 다시 눌러 주세요.'
+      : '지금 동네 추천 서버에 연결하지 못했어요. 말씀하신 조건은 그대로 두었으니 잠시 후 [이대로 찾기]를 다시 눌러 주세요.',
     { cards: [{ kind: 'cond', id: mid('k') }] },
     now,
   );
@@ -348,7 +353,7 @@ function prepCalls(chat: ChatState, dongIds: string[], now: Date): void {
     dongIds: ids,
     moveIn: null,
     term: null,
-    pet: chat.conditions.pet?.value ?? null,
+    pet: null,
     visitSlot: null,
     share: { condition: true, slot: true, surname: false, contact: false },
   };
@@ -832,16 +837,37 @@ const NUM_RANGE: Partial<Record<CondKey, [number, number]>> = {
   maxTransfer: [0, 3],
   maxBusInterval: [3, 30],
   builtAfter: [1980, 2026],
+  minArea: [10, 200],
+  minFloor: [1, 50],
+  maxWalk: [1, 30],
 };
+
+const PRIORITIES = ['price', 'commute', 'bus_headway', 'building_age', 'area'];
+const LEASES = ['monthly', 'jeonse', 'semi_jeonse'];
+const isList = (v: unknown, allowed?: string[], max = 10) =>
+  Array.isArray(v) &&
+  v.length <= max &&
+  v.every(
+    (x) =>
+      typeof x === 'string' && x.trim().length > 0 && x.length <= 30 && (!allowed || allowed.includes(x)),
+  );
 
 export function validCondValue(key: CondKey, value: unknown): boolean {
   if (key === 'workplace') return typeof value === 'string' && value.trim().length > 0 && value.length <= 40;
-  if (key === 'pet' || key === 'parking') return typeof value === 'boolean';
   if (key === 'houseType') return value === 'any' || value === 'villa' || value === 'officetel';
-  if (key === 'priority') return ['balanced', 'commute', 'price', 'new'].includes(value as string);
-  if (key === 'commercial') return ['any', 'lively', 'quiet'].includes(value as string);
-  if (key === 'priceBand') return ['any', 'low', 'mid'].includes(value as string);
-  if ((key === 'builtAfter' || key === 'maxBusInterval') && value === null) return true;
+  if (key === 'priority') return isList(value, PRIORITIES, 5);
+  if (key === 'leaseTypes') return isList(value, LEASES, 3) && (value as string[]).length > 0;
+  if (key === 'preferredAreas' || key === 'avoidAreas') return isList(value);
+  if (key === 'priceBand') return value === 'any' || value === 'low';
+  if (
+    (key === 'builtAfter' ||
+      key === 'maxBusInterval' ||
+      key === 'minArea' ||
+      key === 'minFloor' ||
+      key === 'maxWalk') &&
+    value === null
+  )
+    return true;
   const range = NUM_RANGE[key];
   return (
     typeof value === 'number' && Number.isFinite(value) && !!range && value >= range[0] && value <= range[1]

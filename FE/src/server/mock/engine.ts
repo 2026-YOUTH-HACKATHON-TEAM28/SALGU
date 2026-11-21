@@ -9,7 +9,6 @@ import type {
   DongResult,
   FilterLoss,
   PriceVerdict,
-  Priority,
   SearchResult,
   Workplace,
 } from '../../shared/types.js';
@@ -35,15 +34,21 @@ export const DEFAULTS: CondValues = {
   maxTransfer: 1,
   maxBusInterval: null,
   priceBand: 'any',
-  priority: 'balanced',
-  commercial: 'any',
-  pet: false,
-  parking: false,
+  priority: [],
+  leaseTypes: ['monthly'],
+  preferredAreas: [],
+  avoidAreas: [],
+  minArea: null,
+  minFloor: null,
+  maxWalk: null,
 };
 
 export function valuesOf(conds: Conditions): CondValues {
   const v = { ...DEFAULTS } as Record<string, unknown>;
   for (const [k, item] of Object.entries(conds)) if (item) v[k] = item.value;
+  // 예전 대화에 남은 값(우선순위 한 개 문자열 등)은 새 모양으로 맞춰요
+  for (const k of ['priority', 'leaseTypes', 'preferredAreas', 'avoidAreas'] as const)
+    if (!Array.isArray(v[k])) v[k] = DEFAULTS[k];
   return v as unknown as CondValues;
 }
 
@@ -94,7 +99,7 @@ export function commuteOf(dong: DongSeed, wp: Workplace): Commute {
 }
 
 const WEIGHTS: Record<
-  Priority,
+  'balanced' | 'commute' | 'price' | 'new',
   { commute: number; price: number; built: number; bus: number; supply: number }
 > = {
   balanced: { commute: 30, price: 30, built: 15, bus: 10, supply: 15 },
@@ -146,10 +151,6 @@ export function searchDongs(
       addLoss('maxBusInterval', all.length);
       continue;
     }
-    if (v.commercial !== 'any' && d.commercial !== 'mixed' && d.commercial !== v.commercial) {
-      addLoss('commercial', all.length);
-      continue;
-    }
     const ok: Deal[] = [];
     for (const deal of all) {
       const miss = dealMatches(deal, v);
@@ -179,10 +180,9 @@ export function searchDongs(
   if (v.priceBand !== 'any' && pool.length) {
     const meds = pool.map((p) => p.median).sort((a, b) => a - b);
     const lo = meds[Math.floor(meds.length * 0.3)] ?? 0;
-    const hi = meds[Math.floor(meds.length * 0.7)] ?? Infinity;
     for (let i = pool.length - 1; i >= 0; i--) {
       const m = (pool[i] as (typeof pool)[number]).median;
-      const keep = v.priceBand === 'low' ? m <= lo : m > lo && m <= hi;
+      const keep = m <= lo;
       if (!keep) {
         addLoss('priceBand', (pool[i] as (typeof pool)[number]).dealCount);
         pool.splice(i, 1);
@@ -190,7 +190,8 @@ export function searchDongs(
     }
   }
 
-  const w = WEIGHTS[v.priority];
+  const top = v.priority[0];
+  const w = WEIGHTS[top === 'commute' || top === 'price' ? top : top === 'building_age' ? 'new' : 'balanced'];
   const maxMed = Math.max(...pool.map((p) => p.median), 1);
   const minMed = Math.min(...pool.map((p) => p.median), 0);
   const scored = pool.map((p) => {

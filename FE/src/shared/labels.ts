@@ -3,7 +3,9 @@ import type {
   CallStatus,
   CondKey,
   ContactStatus,
+  LeaseType,
   PriceVerdict,
+  Priority,
   SourceKind,
   Stage,
   VisitStatus,
@@ -113,11 +115,28 @@ export const COND_META: { key: CondKey; label: string; primary: boolean }[] = [
   { key: 'builtAfter', label: '준공', primary: false },
   { key: 'maxTransfer', label: '환승', primary: false },
   { key: 'maxBusInterval', label: '버스 배차', primary: false },
+  { key: 'leaseTypes', label: '계약 유형', primary: false },
+  { key: 'preferredAreas', label: '살 곳', primary: false },
+  { key: 'avoidAreas', label: '피할 곳', primary: false },
+  { key: 'minArea', label: '최소 면적', primary: false },
+  { key: 'minFloor', label: '최소 층', primary: false },
+  { key: 'maxWalk', label: '역까지 도보', primary: false },
   { key: 'priceBand', label: '가격 구간', primary: false },
   { key: 'priority', label: '우선순위', primary: false },
-  { key: 'commercial', label: '상권', primary: false },
-  { key: 'pet', label: '반려동물', primary: false },
-  { key: 'parking', label: '주차', primary: false },
 ];
+
+export const PRIORITY_LABEL: Record<Priority, string> = {
+  price: '가격',
+  commute: '출퇴근',
+  bus_headway: '버스 배차',
+  building_age: '신축',
+  area: '면적',
+};
+
+export const LEASE_LABEL: Record<LeaseType, string> = {
+  monthly: '월세',
+  jeonse: '전세',
+  semi_jeonse: '반전세',
+};
 
 export const REQUIRED_CONDS: CondKey[] = ['workplace', 'rent'];

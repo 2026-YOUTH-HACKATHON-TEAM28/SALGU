@@ -13,9 +13,12 @@ export interface CondItem<T> {
 }
 
 export type HouseType = 'any' | 'villa' | 'officetel';
-export type Priority = 'balanced' | 'commute' | 'price' | 'new';
-export type Commercial = 'any' | 'lively' | 'quiet';
-export type PriceBand = 'any' | 'low' | 'mid';
+/** 추천 엔진 priorities(여러 개). 비어 있으면 고르게 */
+export type Priority = 'price' | 'commute' | 'bus_headway' | 'building_age' | 'area';
+/** low = 같은 건물·면적대 시세 중앙값 이하(엔진 price_band=median_or_below) */
+export type PriceBand = 'any' | 'low';
+/** 계약 유형(엔진 lease_types) */
+export type LeaseType = 'monthly' | 'jeonse' | 'semi_jeonse';
 
 export interface Conditions {
   workplace?: CondItem<string>;
@@ -27,10 +30,13 @@ export interface Conditions {
   maxTransfer?: CondItem<number>;
   maxBusInterval?: CondItem<number | null>;
   priceBand?: CondItem<PriceBand>;
-  priority?: CondItem<Priority>;
-  commercial?: CondItem<Commercial>;
-  pet?: CondItem<boolean>;
-  parking?: CondItem<boolean>;
+  priority?: CondItem<Priority[]>;
+  leaseTypes?: CondItem<LeaseType[]>;
+  preferredAreas?: CondItem<string[]>;
+  avoidAreas?: CondItem<string[]>;
+  minArea?: CondItem<number | null>;
+  minFloor?: CondItem<number | null>;
+  maxWalk?: CondItem<number | null>;
 }
 
 export type CondKey = keyof Conditions;
@@ -46,10 +52,13 @@ export interface CondValues {
   maxTransfer: number;
   maxBusInterval: number | null;
   priceBand: PriceBand;
-  priority: Priority;
-  commercial: Commercial;
-  pet: boolean;
-  parking: boolean;
+  priority: Priority[];
+  leaseTypes: LeaseType[];
+  preferredAreas: string[];
+  avoidAreas: string[];
+  minArea: number | null;
+  minFloor: number | null;
+  maxWalk: number | null;
 }
 
 export interface Workplace {

@@ -33,6 +33,13 @@ export function condFormView(opts: {
       const v = String(f.get(k) ?? '');
       return v === '' ? null : Number(v);
     };
+    const list = (k: string) =>
+      String(f.get(k) ?? '')
+        .split(/[,，、]/)
+        .map((x) => x.trim())
+        .filter(Boolean)
+        .slice(0, 10);
+    const checked = <T extends string>(k: string) => f.getAll(k).map(String) as T[];
     const values: Partial<CondValues> = {
       workplace: toWorkplace(String(f.get('workplace') ?? '')),
       rent: num('rent') ?? null,
@@ -43,11 +50,15 @@ export function condFormView(opts: {
       builtAfter: nullable('builtAfter'),
       houseType: f.get('houseType') as CondValues['houseType'],
       priceBand: f.get('priceBand') as CondValues['priceBand'],
-      priority: f.get('priority') as CondValues['priority'],
-      commercial: f.get('commercial') as CondValues['commercial'],
-      pet: f.get('pet') === 'on',
-      parking: f.get('parking') === 'on',
+      priority: checked<CondValues['priority'][number]>('priority'),
+      leaseTypes: checked<CondValues['leaseTypes'][number]>('leaseTypes'),
+      preferredAreas: list('preferredAreas'),
+      avoidAreas: list('avoidAreas'),
+      minArea: nullable('minArea'),
+      minFloor: nullable('minFloor'),
+      maxWalk: nullable('maxWalk'),
     };
+    const jeonseOnly = !!values.leaseTypes?.length && values.leaseTypes.every((l) => l === 'jeonse');
     const form = e.currentTarget as HTMLFormElement;
     const err = form.querySelector<HTMLElement>('.form-error');
     if (!values.workplace) {
@@ -55,7 +66,11 @@ export function condFormView(opts: {
       form.querySelector<HTMLInputElement>('input[name=workplace]')?.focus({ preventScroll: true });
       return;
     }
-    if (values.rent === null || values.rent === undefined) {
+    if (!values.leaseTypes?.length) {
+      if (err) err.textContent = '계약 유형을 하나 이상 골라 주세요.';
+      return;
+    }
+    if (!jeonseOnly && (values.rent === null || values.rent === undefined)) {
       if (err) err.textContent = '월세 예산을 적어 주세요.';
       form.querySelector<HTMLInputElement>('input[name=rent]')?.focus({ preventScroll: true });
       return;
@@ -67,8 +82,8 @@ export function condFormView(opts: {
         v === undefined ||
         v === 'any' ||
         (v === null && k !== 'workplace') ||
-        v === false ||
-        (k === 'priority' && v === 'balanced')
+        (Array.isArray(v) && v.length === 0) ||
+        (k === 'leaseTypes' && Array.isArray(v) && v.length === 1 && v[0] === 'monthly')
       ) {
         delete (values as Record<string, unknown>)[k];
       }
@@ -96,7 +111,28 @@ export function condFormView(opts: {
       <datalist id=${`${opts.id}-workplaces`}>
         ${wps.map((w) => html`<option value=${w.name}></option>`)}
       </datalist>
-      <label for=${`${opts.id}-rent`}>월세 상한(만 원) <em>필수</em></label>
+      <span class="label">계약 유형 <em>필수</em></span>
+      <div class="checks">
+        ${(
+          [
+            ['monthly', '월세'],
+            ['jeonse', '전세'],
+            ['semi_jeonse', '반전세'],
+          ] as const
+        ).map(
+          ([v, label]) =>
+            html`<label
+              ><input
+                type="checkbox"
+                name="leaseTypes"
+                value=${v}
+                ?checked=${((val(c, 'leaseTypes') as string[] | undefined) ?? ['monthly']).includes(v)}
+              />
+              ${label}</label
+            >`,
+        )}
+      </div>
+      <label for=${`${opts.id}-rent`}>월세 상한(만 원) <em>전세만이면 비워도 돼요</em></label>
       <input
         name="rent"
         id=${`${opts.id}-rent`}
@@ -155,29 +191,75 @@ export function condFormView(opts: {
         ['10', '10분 이하'],
         ['15', '15분 이하'],
       ])}
+      <label for=${`${opts.id}-maxWalk`}>역까지 도보</label>
+      ${sel('maxWalk', val(c, 'maxWalk') ?? '', [
+        ['', '상관없음'],
+        ['5', '5분 이내'],
+        ['10', '10분 이내'],
+        ['15', '15분 이내'],
+      ])}
+      <label for=${`${opts.id}-preferredAreas`}>살 곳</label>
+      <input
+        name="preferredAreas"
+        id=${`${opts.id}-preferredAreas`}
+        maxlength="120"
+        placeholder="예) 마포구, 서교동 (쉼표로 여러 곳)"
+        .value=${((val(c, 'preferredAreas') as string[] | undefined) ?? []).join(', ')}
+      />
+      <label for=${`${opts.id}-avoidAreas`}>피할 곳</label>
+      <input
+        name="avoidAreas"
+        id=${`${opts.id}-avoidAreas`}
+        maxlength="120"
+        placeholder="예) 신림동 (쉼표로 여러 곳)"
+        .value=${((val(c, 'avoidAreas') as string[] | undefined) ?? []).join(', ')}
+      />
+      <label for=${`${opts.id}-minArea`}>최소 면적(㎡)</label>
+      <input
+        name="minArea"
+        id=${`${opts.id}-minArea`}
+        type="number"
+        inputmode="numeric"
+        min="10"
+        max="200"
+        step="1"
+        .value=${String(val(c, 'minArea') ?? '')}
+        placeholder="상관없음"
+      />
+      <label for=${`${opts.id}-minFloor`}>최소 층</label>
+      ${sel('minFloor', val(c, 'minFloor') ?? '', [
+        ['', '상관없음'],
+        ['1', '1층 이상(반지하 제외)'],
+        ['2', '2층 이상'],
+        ['3', '3층 이상'],
+      ])}
       <label for=${`${opts.id}-priceBand`}>가격 구간</label>
       ${sel('priceBand', val(c, 'priceBand') ?? 'any', [
         ['any', '상관없음'],
-        ['low', '싼 편(하위 30%)'],
-        ['mid', '중간(30~70%)'],
+        ['low', '시세 중앙값 이하'],
       ])}
-      <label for=${`${opts.id}-priority`}>우선순위</label>
-      ${sel('priority', val(c, 'priority') ?? 'balanced', [
-        ['balanced', '고르게'],
-        ['commute', '출퇴근 먼저'],
-        ['price', '가격 먼저'],
-        ['new', '새 집 먼저'],
-      ])}
-      <label for=${`${opts.id}-commercial`}>상권</label>
-      ${sel('commercial', val(c, 'commercial') ?? 'any', [
-        ['any', '상관없음'],
-        ['lively', '번화한 곳'],
-        ['quiet', '조용한 주택가'],
-      ])}
-      <span class="label">그 밖에</span>
+      <span class="label">우선순위</span>
       <div class="checks">
-        <label><input type="checkbox" name="pet" ?checked=${val(c, 'pet') === true} /> 반려동물</label>
-        <label><input type="checkbox" name="parking" ?checked=${val(c, 'parking') === true} /> 주차</label>
+        ${(
+          [
+            ['price', '가격'],
+            ['commute', '출퇴근'],
+            ['bus_headway', '버스 배차'],
+            ['building_age', '신축'],
+            ['area', '면적'],
+          ] as const
+        ).map(
+          ([v, label]) =>
+            html`<label
+              ><input
+                type="checkbox"
+                name="priority"
+                value=${v}
+                ?checked=${((val(c, 'priority') as string[] | undefined) ?? []).includes(v)}
+              />
+              ${label}</label
+            >`,
+        )}
       </div>
     </div>
     <p class="form-error" role="alert"></p>

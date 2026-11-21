@@ -12,8 +12,6 @@ const INLINE: Partial<Record<CondKey, { unit: string; step: number; min: number;
   maxCommute: { unit: '분', step: 5, min: 10, max: 120 },
 };
 
-const PHONE_CHECK: CondKey[] = ['pet', 'parking'];
-
 function latestCondCardId(): string | null {
   const msgs = state.chat?.messages ?? [];
   for (let i = msgs.length - 1; i >= 0; i--) {
@@ -105,7 +103,6 @@ function row(key: CondKey, item: CondItem<unknown> | undefined, editable: boolea
     <span class="cond-k">${meta.label}</span>
     <div class="cond-v">
       ${value}
-      ${PHONE_CHECK.includes(key) && item?.value === true ? html`<span class="note">전화로 확인</span>` : nothing}
       ${
         guess
           ? html`<p class="why">

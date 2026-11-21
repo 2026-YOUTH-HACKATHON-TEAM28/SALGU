@@ -180,7 +180,8 @@ export async function registerRoutes(app: FastifyInstance, config: Config, store
     const result = agentSearch(turn?.backend, p.exclude);
     if (!result) {
       if (turn?.backend?.error) console.error(`[agent] 추천 엔진 오류: ${turn.backend.error.slice(0, 160)}`);
-      searchUnavailable(rec.state, new Date());
+      // 에이전트 응답이 아예 없으면(연결 실패·시간 초과) 'down', 응답은 왔는데 엔진이 실패하면 'engine'
+      searchUnavailable(rec.state, new Date(), turn ? 'engine' : 'down');
       return;
     }
     await locateDongs(result, kakao);

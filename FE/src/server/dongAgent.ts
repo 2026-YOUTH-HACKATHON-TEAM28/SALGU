@@ -39,6 +39,14 @@ const GU_CENTER: Record<string, [number, number]> = {
 };
 
 const TYPE_WORD = { villa: '빌라', officetel: '오피스텔' } as const;
+const LEASE_WORD = { monthly: '월세', jeonse: '전세', semi_jeonse: '반전세' } as const;
+const PRIORITY_WORD = {
+  price: '가격',
+  commute: '출퇴근',
+  bus_headway: '버스 배차',
+  building_age: '신축',
+  area: '면적',
+} as const;
 
 /** 화면 조건 -> 에이전트에 보낼 한 문장 질문 */
 export function condQuestion(chat: ChatState, workplaces: Workplace[]): string {
@@ -47,12 +55,22 @@ export function condQuestion(chat: ChatState, workplaces: Workplace[]): string {
   const parts: string[] = [];
   if (wp) parts.push(`회사는 ${wp.name}`);
   if (v.deposit !== null) parts.push(`보증금 ${v.deposit}만 원`);
-  if (v.rent !== null) parts.push(`월세 ${v.rent}만 원 이하`);
+  if (v.rent !== null && !(v.leaseTypes.length && v.leaseTypes.every((l) => l === 'jeonse')))
+    parts.push(`월세 ${v.rent}만 원 이하`);
   if (v.houseType !== 'any') parts.push(TYPE_WORD[v.houseType]);
   if (v.builtAfter !== null) parts.push(`${v.builtAfter}년 이후 준공`);
   if (v.maxCommute) parts.push(`출퇴근 ${v.maxCommute}분 이내`);
   if (v.maxTransfer !== null && v.maxTransfer !== undefined) parts.push(`환승 ${v.maxTransfer}회 이하`);
   if (v.maxBusInterval) parts.push(`버스 배차 ${v.maxBusInterval}분 이내`);
+  if (v.maxWalk) parts.push(`역까지 걸어서 ${v.maxWalk}분 이내`);
+  const lease = v.leaseTypes.filter((l) => l !== 'monthly' || v.leaseTypes.length > 1);
+  if (lease.length) parts.push(`계약은 ${v.leaseTypes.map((l) => LEASE_WORD[l]).join('·')}`);
+  if (v.preferredAreas.length) parts.push(`살 곳은 ${v.preferredAreas.join(', ')}`);
+  if (v.avoidAreas.length) parts.push(`${v.avoidAreas.join(', ')}은 빼고`);
+  if (v.minArea) parts.push(`전용 ${v.minArea}㎡ 이상`);
+  if (v.minFloor) parts.push(v.minFloor === 1 ? '반지하 말고 1층 이상' : `${v.minFloor}층 이상`);
+  if (v.priceBand === 'low') parts.push('같은 건물 시세 중앙값 이하');
+  if (v.priority.length) parts.push(`${v.priority.map((p) => PRIORITY_WORD[p]).join(', ')}이 제일 중요`);
   return `${parts.join(', ')} 조건으로 살 만한 동네와 실거래 기준 매물을 추천해줘`;
 }
 

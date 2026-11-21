@@ -1,4 +1,5 @@
-import type { CondKey, Conditions, Workplace } from './types.js';
+import { LEASE_LABEL, PRIORITY_LABEL } from './labels.js';
+import type { CondKey, Conditions, LeaseType, Priority, Workplace } from './types.js';
 
 /** 만 원 단위 금액을 읽기 좋게: 500 -> 500만 원, 12000 -> 1억 2,000만 원 */
 export function won(man: number): string {
@@ -54,21 +55,26 @@ export function condValueText(key: CondKey, value: unknown, workplaces: Workplac
     case 'maxBusInterval':
       return value === null ? '상관없음' : `${value}분 이하`;
     case 'priceBand':
-      return value === 'low' ? '싼 편(하위 30%)' : value === 'mid' ? '중간(30~70%)' : '상관없음';
-    case 'priority':
-      return value === 'commute'
-        ? '출퇴근 먼저'
-        : value === 'price'
-          ? '가격 먼저'
-          : value === 'new'
-            ? '새 집 먼저'
-            : '고르게';
-    case 'commercial':
-      return value === 'lively' ? '번화한 곳' : value === 'quiet' ? '조용한 주택가' : '상관없음';
-    case 'pet':
-      return value ? '키움(전화로 확인)' : '안 키움';
-    case 'parking':
-      return value ? '필요(전화로 확인)' : '필요 없음';
+      return value === 'low' ? '시세 중앙값 이하' : '상관없음';
+    case 'priority': {
+      const list = Array.isArray(value) ? (value as Priority[]) : [];
+      return list.length ? `${list.map((p) => PRIORITY_LABEL[p] ?? p).join(' · ')} 먼저` : '고르게';
+    }
+    case 'leaseTypes': {
+      const list = Array.isArray(value) ? (value as LeaseType[]) : [];
+      return list.length ? list.map((l) => LEASE_LABEL[l] ?? l).join(' · ') : '월세';
+    }
+    case 'preferredAreas':
+    case 'avoidAreas': {
+      const list = Array.isArray(value) ? (value as string[]) : [];
+      return list.length ? list.join(', ') : '상관없음';
+    }
+    case 'minArea':
+      return value === null || value === undefined ? '상관없음' : `전용 ${value}㎡ 이상`;
+    case 'minFloor':
+      return value === null || value === undefined ? '상관없음' : `${value}층 이상`;
+    case 'maxWalk':
+      return value === null || value === undefined ? '상관없음' : `걸어서 ${value}분 이내`;
   }
 }
 

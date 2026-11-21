@@ -2,7 +2,15 @@
  * 사용자의 말을 에이전트에 보내 '조건 카드'(contracts/condition_card.md, v0.2)와 답 문장을 받고,
  * 화면이 쓰는 조건(Conditions)으로 바꿔요. 동네 찾기·전화·미팅과 숫자는 이 서버(계산 엔진)가 맡아요.
  * 주소가 없거나 실패하면 null 을 돌려주고, 부르는 쪽은 규칙(+OpenAI)으로 답해요. */
-import type { CondKey, CondSource, HouseType, Priority, RecItem, Workplace } from '../shared/types.js';
+import type {
+  CondKey,
+  CondSource,
+  HouseType,
+  Priority,
+  RecItem,
+  Workplace,
+  LeaseType,
+} from '../shared/types.js';
 import { findWorkplace } from './mock/nlu.js';
 
 export interface AgentCondItem<T = unknown> {
@@ -207,8 +215,6 @@ export function mapAgentCard(card: AgentCard | null, workplaces: Workplace[], no
   const wp = wpLabel ? findWorkplace(wpLabel, workplaces) : null;
   if (wpLabel && c.workplace && wpLabel !== 'place') {
     push('workplace', c.workplace, wp?.id ?? wpLabel.trim().slice(0, 40));
-    const areas = (c.preferred_areas?.value as string[] | undefined) ?? [];
-    if (areas.length) out.notApplied.push(`살 곳(${areas.join(', ')})`);
   } else {
     const areas = (c.preferred_areas?.value as string[] | undefined) ?? [];
     const first = areas[0];
@@ -236,28 +242,24 @@ export function mapAgentCard(card: AgentCard | null, workplaces: Workplace[], no
   }
   if (c.price_band?.value === 'median_or_below') push('priceBand', c.price_band, 'low');
 
-  const pri: Record<string, Priority> = { price: 'price', commute: 'commute', building_age: 'new' };
-  const first = (card.priorities ?? []).map((p) => pri[p]).find(Boolean);
-  if (first) out.conds.push({ key: 'priority', value: first, source: 'said' });
+  const PRI: Priority[] = ['price', 'commute', 'bus_headway', 'building_age', 'area'];
+  const pri = (card.priorities ?? []).filter((p): p is Priority => (PRI as string[]).includes(p));
+  if (pri.length) out.conds.push({ key: 'priority', value: pri, source: 'said' });
 
-  const lease = (c.lease_types?.value as string[] | undefined) ?? [];
-  if (lease.includes('jeonse') || lease.includes('semi_jeonse')) out.notApplied.push('전세·반전세');
-  if ((c.avoid_areas?.value as string[] | undefined)?.length) {
-    out.notApplied.push(`피할 곳(${(c.avoid_areas!.value as string[]).join(', ')})`);
-  }
-  if (c.min_area_m2) out.notApplied.push(`면적 ${c.min_area_m2.value}㎡ 이상`);
-  if (c.min_floor) out.notApplied.push(`${c.min_floor.value}층 이상`);
-  if (c.max_walk_to_station_min) out.notApplied.push(`역까지 걸어서 ${c.max_walk_to_station_min.value}분`);
+  const strs = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
+  const lease = strs(c.lease_types?.value).filter((l): l is LeaseType =>
+    ['monthly', 'jeonse', 'semi_jeonse'].includes(l),
+  );
+  if (lease.length) push('leaseTypes', c.lease_types, lease);
+  const pref = strs(c.preferred_areas?.value);
+  if (pref.length) push('preferredAreas', c.preferred_areas, pref);
+  const avoid = strs(c.avoid_areas?.value);
+  if (avoid.length) push('avoidAreas', c.avoid_areas, avoid);
+  push('minArea', c.min_area_m2, c.min_area_m2?.value);
+  push('minFloor', c.min_floor, c.min_floor?.value);
+  push('maxWalk', c.max_walk_to_station_min, c.max_walk_to_station_min?.value);
 
   out.unverifiable = (card.unverifiable ?? []).map((u) => u.phrase);
-  // 반려동물·주차는 데이터로는 못 보지만 화면에 '전화로 확인' 칸이 있어 그쪽으로 넣어요.
-  for (const phrase of out.unverifiable) {
-    if (/고양이|강아지|반려|애완/.test(phrase) && !/안\s*키|없/.test(phrase)) {
-      out.conds.push({ key: 'pet', value: true, source: 'said' });
-    }
-    if (/주차/.test(phrase) && !/필요\s*없/.test(phrase))
-      out.conds.push({ key: 'parking', value: true, source: 'said' });
-  }
   const q = card.clarifications?.[0];
   if (q) out.ask = { question: q.question, options: q.options.map((o) => ({ label: o, text: o })) };
   return out;
