@@ -3,6 +3,7 @@ from pydantic import ValidationError
 
 from property_recommendation import find_nearest_realtors, recommend_properties
 from property_recommendation.models import (
+    NearbyBusStop,
     PropertyRecommendation,
     QueryInfo,
     RealtorOffice,
@@ -67,6 +68,7 @@ def test_property_and_realtor_search_are_separate_methods() -> None:
     [
         RecommendationInput,
         TransitLeg,
+        NearbyBusStop,
         ScoreBreakdown,
         PropertyRecommendation,
         QueryInfo,
