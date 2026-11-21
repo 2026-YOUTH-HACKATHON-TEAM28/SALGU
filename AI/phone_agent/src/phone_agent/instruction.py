@@ -21,6 +21,7 @@ ROOM_CHECK = "그 방 아직 있죠?"
 UNIT_ASK = "호수가 몇 호예요?"
 INQUIRY_CLOSING = "손님께 여쭤보고 보러 갈 시간 정해서 다시 연락드릴게요. 감사합니다."
 NOT_CONFIRMED = "본인께 확인하고 다시 연락드리겠습니다"
+SPEAK = "말하기: 평소보다 조금 빠르게, 한 번에 한 문장씩 짧게 말할 것. 괄호 안 안내는 소리 내어 말하지 않음"  # 11-21 속도
 MOVE_IN_READ_BACK = "다음 달 초부터요?"  # 전사가 중개사 말을 틀려도 AI 쪽 되읽기로 확인(11-21)
 AFTER_CLOSING = "계약과 가격 이야기는 방문 때 본인이 직접 하실 거예요. 감사합니다."
 
@@ -142,9 +143,10 @@ def _inquiry(request: CallRequest) -> str:
     place = f"{s.dong} {s.ref_building} 또는 그 근처" if s.ref_building else f"{s.dong} 또는 그 근처"
     body = [
         f"전화한 곳: {request.broker.name}",
+        SPEAK,
         f"문의할 곳: {place}",
-        f"찾는 방: {TYPE_LABEL[s.housing_type]}, 보증금 {money(s.deposit_manwon)} / 월세 {money(s.monthly_rent_manwon)} 정도 "
-        "(예산을 조금 넘는 방도 거절하지 말고 조건을 확인)",
+        f"찾는 방: {TYPE_LABEL[s.housing_type]}, 보증금 {money(s.deposit_manwon)} / 월세 {money(s.monthly_rent_manwon)} 정도",
+        "예산을 넘는 방: 거절하지 말고 그 방의 조건을 확인 (이 안내는 상대에게 말하지 않음)",
     ]
     if s.area_m2:
         body.append(f"면적: 전용 {s.area_m2:g}㎡ 안팎 (상대가 물을 때만 말할 것)")
@@ -201,15 +203,15 @@ def _confirm(request: CallRequest, now: datetime) -> str:
     target = request.target
     rooms = sorted(target.rooms, key=lambda r: r.at)
     broker = request.broker.name
-    body = [f"전화한 곳: {broker}"]
+    body = [f"전화한 곳: {broker}", SPEAK]
     many = len(rooms) > 1
     for i, room in enumerate(rooms, 1):
         tag = f" {i}" if many else ""
         listing = room.listing
-        price = ""
+        body.append(f"보러 갈 방{tag}: {_room_name(room)} (문의 때 말씀하신 방)")
         if listing.deposit_manwon is not None or listing.monthly_rent_manwon is not None:
-            price = f", 보증금 {money(listing.deposit_manwon)} / 월세 {money(listing.monthly_rent_manwon)}"
-        body.append(f"보러 갈 방{tag}: {_room_name(room)}{price} (문의 때 말씀하신 방)")
+            body.append(f"가격{tag}: 보증금 {money(listing.deposit_manwon)} / 월세 {money(listing.monthly_rent_manwon)} "
+                        "(상대가 물을 때만 말할 것)")
     body.append(_room_check(rooms))
     if many:
         body.append("방이 여러 개면 이른 방문부터 방마다 차례로 확인할 것")
