@@ -16,7 +16,7 @@ from .config import Settings
 from .extract import LLMExtractor
 from .policy import PolicyError
 from .provider import KatProvider, MockProvider
-from .schemas import BatchRequest
+from .schemas import BatchRequest, ConfirmRequest
 from .service import CallService, Store
 
 TICK_SEC = 5
@@ -116,6 +116,24 @@ def create_app(service: Optional[CallService] = None, background: bool = True, w
     def get_inquiry_batch(batch_id: str):
         batch = service.get_batch(batch_id)
         if not batch or batch["kind"] != "inquiry":
+            return _error(404, "not_found")
+        return service.batch_result(batch)
+
+    @app.post("/api/visit-confirmations")
+    async def create_confirmations(request: Request):
+        body, error = await _parse(request, ConfirmRequest)
+        if error:
+            return error
+        try:
+            batch, created = await asyncio.to_thread(service.create_confirmations, body, _scenarios(request, settings))
+        except PolicyError as exc:
+            return JSONResponse(exc.body(), status_code=409)
+        return JSONResponse(service.accepted(batch), status_code=201 if created else 200)
+
+    @app.get("/api/visit-confirmations/{batch_id}")
+    def get_confirm_batch(batch_id: str):
+        batch = service.get_batch(batch_id)
+        if not batch or batch["kind"] != "confirm":
             return _error(404, "not_found")
         return service.batch_result(batch)
 

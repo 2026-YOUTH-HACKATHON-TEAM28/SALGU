@@ -328,3 +328,119 @@ def test_llm_extractor_calls_chat_completions_and_parses_json():
     assert LLMExtractor(Settings()).extract(request(), _fee_call("7만 원"), CALLED) is None  # 키 없음
     broken = LLMExtractor(settings, client=httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(500))))
     assert broken.extract(request(), _fee_call("7만 원"), CALLED) is None
+
+
+# ---------------------------------------------------------------- C5 확정 통화 판정
+from phone_agent.schemas import ConfirmTarget, ListingRef, TargetRoom  # noqa: E402
+
+AT = "2026-11-21T14:00:00+09:00"
+
+
+def confirm_request(rooms=None, **room_extra):
+    base = request()
+    rooms = rooms or [TargetRoom(listing=ListingRef(location="해든빌라 3층", building="해든빌라", floor="3층"),
+                                 at=AT, **room_extra)]
+    return base.model_copy(update={"kind": "confirm", "target": ConfirmTarget(parent_call_id="bc_1", rooms=rooms)})
+
+
+def confirm_raw(*rooms, **extra):
+    return {"declined": False, "voicemail": False, "rooms": list(rooms), **extra}
+
+
+def test_confirmed_with_time_in_broker_line():
+    segments = seg(("a", "아까 방 문의드렸던 AI 비서 살구입니다. 해든빌라 3층, 그 방 아직 있죠? 호수가 몇 호예요?"),
+                   ("b", "네, 아직 있어요. 302호예요."),
+                   ("a", "11월 21일 토요일 오후 2시에 보러 가도 될까요?"),
+                   ("b", "네, 토요일 오후 2시에 사무소로 오세요."))
+    result = decide(confirm_request(), confirm_raw({
+        "index": 0, "still_available": True, "same_listing": True, "unit": "302호",
+        "agreed_visit": {"at": AT, "place": "사무소"},
+        "evidence": {"still_available": 1, "same_listing": 1, "unit": 1, "visit.at": 3}}), segments)
+    assert result["outcome"] == "confirmed" and result["visit_status"] == "confirmed"
+    assert result["visit"] == {"at": AT, "place": "사무소", "listing_index": 0}
+    assert result["unit"] == "302호" and result["evidence"]["visit.at"] == 3
+
+
+def test_real_call_1120_plain_yes_confirms():
+    # live 3차: 중개사가 시각을 되풀이하지 않고 "당연하죠"로만 받음 → 예전 코드는 no_time (L8)
+    segments = seg(("a", "아까 방 문의드렸던 AI 비서 살구입니다. 그 방 아직 있나요?"),
+                   ("b", "네, 있어요."),
+                   ("a", "호수가 몇 호예요?"),
+                   ("b", "301호예요."),
+                   ("a", "11월 21일 토요일 오후 2시에 한빛공인중개사 사무소에서 뵐 수 있을까요?"),
+                   ("b", "당연하죠."),
+                   ("a", "네, 11월 21일 토요일 오후 2시에 한빛공인중개사 사무소에서 뵙겠습니다."))
+    result = decide(confirm_request(), confirm_raw({
+        "index": 0, "still_available": True, "unit": "301호",
+        "agreed_visit": {"at": AT, "place": "한빛공인중개사 사무소"},
+        "evidence": {"still_available": 1, "unit": 3, "visit.at": 5}}), segments)
+    assert result["outcome"] == "confirmed" and result["visit"]["at"] == AT
+    assert result["visit"]["place"] == "한빛공인중개사 사무소"  # 중개사 말에 없으면 요청한 곳
+    assert result["evidence"]["visit.at"] == 5 and result["unit"] == "301호"
+
+
+def test_accepted_time_needs_a_plain_yes():
+    def outcome(answer, question="11월 21일 토요일 오후 2시에 보러 가도 될까요?"):
+        segments = seg(("a", "AI 비서 살구입니다. 그 방 아직 있죠?"), ("b", "네 있어요."), ("a", question), ("b", answer))
+        return decide(confirm_request(), confirm_raw({
+            "index": 0, "still_available": True, "agreed_visit": {"at": AT, "place": None},
+            "evidence": {"still_available": 1, "visit.at": 3}}), segments)["outcome"]
+
+    assert outcome("네, 좋아요.") == "confirmed"
+    assert outcome("그 시간은 좀 어렵고요.") == "no_time"            # 거절
+    assert outcome("네, 근데 3시가 더 좋아요.") == "no_time"         # 다른 시각
+    assert outcome("글쎄요, 봐야 알 것 같아요.") == "no_time"
+    assert outcome("네.", question="토요일 오후 2시에 보러 가겠습니다.") == "no_time"  # 묻지 않음
+    assert outcome("네.", question="11월 22일 일요일 오후 2시에 보러 가도 될까요?") == "no_time"  # 날짜 다름
+
+
+def test_confirm_time_outside_range_is_alternative():
+    segments = seg(("a", "AI 비서 살구입니다. 토요일 오후 2시 괜찮으세요?"), ("b", "그 시간은 안 되고 토요일 오후 4시는 괜찮아요."),
+                   ("a", "본인께 확인하고 다시 연락드리겠습니다."))
+    result = decide(confirm_request(), confirm_raw({
+        "index": 0, "proposed_visit": {"at": "2026-11-21T16:00:00+09:00", "note": "4시 가능"},
+        "evidence": {"proposal.at": 1}}), segments)
+    assert result["outcome"] == "alternative" and result["visit_status"] == "needs_approval"
+    assert result["proposal"] == {"at": "2026-11-21T16:00:00+09:00", "note": "4시 가능"}
+    # 합의했어도 범위 밖이면 확정 아님
+    agreed = decide(confirm_request(), confirm_raw({
+        "index": 0, "agreed_visit": {"at": "2026-11-21T16:00:00+09:00"}, "evidence": {"visit.at": 1}}), segments)
+    assert agreed["outcome"] == "alternative" and agreed["visit"] is None
+
+
+def test_confirm_alternative_range_confirms():
+    segments = seg(("a", "AI 비서 살구입니다. 2시는요?"), ("b", "토요일 오후 2시 반에 오세요."))
+    room = {"alternatives": [{"start": "2026-11-21T14:30:00+09:00", "end": "2026-11-21T15:00:00+09:00"}]}
+    result = decide(confirm_request(**room), confirm_raw({
+        "index": 0, "agreed_visit": {"at": "2026-11-21T14:30:00+09:00"}, "evidence": {"visit.at": 1}}), segments)
+    assert result["outcome"] == "confirmed"
+
+
+def test_confirm_ai_time_alone_is_not_agreement():
+    segments = seg(("a", "AI 비서 살구입니다. 11월 21일 토요일 오후 2시에 뵙겠습니다."), ("b", "그 방 아직 있어요."))
+    result = decide(confirm_request(), confirm_raw({
+        "index": 0, "still_available": True, "agreed_visit": {"at": AT}, "evidence": {"still_available": 1, "visit.at": 0}}),
+        segments)
+    assert result["outcome"] == "no_time" and "visit.at" in result["unverified"]
+
+
+def test_confirm_unavailable_and_overall_priority():
+    two = [TargetRoom(listing_index=0, listing=ListingRef(location="해든빌라 3층"), at=AT),
+           TargetRoom(listing_index=1, listing=ListingRef(location="새솔빌 2층"), at="2026-11-21T14:30:00+09:00")]
+    segments = seg(("a", "AI 비서 살구입니다. 두 방 아직 있죠?"), ("b", "해든빌라는 나갔고 새솔빌도 나갔어요."))
+    gone = decide(confirm_request(two), confirm_raw(
+        {"index": 0, "still_available": False, "evidence": {"still_available": 1}},
+        {"index": 1, "still_available": False, "evidence": {"still_available": 1}}), segments)
+    assert gone["outcome"] == "unavailable" and [r["outcome"] for r in gone["rooms"]] == ["unavailable"] * 2
+    assert gone["unverified"] == [] and set(gone["evidence"]) == {"rooms[0].still_available", "rooms[1].still_available"}
+    mixed = decide(confirm_request(two), confirm_raw(
+        {"index": 0, "still_available": False, "evidence": {"still_available": 1}}), segments)
+    assert [r["outcome"] for r in mixed["rooms"]] == ["unavailable", "unclear"] and mixed["outcome"] == "unclear"
+
+
+def test_confirm_voicemail_declined_and_no_extraction():
+    segments = seg(("a", "AI 비서 살구입니다."), ("b", "AI 전화는 안 받아요."))
+    assert decide(confirm_request(), confirm_raw(declined=True), segments)["rooms"][0]["visit_status"] == "not_scheduled"
+    assert decide(confirm_request(), confirm_raw(voicemail=True), segments)["outcome"] == "no_answer"
+    unclear = decide(confirm_request(), None, segments)
+    assert unclear["outcome"] == "unclear" and unclear["rooms"][0]["outcome"] == "unclear"

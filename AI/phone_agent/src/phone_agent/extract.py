@@ -641,6 +641,190 @@ def _num_or_none(value: Optional[float]):
     return None if value is None else _num(value)
 
 
+# ------------------------------------------------------------------ 결론: 확정 통화
+
+ROOM_STATUS = {"confirmed": "confirmed", "alternative": "needs_approval"}  # 나머지는 not_scheduled
+VISIT_STATUS = {"confirmed": "confirmed", "partial": "partially_confirmed", "alternative": "needs_approval"}
+
+
+def room_status(outcome: Optional[str]) -> str:
+    """방별 outcome → visit_status. 통화 전·중(outcome 없음)은 requesting."""
+    if outcome is None:
+        return "requesting"
+    return ROOM_STATUS.get(outcome, "not_scheduled")
+
+
+def visit_status(outcome: Optional[str]) -> str:
+    if outcome is None:
+        return "requesting"
+    return VISIT_STATUS.get(outcome, "not_scheduled")
+
+
+def _target(request: CallRequest) -> dict:
+    return {"rooms": [{"listing_index": r.listing_index, "at": r.at.isoformat(), "place": r.place or None,
+                       "alternatives": [{"start": w.start.isoformat(), "end": w.end.isoformat()} for w in r.alternatives]}
+                      for r in request.target.rooms]}
+
+
+def empty_confirm_result(request: CallRequest, outcome: Optional[str] = None) -> dict:
+    """확정 통화의 빈 결과. outcome이 없으면 '요청 중', 있으면 모든 방이 그 결과(안 받음·거절 등)."""
+    rooms = [{"listing_index": r.listing_index, "at": r.at.isoformat(), "outcome": outcome,
+              "visit_status": room_status(outcome), "visit": None, "proposal": None,
+              "still_available": None, "same_listing": None, "unit": None} for r in request.target.rooms]
+    result = {**empty_result(), "target": _target(request), "visit_status": visit_status(outcome), "rooms": rooms}
+    for key in ("listings", "broker_slots", "availability_note", "pet_allowed", "registry_reply"):
+        result.pop(key, None)
+    result.update(_outer(rooms))
+    return result
+
+
+def _outer(rooms: list[dict]) -> dict:
+    """방이 하나면 rooms[0]의 값이 바깥에도(예전 형식 호환), 여럿이면 null."""
+    keys = ("visit", "proposal", "still_available", "same_listing", "unit")
+    if len(rooms) == 1:
+        return {k: rooms[0][k] for k in keys}
+    return {k: None for k in keys}
+
+
+def _accepted_time(dt: datetime, lines: list[dict], n: int, candidate_days: set[date],
+                   called_at: Optional[datetime]) -> bool:
+    """AI가 시각을 넣어 묻고('… 오후 2시에 뵐 수 있을까요?'), 바로 다음 중개사 말이 거절이나
+    다른 시각 없이 '당연하죠/네/괜찮아요'면 그 시각을 합의로 본다 (lessons L8).
+    근거 줄은 중개사의 대답, 날짜는 질문 줄로 확인."""
+    if not (0 < n < len(lines)) or lines[n].get("speaker") != "broker" or lines[n - 1].get("speaker") != "ai":
+        return False
+    question, answer = (lines[n - 1].get("text") or "").strip(), (lines[n].get("text") or "").strip()
+    if not _ASKS.search(question) or not _ACCEPT.search(answer) or _REFUSE.search(answer) or time_mentions(answer):
+        return False
+    mention = find_time(dt, question)
+    if mention is None:
+        return False
+    verdict = _date_matches(dt.date(), question, called_at)
+    return verdict if verdict is not None else candidate_days == {dt.date()}
+
+
+def _iso_dt(value: Any) -> Optional[datetime]:
+    try:
+        dt = datetime.fromisoformat(str(value))
+    except (TypeError, ValueError):
+        return None
+    return dt.replace(tzinfo=KST) if dt.tzinfo is None else dt.astimezone(KST)
+
+
+def _confirm_time(check: "_Checker", value: Any, n: Optional[int], candidate_days: set[date],
+                  accept_plain_yes: bool) -> tuple[Optional[datetime], Optional[int]]:
+    dt = _iso_dt(value)
+    if dt is None:
+        return None, None
+    found, k = check.slot_time(dt.isoformat(), n, candidate_days)
+    if found:
+        return found, k
+    if accept_plain_yes:
+        for k in [n] + [i for i in check.broker_lines() if i != n]:
+            if k is not None and _accepted_time(dt, check.lines, k, candidate_days, check.called_at):
+                return dt, k
+    return None, None
+
+
+def _in_range(at: datetime, room) -> bool:
+    if at == room.at:
+        return True
+    return any(w.start <= at <= w.end for w in room.alternatives)
+
+
+def decide_confirm(request: CallRequest, raw: Optional[dict], lines: list[dict],
+                   called_at: Optional[datetime] = None) -> dict:
+    target_rooms = request.target.rooms
+    if raw is None:
+        result = empty_confirm_result(request, "unclear")
+        result["outcome"] = "unclear"
+        return result
+    if raw.get("voicemail") or raw.get("declined"):
+        outcome = "no_answer" if raw.get("voicemail") else "declined"
+        result = empty_confirm_result(request, outcome)
+        result["outcome"] = outcome
+        return result
+
+    check = _Checker(request, lines, called_at)
+    raw_rooms = [r for r in (raw.get("rooms") or []) if isinstance(r, dict)]
+    many = len(target_rooms) > 1
+    rooms = []
+    for i, room in enumerate(target_rooms):
+        prefix = f"rooms[{i}]." if many else ""
+        found = next((r for r in raw_rooms if _line_no(r.get("index")) == i), None)
+        if found is None and not many and len(raw_rooms) == 1:
+            found = raw_rooms[0]
+        found = found or {}
+        ev = found.get("evidence") or {}
+        days = {room.at.date()} | {w.start.date() for w in room.alternatives} | {w.end.date() for w in room.alternatives}
+
+        still = found.get("still_available") if isinstance(found.get("still_available"), bool) else None
+        still = check.plain(prefix + "still_available", still, _line_no(ev.get("still_available")))
+        same = found.get("same_listing") if isinstance(found.get("same_listing"), bool) else None
+        same = check.plain(prefix + "same_listing", same, _line_no(ev.get("same_listing")))
+        unit = check.text(prefix + "unit", "unit", found.get("unit"), _line_no(ev.get("unit")))
+
+        agreed = found.get("agreed_visit") if isinstance(found.get("agreed_visit"), dict) else None
+        proposed = found.get("proposed_visit") if isinstance(found.get("proposed_visit"), dict) else None
+        agreed_at = proposal_at = None
+        if agreed:
+            agreed_at, k = _confirm_time(check, agreed.get("at"), _line_no(ev.get("visit.at")), days, True)
+            if agreed_at:
+                check.evidence[prefix + "visit.at"] = k
+            else:
+                check.unverified.append(prefix + "visit.at")
+        if proposed:
+            proposal_at, k = _confirm_time(check, proposed.get("at"), _line_no(ev.get("proposal.at")), days, False)
+            if proposal_at:
+                check.evidence[prefix + "proposal.at"] = k
+            else:
+                check.unverified.append(prefix + "proposal.at")
+
+        visit = proposal = None
+        if still is False:
+            outcome = "unavailable"
+        elif agreed_at and _in_range(agreed_at, room):
+            outcome = "confirmed"
+            place = agreed.get("place")
+            if not (place and any(norm(w) in norm(" ".join(l.get("text") or "" for l in lines if l.get("speaker") == "broker"))
+                                  for w in str(place).split() if len(w) >= 2)):
+                place = room.place or f"{request.broker.name} 사무소"
+            visit = {"at": agreed_at.isoformat(), "place": place, "listing_index": room.listing_index}
+        elif agreed_at or proposal_at:
+            outcome = "alternative"
+            at = agreed_at or proposal_at
+            note = (proposed or {}).get("note") if proposal_at else "범위 밖 시각에 합의함(사용자 승인 필요)"
+            proposal = {"at": at.isoformat(), "note": note}
+        elif still is True or same is not None or unit:
+            outcome = "no_time"
+        else:
+            outcome = "unclear"
+        rooms.append({"listing_index": room.listing_index, "at": room.at.isoformat(), "outcome": outcome,
+                      "visit_status": room_status(outcome), "visit": visit, "proposal": proposal,
+                      "still_available": still, "same_listing": same, "unit": unit})
+
+    outcomes = [r["outcome"] for r in rooms]
+    if all(o == "confirmed" for o in outcomes):
+        overall = "confirmed"
+    elif "confirmed" in outcomes:
+        overall = "partial"
+    elif "alternative" in outcomes:
+        overall = "alternative"
+    elif "no_time" in outcomes:
+        overall = "no_time"
+    elif all(o == "unavailable" for o in outcomes):
+        overall = "unavailable"
+    else:
+        overall = "unclear"
+
+    result = empty_confirm_result(request)
+    result.update(rooms=rooms, visit_status=visit_status(overall), unverified=check.unverified,
+                  evidence=check.evidence, quotes=_quotes(lines, check.evidence, check.corrections),
+                  corrections=check.corrections, outcome=overall)
+    result.update(_outer(rooms))
+    return result
+
+
 # ------------------------------------------------------------------ 입구
 
 
@@ -649,7 +833,7 @@ def decide(request: CallRequest, raw: Optional[dict], transcript: list[dict],
     """대화록과 추출 값 → 결과(outcome 포함). 문의·확정을 자동으로 고른다."""
     lines = label_speakers(transcript)
     if request.kind == "confirm":
-        raise NotImplementedError("확정 통화 판정(decide_confirm)은 C5에서 추가합니다")
+        result = decide_confirm(request, raw, lines, called_at)
     else:
         result = decide_inquiry(request, raw, lines, called_at)
     result["timing"] = turn_timing(lines)

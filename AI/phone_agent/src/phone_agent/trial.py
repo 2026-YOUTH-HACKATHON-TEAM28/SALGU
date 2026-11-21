@@ -1,11 +1,13 @@
 """시험 통화 도구: 서버 없이 시연 번호로 한 번에 걸어 본다 (specs/03-inquiry-call.md).
 
-    python -m phone_agent.trial run --label c3 [--agent live] [--ignore-hours]
+    python -m phone_agent.trial run --label c3 [--agent live] [--ignore-hours] [--confirm | --confirm-at ISO]
     python -m phone_agent.trial measure <callId…> [--label 이름] [--lines]
 
 - demo 설정(.env)으로 tests/fixtures/request.example.json의 첫 사무소 하나에 문의 전화(번호는 시연 번호).
 - 등록번호는 매번 trial-<이름>-<시각>으로 바꿔 하루 1번에 걸리지 않게, keep_transcript는 켠다.
 - 기록은 .data/trials.json에 따로 남기고(서버의 하루 제한과 섞지 않음), 알림은 보내지 않는다.
+- --confirm: 문의에서 방이 나오면 중개사가 말한 가능 시간의 시작 시각(손님 시간대와 겹치는 것 먼저)으로
+  그 방 확정 전화까지. --confirm-at은 그 시각으로(가능 시간 밖이면 서버가 outside_broker_slots로 막음).
 """
 
 from __future__ import annotations
@@ -23,9 +25,9 @@ from .config import KST, ROOT, Settings
 from .extract import LLMExtractor
 from .policy import PolicyError
 from .provider import KatProvider
-from .schemas import BatchRequest
+from .schemas import BatchRequest, ConfirmRequest
 from .extract import label_speakers
-from .service import ACTIVE, CallService, Store
+from .service import ACTIVE, CallService, Store, parse
 from .timing import response_gaps, turn_timing
 
 FIXTURE = ROOT / "tests" / "fixtures" / "request.example.json"
@@ -72,9 +74,19 @@ def wait(service: CallService, call_id: str, out=print) -> dict:
 
 
 def summary(result: dict) -> dict:
-    keys = ("call_id", "status", "outcome", "error", "listings", "broker_slots", "availability_note",
-            "registry_reply", "pet_allowed", "unverified", "corrections", "sms_draft", "timing")
+    if result.get("kind") == "confirm":
+        keys = ("call_id", "status", "outcome", "error", "visit_status", "rooms", "unverified", "sms_draft")
+    else:
+        keys = ("call_id", "status", "outcome", "error", "listings", "broker_slots", "availability_note",
+                "registry_reply", "pet_allowed", "unverified", "corrections", "sms_draft")
     return {k: result.get(k) for k in keys}
+
+
+def confirm_time(result: dict) -> Optional[datetime]:
+    """중개사가 말한 가능 시간의 시작 시각. 손님 시간대 안의 것 먼저 (lessons L13)."""
+    slots = result.get("broker_slots") or []
+    slots = sorted(slots, key=lambda slot: not slot.get("in_user_window"))
+    return parse(slots[0]["start"]) if slots else None
 
 
 def print_transcript(result: dict, out=print) -> None:
@@ -140,6 +152,36 @@ def cmd_run(args, out=print) -> dict:
     print_transcript(result, out)
     out(TABLE_HEAD)
     out(table_row(args.label, service.store.calls[call_id]["provider_call_id"] or "", result.get("timing")))
+    if getattr(args, "confirm", False) or getattr(args, "confirm_at", None):
+        return run_confirm(service, request, result, args, out) or result
+    return result
+
+
+def run_confirm(service: CallService, request: BatchRequest, inquiry: dict, args, out=print) -> Optional[dict]:
+    if inquiry.get("outcome") != "listing":
+        out(f"확정 전화 안 함: 문의 결과가 {inquiry.get('outcome')}")
+        return None
+    at = parse(args.confirm_at) if args.confirm_at else confirm_time(inquiry)
+    if at is None:
+        out("확정 전화 안 함: 중개사가 말한 가능 시간이 없음(--confirm-at으로 지정)")
+        return None
+    confirm = ConfirmRequest.model_validate({"approval_id": f"{request.approval_id}-confirm", "visits": [
+        {"call_id": inquiry["call_id"], "listing_index": 0, "at": at.isoformat()}]})
+    try:
+        batch, _ = service.create_confirmations(confirm)
+    except PolicyError as exc:
+        out(f"확정 전화 안 함: {exc.code} {exc.message} {json.dumps(exc.detail, ensure_ascii=False)}")
+        return None
+    call_id = batch["call_ids"][0]
+    if service.store.calls[call_id]["status"] in ("rejected", "scheduled"):
+        out(f"확정 전화를 지금 걸 수 없습니다: {service.store.calls[call_id]['status']} {service.store.calls[call_id]['error']}")
+        return None
+    out(f"확정 전화: {at.isoformat()}")
+    result = wait(service, call_id, out)
+    out(json.dumps(summary(result), ensure_ascii=False, indent=1))
+    print_transcript(result, out)
+    out(TABLE_HEAD)
+    out(table_row(f"{args.label} 확정", service.store.calls[call_id]["provider_call_id"] or "", result.get("timing")))
     return result
 
 
@@ -150,6 +192,9 @@ def main(argv: Optional[list[str]] = None) -> None:
     run.add_argument("--label", required=True, help="설정 이름(기록표 한 줄)")
     run.add_argument("--agent", default=None, help="base | high | realtime | live | 에이전트 ID")
     run.add_argument("--ignore-hours", action="store_true", help="영업시간 밖에도 건다")
+    group = run.add_mutually_exclusive_group()
+    group.add_argument("--confirm", action="store_true", help="문의 뒤 중개사가 말한 가능 시간으로 확정 전화까지")
+    group.add_argument("--confirm-at", default=None, help="확정 시각(ISO). 가능 시간 밖이면 막힘")
     measure = sub.add_parser("measure", help="끝난 통화의 속도(timing)")
     measure.add_argument("call_ids", nargs="+", help="공급사 callId")
     measure.add_argument("--label", default="", help="기록표에 적을 설정 이름")

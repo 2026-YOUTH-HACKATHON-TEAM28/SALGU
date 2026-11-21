@@ -354,3 +354,198 @@ def test_demo_without_number_is_not_allowed(clock, provider):
     res = client.post("/api/broker-call-batches", json=example_request())
     assert res.status_code == 409
     assert res.json() == {"error": "not_allowed", "message": "시연 모드에서 전화를 받을 번호가 설정되지 않았어요."}
+
+
+# ---------------------------------------------------------------- C5 확정 통화
+from phone_agent.schemas import ConfirmRequest  # noqa: E402
+
+AT_14 = "2026-11-23T14:00:00+09:00"
+
+
+def _inquire(service, clock, scenario="listing", approval_id="ap-c", regs=None):
+    batch, _ = service.create_batch(make_batch(regs=regs or [1], approval_id=approval_id), scenarios=[scenario])
+    return run_until_done(service, batch, clock)["calls"][0]
+
+
+def _confirm(service, visits, approval_id="vs-1", scenarios=None):
+    return service.create_confirmations(ConfirmRequest.model_validate({"approval_id": approval_id, "visits": visits}),
+                                        scenarios=scenarios)
+
+
+def test_confirm_flow_is_requesting_then_confirmed(service, provider, clock):
+    inquiry = _inquire(service, clock)
+    batch, created = _confirm(service, [{"call_id": inquiry["call_id"], "at": AT_14}], scenarios=["confirmed"])
+    assert created and batch["batch_id"].startswith("vb_")
+    accepted = service.accepted(batch)
+    assert accepted["kind"] == "confirm" and accepted["calls"][0]["parent_call_id"] == inquiry["call_id"]
+
+    first = service.batch_result(service.get_batch(batch["batch_id"]))
+    assert "duplicate_groups" not in first
+    call = first["calls"][0]
+    assert call["visit_status"] == "requesting" and call["rooms"][0]["visit_status"] == "requesting"
+    assert call["target"]["rooms"][0]["at"] == AT_14
+
+    call = run_until_done(service, batch, clock)["calls"][0]
+    assert call["outcome"] == "confirmed" and call["visit_status"] == "confirmed"
+    room = call["rooms"][0]
+    assert room["visit"] == {"at": AT_14, "place": "테스트1공인중개사 사무소", "listing_index": 0}
+    assert room["unit"] == "302호" and room["still_available"] is True
+    assert call["visit"] == room["visit"] and call["unit"] == "302호"  # 방 하나면 바깥에도
+    assert call["evidence"]["visit.at"] == 5
+
+    instruction = list(provider.calls.values())[-1]["instruction"]
+    assert "[이번 통화: 방문 확정]" in instruction and "보러 갈 방: 해든빌라 3층" in instruction
+    assert "아까 방 문의드렸던" in instruction
+
+
+def test_confirm_requires_a_finished_listing_call(service, clock):
+    no_room = _inquire(service, clock, "no_listing", approval_id="ap-none", regs=[2])
+    for visit, code in (
+        ({"call_id": "bc_nope", "at": AT_14}, "call_not_found"),
+        ({"call_id": no_room["call_id"], "at": AT_14}, "call_not_found"),
+    ):
+        with pytest.raises(PolicyError) as exc:
+            _confirm(service, [visit])
+        assert exc.value.code == code
+    listing = _inquire(service, clock, approval_id="ap-one", regs=[3])
+    with pytest.raises(PolicyError) as exc:
+        _confirm(service, [{"call_id": listing["call_id"], "at": AT_14},
+                           {"call_id": listing["call_id"], "listing_index": 1, "at": AT_14}])
+    assert exc.value.code == "listing_not_found"
+    assert not [b for b in service.store.batches.values() if b["kind"] == "confirm"]  # 요청 전체 거절
+
+
+def test_confirm_outside_broker_slots_is_refused(service, provider, clock):
+    inquiry = _inquire(service, clock)  # 중개사: 오후 2~3시
+    calls_before = len(provider.calls)
+    with pytest.raises(PolicyError) as exc:
+        _confirm(service, [{"call_id": inquiry["call_id"], "at": "2026-11-23T16:00:00+09:00"}])
+    assert exc.value.code == "outside_broker_slots"
+    assert exc.value.detail["broker_slots"] == [{"start": AT_14, "end": "2026-11-23T15:00:00+09:00"}]
+    assert len(provider.calls) == calls_before  # 전화를 걸지 않음
+
+
+def test_confirm_allows_the_time_the_broker_proposed(service, clock):
+    inquiry = _inquire(service, clock)
+    batch, _ = _confirm(service, [{"call_id": inquiry["call_id"], "at": AT_14}], scenarios=["alternative"])
+    call = run_until_done(service, batch, clock)["calls"][0]
+    assert call["outcome"] == "alternative" and call["rooms"][0]["visit_status"] == "needs_approval"
+    proposed = call["rooms"][0]["proposal"]["at"]
+    assert proposed == "2026-11-23T16:00:00+09:00"
+    again, created = _confirm(service, [{"call_id": inquiry["call_id"], "at": proposed}], approval_id="vs-2",
+                              scenarios=["confirmed"])
+    assert created
+
+
+def test_confirm_shifted_to_alternative_range(service, clock):
+    inquiry = _inquire(service, clock)
+    batch, _ = _confirm(service, [{"call_id": inquiry["call_id"], "at": AT_14, "alternatives": [
+        {"start": "2026-11-23T14:30:00+09:00", "end": "2026-11-23T15:00:00+09:00"}]}], scenarios=["shifted"])
+    call = run_until_done(service, batch, clock)["calls"][0]
+    assert call["outcome"] == "confirmed" and call["visit"]["at"] == "2026-11-23T14:30:00+09:00"
+
+
+def test_confirm_not_scheduled_outcomes(service, clock):
+    for i, scenario in enumerate(("no_time", "unavailable", "declined")):
+        inquiry = _inquire(service, clock, approval_id=f"ap-ns{i}", regs=[10 + i])
+        batch, _ = _confirm(service, [{"call_id": inquiry["call_id"], "at": AT_14}], approval_id=f"vs-ns{i}",
+                            scenarios=[scenario])
+        call = run_until_done(service, batch, clock)["calls"][0]
+        assert call["outcome"] == scenario
+        assert call["visit_status"] == "not_scheduled" and call["rooms"][0]["visit_status"] == "not_scheduled"
+        assert call["visit"] is None
+
+
+def test_confirm_same_approval_and_limit_per_inquiry(service, clock):
+    inquiry = _inquire(service, clock)
+    visit = [{"call_id": inquiry["call_id"], "at": AT_14}]
+    first, _ = _confirm(service, visit, approval_id="vs-a", scenarios=["no_time"])
+    again, created = _confirm(service, visit, approval_id="vs-a")
+    assert not created and again["batch_id"] == first["batch_id"]
+    run_until_done(service, first, clock)
+    second, _ = _confirm(service, visit, approval_id="vs-b", scenarios=["no_time"])
+    run_until_done(service, second, clock)
+    third, _ = _confirm(service, visit, approval_id="vs-c")
+    assert service.accepted(third)["calls"][0]["error"] == "confirm_limit"
+    call = service.batch_result(third)["calls"][0]
+    assert call["status"] == "rejected" and call["visit_status"] == "not_scheduled"
+
+
+def test_confirm_calls_do_not_use_up_the_inquiry_day(clock, provider):
+    service = CallService(Settings(mode="mock", poll_interval_sec=0, daily_limit=1), provider, now=clock)
+    inquiry = _inquire(service, clock)
+    batch, _ = _confirm(service, [{"call_id": inquiry["call_id"], "at": AT_14}], scenarios=["confirmed"])
+    assert service.accepted(batch)["calls"][0]["status"] == "queued"  # 하루 1통을 썼어도 확정은 걸림
+
+
+def test_two_rooms_confirm_in_one_call(service, provider, clock):
+    inquiry = _inquire(service, clock, "two_rooms")
+    assert len(inquiry["listings"]) == 2
+    batch, _ = _confirm(service, [
+        {"call_id": inquiry["call_id"], "listing_index": 1, "at": "2026-11-23T14:30:00+09:00"},
+        {"call_id": inquiry["call_id"], "listing_index": 0, "at": AT_14},
+    ], scenarios=["partial"])
+    assert len(batch["call_ids"]) == 1  # 같은 사무소는 한 통
+    call = run_until_done(service, batch, clock)["calls"][0]
+    assert call["outcome"] == "partial" and call["visit_status"] == "partially_confirmed"
+    first, second = call["rooms"]
+    assert (first["listing_index"], first["visit_status"], first["unit"]) == (0, "confirmed", "302호")
+    assert (second["listing_index"], second["visit_status"], second["unit"]) == (1, "needs_approval", "303호")
+    assert second["proposal"]["at"] == "2026-11-23T16:30:00+09:00"
+    assert call["visit"] is None and call["unit"] is None  # 방이 여럿이면 바깥 값은 null
+    assert set(call["evidence"]) >= {"rooms[0].visit.at", "rooms[1].proposal.at"}
+    instruction = list(provider.calls.values())[-1]["instruction"]
+    assert "보러 갈 방 1: 해든빌라 3층" in instruction and "보러 갈 방 2: 새솔빌 2층" in instruction
+
+
+def test_two_rooms_both_confirmed(service, clock):
+    inquiry = _inquire(service, clock, "two_rooms")
+    batch, _ = _confirm(service, [{"call_id": inquiry["call_id"], "listing_index": 0, "at": AT_14},
+                                  {"call_id": inquiry["call_id"], "listing_index": 1, "at": "2026-11-23T14:30:00+09:00"}],
+                        scenarios=["confirmed"])
+    call = run_until_done(service, batch, clock)["calls"][0]
+    assert call["outcome"] == "confirmed"
+    assert [r["visit"]["at"] for r in call["rooms"]] == [AT_14, "2026-11-23T14:30:00+09:00"]
+
+
+def test_confirm_no_answer_retries_then_not_scheduled(clock, provider):
+    service = CallService(Settings(mode="mock", poll_interval_sec=0, retry_minutes=1), provider, now=clock)
+    inquiry = _inquire(service, clock)
+    batch, _ = _confirm(service, [{"call_id": inquiry["call_id"], "at": AT_14}], scenarios=["no_answer"])
+    call = run_until_done(service, batch, clock, step=20)["calls"][0]
+    assert call["outcome"] == "no_answer" and call["attempts"] == 2
+    assert call["rooms"][0]["visit_status"] == "not_scheduled"
+    assert call["sms_draft"] and "보러 가도 될지" in call["sms_draft"]
+
+
+def test_demo_confirm_dials_the_number_that_took_the_inquiry(clock, provider):
+    settings = Settings(mode="demo", demo_to="01011112222,01033334444", poll_interval_sec=0)
+    service = CallService(settings, provider, now=clock)
+    batch, _ = service.create_batch(make_batch(2, approval_id="ap-dd"), scenarios=["listing", "listing"])
+    second = run_until_done(service, batch, clock)["calls"][1]
+    _confirm(service, [{"call_id": second["call_id"], "at": AT_14}], scenarios=["confirmed"])
+    assert list(provider.calls.values())[-1]["to"] == "01033334444"
+
+
+def test_confirm_http_api(settings, provider, clock):
+    service = CallService(settings, provider, now=clock)
+    client = TestClient(create_app(service, background=False, with_mcp=False))
+    inquiry = _inquire(service, clock)
+    body = {"approval_id": "vs-http", "visits": [{"call_id": inquiry["call_id"], "at": AT_14}]}
+    res = client.post("/api/visit-confirmations", json=body, headers={"X-Mock-Scenario": "confirmed"})
+    assert res.status_code == 201 and res.json()["kind"] == "confirm"
+    batch_id = res.json()["batch_id"]
+    assert client.post("/api/visit-confirmations", json=body).status_code == 200
+    for _ in range(30):
+        result = client.get(f"/api/visit-confirmations/{batch_id}").json()
+        if result["status"] == "done":
+            break
+    assert result["calls"][0]["rooms"][0]["visit_status"] == "confirmed"
+    assert client.get(f"/api/broker-call-batches/{batch_id}").status_code == 404   # 종류가 다르면 없음
+    assert client.get(f"/api/visit-confirmations/{inquiry['batch_id']}").status_code == 404
+
+    res = client.post("/api/visit-confirmations", json={"approval_id": "vs-out", "visits": [
+        {"call_id": inquiry["call_id"], "at": "2026-11-23T18:00:00+09:00"}]})
+    assert res.status_code == 409 and res.json()["error"] == "outside_broker_slots"
+    assert res.json()["message"].startswith("중개사가 문의 통화에서 말한 가능 시간 밖이에요")
+    assert client.post("/api/visit-confirmations", json={"approval_id": "vs-bad", "visits": []}).status_code == 422

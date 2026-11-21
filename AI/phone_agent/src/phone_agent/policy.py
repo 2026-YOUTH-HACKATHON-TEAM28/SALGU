@@ -143,3 +143,36 @@ def check(request: CallRequest, now: datetime, calls: Iterable[dict], settings: 
         if len(confirms) >= settings.confirm_limit:
             raise PolicyError("confirm_limit")
     return scheduled
+
+
+# ------------------------------------------------------------------ 확정 시각 안전장치
+
+
+def _at(value) -> Optional[datetime]:
+    if not value:
+        return None
+    dt = value if isinstance(value, datetime) else datetime.fromisoformat(str(value))
+    return dt.replace(tzinfo=KST) if dt.tzinfo is None else dt.astimezone(KST)
+
+
+def within_broker_slots(result: dict, at: datetime, proposed: Iterable = ()) -> bool:
+    """확정 시각이 문의 통화에서 중개사가 된다고 한 시간(broker_slots) 안인가 (lessons L13).
+
+    범위는 끝 시각 포함, 시각 하나면 그 시각만. 그 뒤 확정 통화에서 중개사가 직접 제안한 시각은 허용.
+    판단 근거가 모자라면 막지 않는다: 슬롯이 없음, 대조 못 한 시간(unverified)이 있음, availability_note만 있음.
+    """
+    at = _at(at)
+    slots = result.get("broker_slots") or []
+    if not slots or result.get("availability_note"):
+        return True
+    if any(str(key).startswith("broker_slots") for key in result.get("unverified") or []):
+        return True
+    if any(_at(p) == at for p in proposed):
+        return True
+    for slot in slots:
+        start, end = _at(slot.get("start")), _at(slot.get("end"))
+        if start is None:
+            continue
+        if (end and start <= at <= end) or (not end and at == start):
+            return True
+    return False

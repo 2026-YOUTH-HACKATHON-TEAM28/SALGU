@@ -83,9 +83,11 @@ def _iso(dt: datetime) -> str:
 class _Filler:
     """자료의 예시 값을 요청 값으로 한 번에 바꾼다(바꾼 값을 다시 바꾸지 않음)."""
 
-    def __init__(self, request: CallRequest):
+    def __init__(self, request: CallRequest, agreed: Optional[datetime] = None):
+        """agreed: 확정 시나리오에서 중개사가 말한 시각(shifted는 대안 범위 시작). 없으면 요청 시각."""
         s = request.search
         at = _base_time(request)
+        agreed = agreed or at
         later1, later2 = at + timedelta(hours=1), at + timedelta(hours=2)
         building = s.ref_building or _BASE_BUILDING
         location = f"{building} 3층"
@@ -106,8 +108,8 @@ class _Filler:
             "토요일 오후 2시부터 오후 3시까지": f"{spoken_day(at)} {spoken_time(at)}부터 {spoken_time(later1)}까지",
             "토요일 오후 4시": f"{spoken_day(later2)} {spoken_time(later2)}",
             "오후 4시는": f"{spoken_time(later2)}는",
-            "토요일 오후 2시": f"{spoken_day(at)} {spoken_time(at)}",
-            _iso(_BASE_AT): _iso(at),
+            "토요일 오후 2시": f"{spoken_day(agreed)} {spoken_time(agreed)}",
+            _iso(_BASE_AT): _iso(agreed if request.kind == "confirm" else at),
             _iso(_BASE_AT + timedelta(hours=1)): _iso(later1),
             _iso(_BASE_AT + timedelta(hours=2)): _iso(later2),
         }
@@ -183,18 +185,60 @@ class MockProvider:
     def request_transcript(self, call_id: str) -> None:
         self._call(call_id)["transcript_requested"] = True
 
-    def get_transcript(self, call_id: str) -> dict:
-        call = self._call(call_id)
+    def _scene(self, call: dict) -> tuple[list[dict], dict]:
+        """시나리오의 대화록과 추출 값을 요청 값으로 채운다. 확정 통화의 둘째 방부터는 코드로 덧붙인다."""
+        if "scene" in call:
+            return call["scene"]
+        request: CallRequest = call["request"]
         source = _MOCK[call["kind"]][call["scenario"]]
-        filler = _Filler(call["request"])
+        agreed = None
+        if call["kind"] == "confirm" and call["scenario"] == "shifted" and request.target.rooms[0].alternatives:
+            agreed = request.target.rooms[0].alternatives[0].start
+        filler = _Filler(request, agreed)
         segments = [{"speaker": seg["speaker"], "text": filler.text(seg["text"])} for seg in source["transcript"]]
-        return {"status": "completed", "segments": segments}
+        extraction = filler.data(copy.deepcopy(source["extraction"]))
+        if call["kind"] == "confirm" and len(request.target.rooms) > 1 and call["scenario"] not in ("declined", "no_answer"):
+            self._extra_rooms(call["scenario"], request, segments, extraction)
+        call["scene"] = (segments, extraction)
+        return call["scene"]
+
+    @staticmethod
+    def _extra_rooms(scenario: str, request: CallRequest, segments: list[dict], extraction: dict) -> None:
+        """같은 사무소의 둘째·셋째 방 대화. partial은 첫 방만 확정, 나머지는 제안."""
+        for i, room in enumerate(request.target.rooms[1:], start=1):
+            listing = room.listing
+            name = listing.location or " ".join(x for x in (listing.building, listing.floor) if x) or f"{i + 1}번째 방"
+            unit = f"30{i + 2}호"
+            segments.append({"speaker": "speaker_0", "text": f"{name}은 {when(room.at)}에 보러 가도 될까요?"})
+            n = len(segments)
+            item = {"index": i, "still_available": True, "same_listing": True, "unit": unit,
+                    "evidence": {"still_available": n, "same_listing": n, "unit": n}}
+            if scenario in ("confirmed", "shifted"):
+                at = room.alternatives[0].start if scenario == "shifted" and room.alternatives else room.at
+                text = f"네, 그 방도 아직 있어요. {unit}예요. {spoken_day(at)} {spoken_time(at)}에 오세요."
+                item["agreed_visit"] = {"at": _iso(at), "place": f"{request.broker.name} 사무소"}
+                item["evidence"]["visit.at"] = n
+            elif scenario in ("partial", "alternative"):
+                at = room.at + timedelta(hours=2)
+                text = f"그 방도 아직 있어요. {unit}예요. 그 시간은 안 되고 {spoken_day(at)} {spoken_time(at)}는 괜찮아요."
+                item["proposed_visit"] = {"at": _iso(at), "note": f"{spoken_time(at)}는 가능하다고 함"}
+                item["evidence"]["proposal.at"] = n
+            elif scenario == "unavailable":
+                text = "그 방도 나갔어요."
+                item = {"index": i, "still_available": False, "evidence": {"still_available": n}}
+            else:  # no_time
+                text = f"그 방도 아직 있어요. {unit}예요. 그날은 안 돼요."
+            segments.append({"speaker": "speaker_1", "text": text})
+            extraction.setdefault("rooms", []).append(item)
+
+    def get_transcript(self, call_id: str) -> dict:
+        segments, _ = self._scene(self._call(call_id))
+        return {"status": "completed", "segments": [dict(seg) for seg in segments]}
 
     def canned_extraction(self, call_id: str) -> dict:
         """LLM 추출 흉내. 이 값도 실제 통화처럼 판정 코드를 거친다."""
-        call = self._call(call_id)
-        source = copy.deepcopy(_MOCK[call["kind"]][call["scenario"]]["extraction"])
-        return _Filler(call["request"]).data(source)
+        _, extraction = self._scene(self._call(call_id))
+        return copy.deepcopy(extraction)
 
     # 문자 -----------------------------------------------------------------
     def send_sms(self, to: str, body: str, subject: str = "") -> str:

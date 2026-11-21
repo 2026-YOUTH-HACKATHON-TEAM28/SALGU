@@ -14,11 +14,13 @@ from typing import Any, Callable, Optional
 
 from . import policy
 from .config import KST, Settings
-from .extract import decide, empty_result
+from .extract import decide, empty_confirm_result, empty_result, room_status, visit_status
 from .instruction import build_instruction, build_sms_draft
 from .policy import PolicyError
 from .provider import ProviderError
-from .schemas import VERSION, BatchRequest, CallRequest
+from .schemas import (
+    VERSION, BatchRequest, CallRequest, ConfirmRequest, ConfirmTarget, ListingRef, TargetRoom, VisitRequest,
+)
 
 ON_LINE = ("queued", "ringing", "in_progress")
 PENDING = ("waiting", "scheduled")
@@ -90,6 +92,63 @@ class CallService:
                 self._admit(call_request, batch, scenario, now)
             self._advance()
             return batch, True
+
+    def create_confirmations(self, request: ConfirmRequest, scenarios: Optional[list[Optional[str]]] = None):
+        """확정 묶음. 모든 방을 먼저 검사하고(하나라도 아니면 요청 전체 409), 사무소(문의 통화)마다 한 통."""
+        with self._lock:
+            existing = self._find_batch("confirm", request.approval_id)
+            if existing:
+                self._advance()
+                return existing, False
+            policy.check_mode(self.settings)
+            self._advance()  # 문의 통화 상태를 최신으로
+            groups: dict[str, list[VisitRequest]] = {}
+            for visit in request.visits:
+                parent = self._check_visit(visit)
+                groups.setdefault(parent["call_id"], []).append(visit)
+            now = self.now()
+            batch = self._new_batch("confirm", request.approval_id, now)
+            for i, (call_id, visits) in enumerate(groups.items()):
+                scenario = scenarios[i] if scenarios and i < len(scenarios) else None
+                self._admit(self._confirm_request(request.approval_id, call_id, visits), batch, scenario, now,
+                            parent_call_id=call_id)
+            self._advance()
+            return batch, True
+
+    def _check_visit(self, visit: VisitRequest) -> dict:
+        parent = self.store.calls.get(visit.call_id)
+        if not parent or parent["kind"] != "inquiry" or parent["status"] != "done" or parent["outcome"] != "listing":
+            raise PolicyError("call_not_found", {"call_id": visit.call_id})
+        result = parent["result"] or {}
+        if visit.listing_index >= len(result.get("listings") or []):
+            raise PolicyError("listing_not_found", {"call_id": visit.call_id, "listing_index": visit.listing_index})
+        if not policy.within_broker_slots(result, visit.at, self._proposals(visit.call_id, visit.listing_index)):
+            raise PolicyError("outside_broker_slots", {
+                "call_id": visit.call_id, "listing_index": visit.listing_index, "at": iso(visit.at),
+                "broker_slots": [{"start": s["start"], "end": s["end"]} for s in result.get("broker_slots") or []],
+            })
+        return parent
+
+    def _proposals(self, call_id: str, listing_index: int) -> list[str]:
+        """앞선 확정 통화에서 중개사가 직접 제안한 시각(이 시각은 다시 확정 요청 가능)."""
+        found = []
+        for rec in self.store.calls.values():
+            if rec["kind"] == "confirm" and rec["parent_call_id"] == call_id and rec["result"]:
+                for room in rec["result"].get("rooms") or []:
+                    if room["listing_index"] == listing_index and room.get("proposal"):
+                        found.append(room["proposal"]["at"])
+        return found
+
+    def _confirm_request(self, approval_id: str, call_id: str, visits: list[VisitRequest]) -> CallRequest:
+        parent = self.store.calls[call_id]
+        listings = parent["result"]["listings"]
+        rooms = [
+            TargetRoom(listing_index=v.listing_index, at=v.at, alternatives=v.alternatives, place=v.place,
+                       listing=ListingRef(**{k: listings[v.listing_index].get(k) for k in ListingRef.model_fields}))
+            for v in sorted(visits, key=lambda v: v.at)
+        ]
+        target = ConfirmTarget(parent_call_id=call_id, asked_at=parse(parent["started_at"]), rooms=rooms)
+        return self._request_of(parent).model_copy(update={"kind": "confirm", "approval_id": approval_id, "target": target})
 
     def _admit(self, request: CallRequest, batch: dict, scenario: Optional[str], now: datetime,
                parent_call_id: Optional[str] = None) -> dict:
@@ -278,7 +337,7 @@ class CallService:
             rec.update(status="analyzing", analyzing_since=iso(now))
             self._request_transcript(rec)
         else:
-            self._no_answer(rec, now, self._empty_result(rec))
+            self._no_answer(rec, now, self._empty_result(rec, "no_answer"))
 
     def _no_answer(self, rec: dict, now: datetime, result: dict) -> None:
         """안 받음·자동응답: retry_minutes 뒤 1번만 다시, 그래도 안 되면 문자 초안만 만든다."""
@@ -329,8 +388,23 @@ class CallService:
         rec.update(status="done", outcome=outcome, result=result)
 
     # ------------------------------------------------------------ 결과 만들기
-    def _empty_result(self, rec: dict) -> dict:
+    def _empty_result(self, rec: dict, outcome: Optional[str] = None) -> dict:
+        if rec.get("kind") == "confirm":
+            return empty_confirm_result(self._request_of(rec), outcome)
         return empty_result()
+
+    @staticmethod
+    def room_status(rec: dict, outcome: Optional[str]) -> str:
+        """방별 결과 → visit_status. 통화 전·중은 requesting, 걸지 못한 통화는 not_scheduled."""
+        if outcome is None and rec["status"] in ("failed", "rejected"):
+            return "not_scheduled"
+        return room_status(outcome)
+
+    @staticmethod
+    def visit_status(rec: dict) -> str:
+        if rec["status"] in ("failed", "rejected"):
+            return "not_scheduled"
+        return visit_status(rec["outcome"] if rec["status"] == "done" else None)
 
     def _build_result(self, request: CallRequest, raw: Optional[dict], segments: list[dict],
                       called_at: Optional[datetime] = None) -> tuple[str, dict]:
@@ -381,6 +455,9 @@ class CallService:
         )
         result = dict(rec["result"] or self._empty_result(rec))
         result.pop("error_detail", None)
+        if rec["kind"] == "confirm" and not rec["result"]:  # 통화 전·중은 '요청 중', 걸지 못했으면 not_scheduled
+            result["visit_status"] = self.visit_status(rec)
+            result["rooms"] = [dict(room, visit_status=self.room_status(rec, None)) for room in result["rooms"]]
         sms_draft = result.pop("sms_draft", None)
         body.update(result)
         body.update(
