@@ -24,7 +24,8 @@ async function attach(el: HTMLElement, data: string): Promise<void> {
     return;
   }
   entry.provider = p;
-  requestAnimationFrame(() => {
+  // 카드가 자리를 잡은 뒤에 크기를 재고 범위를 맞춰요.
+  window.setTimeout(() => {
     p.resize();
     if (route) {
       const visits = points.filter((x) => x.kind === 'visit');
@@ -32,7 +33,7 @@ async function attach(el: HTMLElement, data: string): Promise<void> {
     }
     for (const pt of points) p.marker({ lat: pt.lat, lng: pt.lng, html: pinHtml(pt), title: pt.label });
     p.fit(points, 14);
-  });
+  }, 60);
 }
 
 export function syncMiniMaps(): void {

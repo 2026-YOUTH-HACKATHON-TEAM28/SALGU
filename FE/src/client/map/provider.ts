@@ -260,7 +260,9 @@ class KakaoProvider implements MapProvider {
     if (!points.length) return;
     const b = new this.k.LatLngBounds();
     for (const p of points) b.extend(new this.k.LatLng(p.lat, p.lng));
-    this.map.setBounds(b, 40, 40, 40, 40);
+    // 칸 크기를 먼저 다시 재고, 핀 이름표가 위로 올라가니 위쪽 여백을 더 둬요.
+    this.map.relayout();
+    this.map.setBounds(b, 70, 60, 30, 60);
     if (this.map.getLevel() < 4) this.map.setLevel(4);
   }
   center(p: LatLng, zoom: number) {
