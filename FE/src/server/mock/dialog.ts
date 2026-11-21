@@ -505,7 +505,6 @@ function announceCalls(chat: ChatState, now: Date): void {
     `통화가 끝났어요. 방 ${mine.length}개를 찾았고 등기부 ${regs}건을 받았어요. 미팅 추천 ${count('recommend')}곳, 주의 ${count('caution')}곳, 제외 권장 ${count('exclude')}곳, 등기 대기 ${count('registry_wait')}곳이에요.`,
     {
       cards: [{ kind: 'checks', id: mid('k') }],
-      chips: ['추천 매물로 미팅 잡아줘', '주의 매물까지 미팅 잡아줘'],
       sources: [SRC.calls, SRC.registry, SRC.building, SRC.rule, SRC.deals],
     },
     now,

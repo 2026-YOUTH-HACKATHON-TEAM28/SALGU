@@ -2,6 +2,8 @@ import { html, type TemplateResult } from 'lit-html';
 import type { Card, Message } from '../../shared/types.js';
 import { condCard, condFormCard } from './cards/cond.js';
 import { dongDetailCard, dongsCard, noMatchCard } from './cards/dongs.js';
+import { callPrepCard, callsCard } from './cards/calls.js';
+import { checksCard } from './cards/checks.js';
 
 function conceptCard(c: Extract<Card, { kind: 'concept' }>) {
   return html`<article class="card concept">
@@ -23,9 +25,16 @@ export function renderCard(card: Card, _msg: Message): TemplateResult {
       return dongDetailCard(card);
     case 'noMatch':
       return noMatchCard(card);
+    case 'callPrep':
+      return callPrepCard(card);
+    case 'calls':
+      return callsCard(card);
+    case 'checks':
+      return checksCard(card);
+    case 'plan':
+    case 'final':
+      return html`<article class="card"><p class="muted">이 카드는 준비 중이에요.</p></article>`;
     case 'concept':
       return conceptCard(card);
-    default:
-      return html`<article class="card"><p class="muted">이 카드는 준비 중이에요.</p></article>`;
   }
 }

@@ -1314,3 +1314,259 @@ th {
   align-items: center;
   gap: 8px;
 }
+
+/* ---------- 전화 준비 · 통화 ---------- */
+.seg {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.seg legend {
+  font-weight: 700;
+  font-size: 14px;
+  margin-bottom: 6px;
+  padding: 0;
+}
+.seg legend em {
+  font-style: normal;
+  font-size: 11.5px;
+  color: var(--apricot-dark);
+  margin-left: 6px;
+}
+.seg-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.seg-btn {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 14px;
+}
+.seg-btn[aria-pressed='true'] {
+  border-color: var(--apricot);
+  background: var(--apricot-soft);
+  color: var(--apricot-dark);
+  font-weight: 700;
+}
+.checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+.checks input {
+  accent-color: var(--apricot);
+}
+.script summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 14px;
+}
+.script ol {
+  margin: 8px 0 0;
+  padding-left: 20px;
+  color: var(--ink-2);
+  font-size: 14px;
+  display: grid;
+  gap: 4px;
+}
+.hours {
+  background: var(--warn-soft);
+  color: var(--warn);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  font-size: 13.5px;
+}
+.call-summary {
+  display: grid;
+  gap: 6px;
+}
+.bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--line-2);
+  overflow: hidden;
+}
+.bar i {
+  display: block;
+  height: 100%;
+  background: var(--apricot);
+  transition: width 0.4s ease;
+}
+.call-group h4 {
+  margin-bottom: 4px;
+}
+.call-row {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+.call-main {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  background: none;
+  border: 0;
+  padding: 9px 10px;
+  text-align: left;
+}
+.call-name {
+  font-weight: 600;
+}
+.call-found {
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.call-detail {
+  border-top: 1px solid var(--line-2);
+  padding: 10px;
+  display: grid;
+  gap: 6px;
+  font-size: 14px;
+}
+.lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.lines li {
+  display: grid;
+  grid-template-columns: 48px 1fr;
+  gap: 6px;
+}
+.who {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink-3);
+  padding-top: 2px;
+}
+.line-agent .who {
+  color: var(--apricot-dark);
+}
+.line-system {
+  color: var(--ink-3);
+}
+.sms {
+  background: var(--bg);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+}
+
+/* ---------- 매물 카드(모든 화면 공통) ---------- */
+.listing-list {
+  display: grid;
+  gap: 10px;
+}
+.listing {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  display: grid;
+  gap: 6px;
+}
+.listing-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.lno {
+  display: inline-grid;
+  place-items: center;
+  min-width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  background: var(--ink);
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+.listing-title {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+}
+.listing-title .muted {
+  font-size: 13px;
+}
+.listing-head .badge {
+  margin-left: auto;
+}
+.listing-price {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+}
+.listing-price .money {
+  font-size: 17px;
+}
+.listing-price .muted {
+  font-size: 12.5px;
+}
+.listing-check {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.small-facts {
+  font-size: 13px;
+}
+.small-facts > div {
+  grid-template-columns: 84px 1fr;
+}
+.steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  font-size: 13.5px;
+}
+.steps li {
+  display: grid;
+  grid-template-columns: 112px 1fr;
+  gap: 8px;
+  align-items: center;
+}
+.step-k {
+  color: var(--ink-3);
+  font-size: 12.5px;
+}
+.bad {
+  color: var(--bad);
+}
+.reasons {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+@media (max-width: 767px) {
+  .steps li {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+}
+
+.step-v {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
