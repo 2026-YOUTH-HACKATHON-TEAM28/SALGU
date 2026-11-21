@@ -2,6 +2,7 @@
 
 과거 전월세 실거래에서 조건에 맞는 건물별 대표 매물을 찾고 점수순으로 반환한다.
 챗봇과 FastAPI 라우터는 이 모듈 밖에서 `recommend_properties()`를 호출한다.
+추천 매물은 기본 5개이며, 이 메소드는 공인중개사를 함께 조회하지 않는다.
 
 ## 입력
 
@@ -95,6 +96,9 @@ python scripts/check_kakao_commute.py 강남역 "서울특별시 마포구 공�
 
 추천 결과에서 사용자가 건물을 선택한 뒤 별도 메소드를 호출한다. 카카오 장소 카테고리
 `AG2`를 사용하고 선택 건물 좌표와의 거리순으로 반환한다.
+
+- `recommend_properties()`: 매물 추천만 수행
+- `find_nearest_realtors()`: 확정된 매물의 공인중개사 검색만 수행
 
 ```python
 from property_recommendation import RealtorSearchInput, find_nearest_realtors

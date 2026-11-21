@@ -15,5 +15,5 @@ async def find_nearest_realtors(
     criteria: RealtorSearchInput,
     provider: RealtorProvider,
 ) -> RealtorSearchOutput:
-    """확정된 건물 주소를 기준으로 가까운 중개업소를 찾는다."""
+    """추천과 별개로 확정된 매물 주소 주변 중개업소만 조회한다."""
     return await provider.find_nearest_realtors(criteria)

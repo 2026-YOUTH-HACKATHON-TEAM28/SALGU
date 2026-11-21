@@ -1,5 +1,18 @@
 # 추천 메소드 I/O
 
+## 메소드 분리
+
+```python
+# 1. 조건에 맞는 매물을 기본 5개 추천한다.
+recommendations = await recommend_properties(criteria, session, commute_provider)
+
+# 2. 사용자가 확정한 매물 주소로 공인중개사를 별도 조회한다.
+realtors = await find_nearest_realtors(realtor_criteria, provider)
+```
+
+두 메소드는 서로 자동 호출하지 않는다. 입력·출력 필드 설명은 Pydantic
+`Field(description=...)`에 정의되어 FastAPI OpenAPI 문서에도 포함된다.
+
 ## 입력 예시
 
 ```json

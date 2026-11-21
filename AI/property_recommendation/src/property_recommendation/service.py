@@ -191,6 +191,7 @@ async def recommend_properties(
     session: AsyncSession,
     commute_provider: CommuteProvider | None = None,
 ) -> RecommendationOutput:
+    """조건에 맞는 매물을 기본 5개 추천하며 중개업소는 조회하지 않는다."""
     service = PropertyRecommendationService(
         SqlPropertyRepository(session), commute_provider
     )
