@@ -1,6 +1,8 @@
 # 조건 카드 (Condition Card) 형식
 
 > 상태: **초안**입니다. FE(채팅·카드)·BE(검색·점수 엔진)와 합의하기 전이며, 형식이 바뀌면 `version`을 올립니다.
+>
+> 0.2: 전세·반전세(`lease_types`), 살 곳·피할 곳(`preferred_areas`·`avoid_areas`), 면적(`min_area_m2`), 층(`min_floor`), 역까지 걸어서(`max_walk_to_station_min`)를 더했습니다. 챗봇은 계산·위치 찾기를 하지 않고 말을 이 카드로 바꾸기만 합니다.
 
 `infer_conditions`는 사용자의 말을 조건 카드로 바꿉니다. FE는 카드를 그대로 보여 주고 추론한 조건에는 '추론' 표시를 붙입니다. 사용자가 [이대로 찾기]를 누르면 BE 검색·점수 엔진이 같은 JSON을 입력으로 받습니다.
 
@@ -18,7 +20,7 @@
 
 ```json
 {
-  "version": "0.1-draft",
+  "version": "0.2-draft",
   "utterance": "회사가 강남역인데 1000/50 정도로 깨끗하고 싼 집 찾아줘. 출퇴근 편했으면 좋겠어",
   "conditions": {
     "housing_types": {
@@ -88,7 +90,7 @@
 
 ```json
 {
-  "version": "0.1-draft",
+  "version": "0.2-draft",
   "utterance": "여의도 쪽 조용한 오피스텔 찾아줘",
   "conditions": {
     "housing_types": {
@@ -111,6 +113,64 @@
 }
 ```
 
+## 예시 3: 살 곳·전세·면적·층·역까지 거리
+
+입력: "홍대입구역 근처에 전세 1억 5천 이하 투룸, 반지하는 싫고 역에서 5분 안쪽이면 좋겠어. 신림은 빼줘"
+
+```json
+{
+  "version": "0.2-draft",
+  "utterance": "홍대입구역 근처에 전세 1억 5천 이하 투룸, 반지하는 싫고 역에서 5분 안쪽이면 좋겠어. 신림은 빼줘",
+  "conditions": {
+    "lease_types": {
+      "value": ["jeonse"],
+      "source": "stated",
+      "evidence": "전세"
+    },
+    "deposit_manwon": {
+      "value": 15000,
+      "source": "stated",
+      "evidence": "전세 1억 5천 이하"
+    },
+    "preferred_areas": {
+      "value": ["홍대입구역"],
+      "source": "stated",
+      "evidence": "홍대입구역 근처에"
+    },
+    "avoid_areas": {
+      "value": ["신림"],
+      "source": "stated",
+      "evidence": "신림은 빼줘"
+    },
+    "min_area_m2": {
+      "value": 33,
+      "source": "inferred",
+      "evidence": "투룸",
+      "reason": "투룸을 전용 33㎡(약 10평) 이상으로 해석"
+    },
+    "min_floor": {
+      "value": 1,
+      "source": "stated",
+      "evidence": "반지하는 싫고"
+    },
+    "max_walk_to_station_min": {
+      "value": 5,
+      "source": "stated",
+      "evidence": "역에서 5분 안쪽"
+    }
+  },
+  "priorities": [],
+  "unverifiable": [],
+  "clarifications": [
+    {
+      "id": "workplace",
+      "question": "회사나 학교는 어디예요? 가까운 역 이름도 좋아요.",
+      "options": ["강남역", "여의도역", "종각역"]
+    }
+  ]
+}
+```
+
 ## 필드
 
 | 필드 | 형식 | 설명 |
@@ -123,10 +183,16 @@
 | `conditions.deposit_manwon` | int | 보증금(만원). `approx: true`면 "정도" |
 | `conditions.monthly_rent_manwon` | int | 월세(만원). `approx: true`면 "정도" |
 | `conditions.price_band` | `"median_or_below"` | 같은 조건 실거래 대비 가격 구간 |
-| `conditions.workplace` | `"place"` | 출근지. `label`에 사용자가 말한 회사·학교·역 이름을 그대로 둡니다. 실제 위치는 서버가 카카오 지도에서 찾아 `place`(`name`, `address`, `x`, `y`)로 붙입니다. 서울 밖이면 `unverifiable`로 보냅니다. (기존 `gangnam`·`yeouido`·`jongno` 값도 읽을 수 있습니다) |
+| `conditions.workplace` | `"place"` | 출근지(회사·학교). `label`에 사용자가 말한 회사·학교·역 이름을 그대로 둡니다. 챗봇은 위치를 찾지 않습니다. 실제 위치는 계산하는 쪽(BE)이 찾습니다. (기존 `gangnam`·`yeouido`·`jongno` 값도 읽을 수 있습니다) |
 | `conditions.max_commute_min` | int | 출근 시간대 통근 상한(분) |
 | `conditions.max_transfers` | int | 환승 상한 |
 | `conditions.max_bus_headway_min` | int | 이용 버스 배차 상한(분) |
+| `conditions.lease_types` | `"monthly"` \| `"jeonse"` \| `"semi_jeonse"` 배열 | 월세 / 전세 / 반전세. 전세는 `deposit_manwon`만 두고 월세 칸은 넣지 않습니다. |
+| `conditions.preferred_areas` | string 배열 | 살고 싶은 곳(구·동·역 이름). 사용자가 말한 이름 그대로. 회사 위치와 구분합니다. |
+| `conditions.avoid_areas` | string 배열 | 피하고 싶은 곳(구·동·역 이름) |
+| `conditions.min_area_m2` | number | 전용면적 하한(㎡). 평은 × 3.3058, 소수 첫째 자리까지 |
+| `conditions.min_floor` | int | 최저 층. 반지하 제외 = 1, 1층 제외 = 2 |
+| `conditions.max_walk_to_station_min` | int | 가까운 지하철역까지 걸어서 상한(분) |
 | `priorities` | string 배열 | 사용자가 말한 우선순위. `price`, `commute`, `bus_headway`, `building_age` 중에서 순서대로 |
 | `unverifiable` | `{phrase, message}` 배열 | 데이터로 판단할 수 없는 바람 |
 | `clarifications` | `{id, question, options}` 배열 | 버튼 되묻기 |
@@ -147,7 +213,14 @@
 | "깨끗한 집" | `housing_types` = 오피스텔·빌라, `max_building_age_years` = 10 |
 | "싼 집", "1000/50 정도" | 보증금·월세 값(`approx`) + `price_band` = `median_or_below` |
 | "출퇴근 편하게", "회사가 강남역" | `workplace`, `max_commute_min` = 40, `max_transfers` = 1, `max_bus_headway_min` = 10 |
-| "조용한 곳" 등 판단할 데이터가 없는 바람 | `unverifiable` |
+| "전세 2억", "반전세 5천에 30" | `lease_types` = 전세 / 반전세, 보증금(·월세) |
+| "마포 근처 살고 싶어", "홍대입구역 근처 원룸" | `preferred_areas` (회사라는 말이 없으면 회사 위치가 아님) |
+| "신림 말고", "강북은 빼고" | `avoid_areas` |
+| "10평 이상", "20㎡ 넘는" | `min_area_m2` (stated) |
+| "투룸" / "쓰리룸" | `min_area_m2` = 33 / 50 (inferred, 실거래에 방 수가 없어 면적으로 해석) |
+| "반지하 싫어" / "1층은 싫어" / "3층 이상" | `min_floor` = 1 / 2 / 3 |
+| "역에서 5분" / "역세권" | `max_walk_to_station_min` = 5 (stated) / 10 (inferred) |
+| "조용한 곳", 반려동물, 주차, 엘리베이터, 옵션 등 판단할 데이터가 없는 바람 | `unverifiable` |
 
 ## 합의할 점
 
