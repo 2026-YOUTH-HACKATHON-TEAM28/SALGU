@@ -18,8 +18,9 @@ export class ApiError extends Error {
 }
 
 const TIMEOUT_MS = 15000;
-/** AI 답변을 기다리는 말 보내기는 더 길게 */
-const SEND_TIMEOUT_MS = 40000;
+/** 말 보내기·대화 동작은 대화 에이전트(추천 엔진이 카카오 통근까지 계산하면 30~40초)를 기다려요.
+ *  서버가 에이전트를 75초까지 기다리므로 그보다 넉넉히 */
+const SEND_TIMEOUT_MS = 90000;
 
 async function request<T>(method: string, url: string, body?: unknown, timeoutMs = TIMEOUT_MS): Promise<T> {
   const ctrl = new AbortController();
@@ -33,7 +34,13 @@ async function request<T>(method: string, url: string, body?: unknown, timeoutMs
       body: body !== undefined ? JSON.stringify(body) : method === 'POST' ? '{}' : undefined,
       signal: ctrl.signal,
     });
-  } catch {
+  } catch (err) {
+    if ((err as Error).name === 'AbortError')
+      throw new ApiError(
+        0,
+        'timeout',
+        '응답이 오래 걸려 기다리다 멈췄어요. 서버는 계속 처리하니 잠시 뒤 새로고침하면 결과가 보여요.',
+      );
     throw new ApiError(0, 'network', '서버에 연결하지 못했어요. 인터넷 연결을 확인해 주세요.');
   } finally {
     clearTimeout(timer);
@@ -64,7 +71,7 @@ export const api = {
   send: (id: string, text: string) =>
     request<ChatState>('POST', `/api/chats/${encodeURIComponent(id)}/messages`, { text }, SEND_TIMEOUT_MS),
   act: (id: string, action: Action) =>
-    request<ChatState>('POST', `/api/chats/${encodeURIComponent(id)}/actions`, action),
+    request<ChatState>('POST', `/api/chats/${encodeURIComponent(id)}/actions`, action, SEND_TIMEOUT_MS),
   schedule: () => request<{ items: ScheduleItem[] }>('GET', '/api/schedule'),
   kakaoTalk: (on: boolean) => request<{ kakaoTalk: boolean }>('POST', '/api/notify/kakao', { on }),
   testNotify: () => request<{ ok: boolean }>('POST', '/api/notify/test'),

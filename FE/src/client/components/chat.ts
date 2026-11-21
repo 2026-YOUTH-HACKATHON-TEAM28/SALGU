@@ -257,7 +257,8 @@ export function chatView() {
           ? html`<article class="bot-msg typing" aria-label="살구가 답을 정리하는 중">
               <header class="bot-name"><span class="avatar" aria-hidden="true">${logo(20)}</span>살구</header>
               <p class="typing-text">
-                <span class="dots"><i></i><i></i><i></i></span>답을 정리하는 중
+                <span class="dots"><i></i><i></i><i></i></span><span class="t-fast">답을 정리하는 중</span
+                ><span class="t-slow">실거래와 통근 경로를 계산하는 중이에요. 30초쯤 걸려요</span>
               </p>
             </article>`
           : nothing

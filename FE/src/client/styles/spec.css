@@ -1056,3 +1056,25 @@ body:has(.shell) {
 .facts .stop {
   display: block;
 }
+
+/* 기다림이 8초를 넘으면 문구를 바꿔요(동네 찾기는 통근 계산까지 30초쯤) */
+@keyframes salgu-swap-hide {
+  to {
+    visibility: hidden;
+    position: absolute;
+  }
+}
+@keyframes salgu-swap-show {
+  to {
+    visibility: visible;
+    position: static;
+  }
+}
+.typing-text .t-slow {
+  visibility: hidden;
+  position: absolute;
+  animation: salgu-swap-show 0s 8s forwards;
+}
+.typing-text .t-fast {
+  animation: salgu-swap-hide 0s 8s forwards;
+}
