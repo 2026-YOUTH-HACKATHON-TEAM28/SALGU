@@ -105,6 +105,8 @@ def create_app(service: Optional[CallService] = None, background: bool = True, w
     @app.get("/api/health")
     def health():
         return {"ok": True, "mode": settings.mode, "notify": _notify_channel(settings),
+                "dial": "requested" if settings.mode == "demo" and settings.dial_requested else
+                        ("demo_numbers" if settings.mode == "demo" else "none"),
                 "mcp": mcp is not None, "registry_inbox": settings.mode == "demo" and bool(settings.registry_number)}
 
     @app.post("/api/broker-call-batches")

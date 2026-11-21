@@ -1,0 +1,27 @@
+# 살구 화면 서버(빌드한 화면 + mock API). deploy.sh 가 __HOME__ 을 바꿔서 /etc/systemd/system 에 둬요.
+[Unit]
+Description=Salgu FE (screen + mock API)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=__HOME__/salgu-fe/current
+EnvironmentFile=__HOME__/salgu-fe/salgu-fe.env
+ExecStart=/usr/bin/env node dist/server/server/index.js
+Restart=on-failure
+RestartSec=3
+User=__USER__
+# 보호 설정: 데이터 폴더만 쓰기
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=__HOME__/salgu-fe/data
+ProtectControlGroups=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

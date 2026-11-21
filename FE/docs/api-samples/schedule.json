@@ -1,0 +1,105 @@
+{
+  "items": [
+    {
+      "chatId": "cmwpsyw4o0",
+      "visit": {
+        "id": "vmwpsywaai",
+        "listingId": "lst-bmwpsyw6kc-sinlim-b1-0",
+        "at": "2026-11-28T14:00:00",
+        "status": "confirmed",
+        "proposedAt": null,
+        "order": 1,
+        "travelNext": {
+          "mode": "도보",
+          "minutes": 10
+        },
+        "brokerSaid": "14시에 뵐게요.",
+        "changeRequested": false
+      },
+      "listing": {
+        "id": "lst-bmwpsyw6kc-sinlim-b1-0",
+        "no": 5,
+        "callId": "call-bmwpsyw6kc-sinlim-b1",
+        "brokerId": "sinlim-b1",
+        "dongId": "sinlim",
+        "building": "늘봄하우스 9차",
+        "floor": 1,
+        "unit": "101호",
+        "type": "villa",
+        "area": 21,
+        "built": 2015,
+        "deposit": 900,
+        "rent": 54,
+        "fee": 9,
+        "moveIn": "13월 초",
+        "lat": 37.48565269403886,
+        "lng": 126.92471026653544,
+        "slots": [
+          "2026-11-28T14:30:00"
+        ],
+        "priceVerdict": "slightly_high",
+        "contact": "confirmed"
+      },
+      "broker": {
+        "id": "sinlim-b1",
+        "dongId": "sinlim",
+        "name": "바른공인중개사사무소",
+        "regNo": "11620-2021-66429",
+        "phone": "02-801-8768",
+        "lat": 37.487640848618746,
+        "lng": 126.9285851620392
+      },
+      "dongName": "신림동",
+      "station": "신림"
+    },
+    {
+      "chatId": "cmwpsyw4o0",
+      "visit": {
+        "id": "vmwpsywaak",
+        "listingId": "lst-bmwpsyw6kc-sinlim-b1-1",
+        "at": "2026-11-28T15:25:00",
+        "status": "confirmed",
+        "proposedAt": null,
+        "order": 3,
+        "travelNext": null,
+        "brokerSaid": "15시 25분에 뵐게요.",
+        "changeRequested": false
+      },
+      "listing": {
+        "id": "lst-bmwpsyw6kc-sinlim-b1-1",
+        "no": 6,
+        "callId": "call-bmwpsyw6kc-sinlim-b1",
+        "brokerId": "sinlim-b1",
+        "dongId": "sinlim",
+        "building": "하늘빌라 6차",
+        "floor": 5,
+        "unit": "502호",
+        "type": "villa",
+        "area": 27,
+        "built": 2023,
+        "deposit": 700,
+        "rent": 60,
+        "fee": 7,
+        "moveIn": "12월 초",
+        "lat": 37.48400691197514,
+        "lng": 126.93535904960268,
+        "slots": [
+          "2026-11-28T14:30:00"
+        ],
+        "priceVerdict": "slightly_high",
+        "contact": "confirmed"
+      },
+      "broker": {
+        "id": "sinlim-b1",
+        "dongId": "sinlim",
+        "name": "바른공인중개사사무소",
+        "regNo": "11620-2021-66429",
+        "phone": "02-801-8768",
+        "lat": 37.487640848618746,
+        "lng": 126.9285851620392
+      },
+      "dongName": "신림동",
+      "station": "신림"
+    }
+  ]
+}

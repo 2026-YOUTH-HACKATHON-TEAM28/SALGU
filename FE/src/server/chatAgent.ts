@@ -1,0 +1,266 @@
+/* AI 폴더의 대화 에이전트(AI/chat_agent, FastAPI) 연결.
+ * 사용자의 말을 에이전트에 보내 '조건 카드'(contracts/condition_card.md, v0.2)와 답 문장을 받고,
+ * 화면이 쓰는 조건(Conditions)으로 바꿔요. 동네 찾기·전화·미팅과 숫자는 이 서버(계산 엔진)가 맡아요.
+ * 주소가 없거나 실패하면 null 을 돌려주고, 부르는 쪽은 규칙(+OpenAI)으로 답해요. */
+import type {
+  CondKey,
+  CondSource,
+  HouseType,
+  Priority,
+  RecItem,
+  Workplace,
+  LeaseType,
+} from '../shared/types.js';
+import { findWorkplace } from './mock/nlu.js';
+
+export interface AgentCondItem<T = unknown> {
+  value: T;
+  source?: 'stated' | 'inferred';
+  evidence?: string;
+  reason?: string;
+  label?: string;
+  kind?: 'work' | 'school';
+  approx?: boolean;
+}
+
+export interface AgentCard {
+  version?: string;
+  conditions?: Record<string, AgentCondItem | undefined>;
+  priorities?: string[];
+  unverifiable?: { phrase: string; message: string }[];
+  clarifications?: { id: string; question: string; options: string[] }[];
+  missing?: string[];
+  ready?: boolean;
+}
+
+export interface AgentTurn {
+  session_id: string;
+  type: 'condition_card' | 'message';
+  reply: string;
+  messages: { kind: string; text: string }[];
+  card: AgentCard | null;
+  intent: 'search' | 'question' | 'other' | 'control';
+  via: string;
+  ready: boolean;
+  missing: string[];
+  changed: string[];
+  backend?: AgentBackend | null;
+  /** 전화 요청 초안(contracts/call_request.md). '2번 집 문의해 줘' 같은 말에 와요 */
+  action?: AgentAction | null;
+}
+
+export interface AgentRealtor {
+  place_id: string;
+  name: string;
+  phone: string | null;
+  address: string;
+  road_address?: string | null;
+  distance_m: number;
+  longitude: number;
+  latitude: number;
+  place_url?: string;
+  registration_no?: string | null;
+  status?: string | null;
+}
+
+export interface AgentAction {
+  type: string;
+  status: 'needs_approval' | 'no_agencies' | string;
+  listing?: { name?: string; address?: string } | null;
+  request?: { brokers?: { reg?: string; name?: string; phone?: string }[] } | null;
+}
+
+export interface AgentBackend {
+  ok: boolean;
+  mock: boolean;
+  error?: string | null;
+  source?: string;
+  count?: number;
+  notes?: string[];
+  candidates?: Record<string, unknown>[];
+}
+
+/** 추천 엔진 후보 -> 화면 카드(실거래 DB 결과일 때만, 예시 응답은 버려요) */
+export function mapRecs(b: AgentBackend | null | undefined): RecItem[] {
+  if (!b || !b.ok || b.mock) return [];
+  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+  const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v : null);
+  return (b.candidates ?? []).slice(0, 5).map((c) => ({
+    name: str(c.name) ?? '이름 없음',
+    address: str(c.address),
+    housingType: str(c.housing_type),
+    rentType: str(c.rent_type),
+    deposit: num(c.deposit_manwon),
+    rent: num(c.monthly_rent_manwon),
+    area: num(c.area_m2),
+    floor: num(c.floor),
+    built: num(c.construction_year),
+    contractDate: str(c.contract_date),
+    deals: num(c.transaction_count),
+    score: num(c.score),
+    reasons: Array.isArray(c.reasons)
+      ? (c.reasons as unknown[]).filter((r): r is string => typeof r === 'string')
+      : [],
+    station: str(c.station),
+    walkMin: num(c.walk_to_station_min),
+  }));
+}
+
+/** 에이전트 조건 하나를 화면 조건으로 바꾼 값 */
+export interface MappedCond {
+  key: CondKey;
+  value: unknown;
+  source: CondSource;
+  reason?: string;
+}
+
+export interface MappedCard {
+  conds: MappedCond[];
+  /** 화면 동네 찾기에 아직 반영하지 못하는 조건(전세, 피할 곳, 면적, 층, 역까지 거리) */
+  notApplied: string[];
+  unverifiable: string[];
+  ask?: { question: string; options: { label: string; text: string }[] };
+}
+
+export class ChatAgent {
+  constructor(
+    private readonly url: string,
+    // 추천 엔진이 카카오 통근 경로까지 계산하면 오래 걸려요(서버 RECOMMEND_TIMEOUT_S 와 맞춰 넉넉히)
+    private readonly timeoutMs = 75000,
+  ) {}
+
+  get enabled(): boolean {
+    return Boolean(this.url);
+  }
+
+  async turn(sessionId: string, message: string): Promise<AgentTurn | null> {
+    if (!this.enabled) return null;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), this.timeoutMs);
+    try {
+      const res = await fetch(`${this.url.replace(/\/$/, '')}/api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sessionId, message }),
+        signal: ctrl.signal,
+      });
+      if (!res.ok) {
+        console.error(`[agent] 대화 에이전트 응답 ${res.status}`);
+        return null;
+      }
+      return (await res.json()) as AgentTurn;
+    } catch (err) {
+      console.error(`[agent] 대화 에이전트 호출 실패: ${(err as Error).name}`);
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /** 확정 매물 주소 주변 공인중개사(추천 엔진 find_nearest_realtors: 카카오 AG2 + 중개업소 DB 대조) */
+  async realtors(address: string, limit = 3): Promise<AgentRealtor[] | null> {
+    if (!this.enabled) return null;
+    try {
+      const res = await fetch(`${this.url.replace(/\/$/, '')}/api/realtors`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ property_address: address, limit }),
+        signal: AbortSignal.timeout(30000),
+      });
+      if (!res.ok) return null;
+      const body = (await res.json()) as { ok: boolean; offices?: AgentRealtor[]; error?: string | null };
+      if (!body.ok) {
+        console.error(`[agent] 중개사무소 검색 실패: ${(body.error ?? '').slice(0, 160)}`);
+        return null;
+      }
+      return body.offices ?? [];
+    } catch (err) {
+      console.error(`[agent] 중개사무소 검색 실패: ${(err as Error).name}`);
+      return null;
+    }
+  }
+
+  async reset(sessionId: string): Promise<void> {
+    if (!this.enabled) return;
+    try {
+      await fetch(`${this.url.replace(/\/$/, '')}/api/reset`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sessionId }),
+      });
+    } catch {
+      /* 다음 대화에서 다시 맞춰요 */
+    }
+  }
+}
+
+const src = (c: AgentCondItem | undefined): CondSource => (c?.source === 'inferred' ? 'filled' : 'said');
+const why = (c: AgentCondItem | undefined, fallback: string) =>
+  c?.source === 'inferred' ? c.reason || `"${c.evidence ?? ''}"에서 살구가 짐작했어요` : fallback;
+
+/** 에이전트 조건 카드(v0.2) -> 화면 조건 */
+export function mapAgentCard(card: AgentCard | null, workplaces: Workplace[], now = new Date()): MappedCard {
+  const out: MappedCard = { conds: [], notApplied: [], unverifiable: [] };
+  if (!card) return out;
+  const c = card.conditions ?? {};
+  const push = (key: CondKey, item: AgentCondItem | undefined, value: unknown) => {
+    if (item === undefined || value === undefined || value === null) return;
+    const source = src(item);
+    out.conds.push({ key, value, source, ...(source === 'filled' ? { reason: why(item, '') } : {}) });
+  };
+
+  // 회사·학교: 회사 목록에 있으면 그 id, 없으면 말한 이름 그대로(좌표는 카카오 장소 검색으로 찾아요).
+  // 회사를 말하지 않았으면 살고 싶은 곳을 기준점으로 써요.
+  const wpLabel = c.workplace?.label ?? (typeof c.workplace?.value === 'string' ? c.workplace.value : '');
+  const wp = wpLabel ? findWorkplace(wpLabel, workplaces) : null;
+  if (wpLabel && c.workplace && wpLabel !== 'place') {
+    push('workplace', c.workplace, wp?.id ?? wpLabel.trim().slice(0, 40));
+  } else {
+    const areas = (c.preferred_areas?.value as string[] | undefined) ?? [];
+    const first = areas[0];
+    const near = first ? findWorkplace(first, workplaces) : null;
+    if (first && c.preferred_areas) {
+      out.conds.push({
+        key: 'workplace',
+        value: near?.id ?? first.trim().slice(0, 40),
+        source: 'filled',
+        reason: `살고 싶은 곳(${areas.join(', ')}) 가까이로 찾으려고 ${near?.name ?? first}을 기준점으로 봤어요`,
+      });
+    }
+  }
+
+  push('deposit', c.deposit_manwon, c.deposit_manwon?.value);
+  push('rent', c.monthly_rent_manwon, c.monthly_rent_manwon?.value);
+  push('maxCommute', c.max_commute_min, c.max_commute_min?.value);
+  push('maxTransfer', c.max_transfers, c.max_transfers?.value);
+  push('maxBusInterval', c.max_bus_headway_min, c.max_bus_headway_min?.value);
+
+  const types = (c.housing_types?.value as string[] | undefined) ?? [];
+  if (types.length === 1) push('houseType', c.housing_types, types[0] as HouseType);
+  if (c.max_building_age_years?.value !== undefined) {
+    push('builtAfter', c.max_building_age_years, now.getFullYear() - Number(c.max_building_age_years.value));
+  }
+  if (c.price_band?.value === 'median_or_below') push('priceBand', c.price_band, 'low');
+
+  const PRI: Priority[] = ['price', 'commute', 'bus_headway', 'building_age', 'area'];
+  const pri = (card.priorities ?? []).filter((p): p is Priority => (PRI as string[]).includes(p));
+  if (pri.length) out.conds.push({ key: 'priority', value: pri, source: 'said' });
+
+  const strs = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
+  const lease = strs(c.lease_types?.value).filter((l): l is LeaseType =>
+    ['monthly', 'jeonse', 'semi_jeonse'].includes(l),
+  );
+  if (lease.length) push('leaseTypes', c.lease_types, lease);
+  const pref = strs(c.preferred_areas?.value);
+  if (pref.length) push('preferredAreas', c.preferred_areas, pref);
+  const avoid = strs(c.avoid_areas?.value);
+  if (avoid.length) push('avoidAreas', c.avoid_areas, avoid);
+  push('minArea', c.min_area_m2, c.min_area_m2?.value);
+  push('minFloor', c.min_floor, c.min_floor?.value);
+  push('maxWalk', c.max_walk_to_station_min, c.max_walk_to_station_min?.value);
+
+  out.unverifiable = (card.unverifiable ?? []).map((u) => u.phrase);
+  const q = card.clarifications?.[0];
+  if (q) out.ask = { question: q.question, options: q.options.map((o) => ({ label: o, text: o })) };
+  return out;
+}

@@ -1,0 +1,628 @@
+{
+  "id": "cmwpsyw4o0",
+  "title": "여의도역으로 출근해요. 월세 60만 원 이하…",
+  "createdAt": "2026-11-21T02:42:36.456Z",
+  "updatedAt": "2026-11-21T02:42:36.519Z",
+  "rev": 7,
+  "stage": "call",
+  "conditions": {
+    "workplace": {
+      "value": "yeouido",
+      "source": "said"
+    },
+    "deposit": {
+      "value": 1000,
+      "source": "said"
+    },
+    "rent": {
+      "value": 60,
+      "source": "said"
+    },
+    "maxCommute": {
+      "value": 40,
+      "source": "filled",
+      "reason": "출퇴근하는 분은 보통 40분 안쪽을 원해서"
+    },
+    "maxTransfer": {
+      "value": 1,
+      "source": "filled",
+      "reason": "환승이 두 번을 넘으면 출퇴근이 힘들어서"
+    }
+  },
+  "messages": [
+    {
+      "id": "mmwpsyw4v1",
+      "role": "user",
+      "text": "여의도역으로 출근해요. 월세 60만 원 이하, 보증금 1000만 원이면 좋겠어요",
+      "cards": [],
+      "chips": [],
+      "sources": [],
+      "at": "2026-11-21T02:42:36.462Z"
+    },
+    {
+      "id": "mmwpsyw4y3",
+      "role": "bot",
+      "text": "알려 주신 조건을 정리했어요. 맞으면 [이대로 찾기]를 눌러 주세요.",
+      "cards": [
+        {
+          "kind": "cond",
+          "id": "kmwpsyw4y2"
+        }
+      ],
+      "chips": [
+        "출퇴근이 제일 중요해"
+      ],
+      "sources": [],
+      "at": "2026-11-21T02:42:36.466Z"
+    },
+    {
+      "id": "mmwpsyw544",
+      "role": "user",
+      "text": "이대로 찾기",
+      "cards": [],
+      "chips": [],
+      "sources": [],
+      "at": "2026-11-21T02:42:36.472Z"
+    },
+    {
+      "id": "mmwpsyw5e6",
+      "role": "bot",
+      "text": "과거 실거래(최근 12개월)와 출퇴근 여건으로 살만한 동네 3곳을 골랐어요.\n- 1순위는 대림동이에요. 조건 비슷한 계약 34건, 환산월세 중간값 54만 원, 여의도역까지 28분\n- 2순위 신림동보다 환산월세 중간값이 2만 원 낮아요\n실거래는 이미 끝난 계약이라 지금 나온 집은 알 수 없어요. 동네를 고르면 동네마다 중개사무소 여러 곳에 AI가 전화해서 비슷한 방이 있는지 물어볼게요.",
+      "cards": [
+        {
+          "kind": "dongs",
+          "id": "kmwpsyw5e5",
+          "result": {
+            "dongs": [
+              {
+                "id": "daerim",
+                "name": "대림동",
+                "gu": "영등포구",
+                "station": "대림",
+                "lat": 37.4935,
+                "lng": 126.896,
+                "dealCount": 34,
+                "rentRange": [
+                  35,
+                  64
+                ],
+                "median": 54,
+                "commute": {
+                  "minutes": 28,
+                  "transfers": 1,
+                  "route": [
+                    "대림역까지 걸어서 5분",
+                    "2호선 7분",
+                    "환승",
+                    "5호선 5분",
+                    "걸어서 5분"
+                  ]
+                },
+                "bus": {
+                  "route": "6513",
+                  "interval": 9,
+                  "last": "23:20"
+                },
+                "brokers": [
+                  {
+                    "id": "daerim-b1",
+                    "dongId": "daerim",
+                    "name": "햇살공인중개사사무소",
+                    "regNo": "11560-2024-45453",
+                    "phone": "02-838-8204",
+                    "lat": 37.49368493151851,
+                    "lng": 126.89718069419264
+                  },
+                  {
+                    "id": "daerim-b2",
+                    "dongId": "daerim",
+                    "name": "참공인중개사사무소",
+                    "regNo": "11560-2024-88824",
+                    "phone": "02-840-7210",
+                    "lat": 37.49039595026336,
+                    "lng": 126.89182877958612
+                  },
+                  {
+                    "id": "daerim-b3",
+                    "dongId": "daerim",
+                    "name": "으뜸공인중개사사무소",
+                    "regNo": "11560-2019-50393",
+                    "phone": "02-805-1175",
+                    "lat": 37.492336735786864,
+                    "lng": 126.89888646186749
+                  }
+                ],
+                "buildings": [
+                  "한빛하우스 12차",
+                  "해든맨션 6차",
+                  "푸른맨션 9차",
+                  "다온시티 4차"
+                ],
+                "score": 37.2,
+                "rank": 1
+              },
+              {
+                "id": "sinlim",
+                "name": "신림동",
+                "gu": "관악구",
+                "station": "신림",
+                "lat": 37.4842,
+                "lng": 126.9297,
+                "dealCount": 29,
+                "rentRange": [
+                  41,
+                  64
+                ],
+                "median": 56,
+                "commute": {
+                  "minutes": 28,
+                  "transfers": 1,
+                  "route": [
+                    "신림역까지 걸어서 6분",
+                    "2호선 8분",
+                    "환승",
+                    "5호선 5분",
+                    "걸어서 3분"
+                  ]
+                },
+                "bus": {
+                  "route": "5516",
+                  "interval": 7,
+                  "last": "23:30"
+                },
+                "brokers": [
+                  {
+                    "id": "sinlim-b1",
+                    "dongId": "sinlim",
+                    "name": "바른공인중개사사무소",
+                    "regNo": "11620-2021-66429",
+                    "phone": "02-801-8768",
+                    "lat": 37.487640848618746,
+                    "lng": 126.9285851620392
+                  },
+                  {
+                    "id": "sinlim-b2",
+                    "dongId": "sinlim",
+                    "name": "하나공인중개사사무소",
+                    "regNo": "11620-2024-36610",
+                    "phone": "02-880-6428",
+                    "lat": 37.48471699491404,
+                    "lng": 126.92634615409844
+                  },
+                  {
+                    "id": "sinlim-b3",
+                    "dongId": "sinlim",
+                    "name": "참공인중개사사무소",
+                    "regNo": "11620-2021-19829",
+                    "phone": "02-936-6512",
+                    "lat": 37.48205312949121,
+                    "lng": 126.93073286920068
+                  }
+                ],
+                "buildings": [
+                  "한빛맨션 12차",
+                  "늘봄빌 2차",
+                  "하늘빌라 6차",
+                  "하늘스테이 7차"
+                ],
+                "score": 37.2,
+                "rank": 2
+              },
+              {
+                "id": "guro",
+                "name": "구로동",
+                "gu": "구로구",
+                "station": "구로디지털단지",
+                "lat": 37.4955,
+                "lng": 126.8875,
+                "dealCount": 40,
+                "rentRange": [
+                  44,
+                  64
+                ],
+                "median": 58,
+                "commute": {
+                  "minutes": 30,
+                  "transfers": 1,
+                  "route": [
+                    "구로디지털단지역까지 걸어서 7분",
+                    "2호선 8분",
+                    "환승",
+                    "5호선 5분",
+                    "걸어서 4분"
+                  ]
+                },
+                "bus": {
+                  "route": "5619",
+                  "interval": 8,
+                  "last": "23:30"
+                },
+                "brokers": [
+                  {
+                    "id": "guro-b1",
+                    "dongId": "guro",
+                    "name": "든든공인중개사사무소",
+                    "regNo": "11530-2017-91899",
+                    "phone": "02-815-9196",
+                    "lat": 37.493011186299846,
+                    "lng": 126.88471158548259
+                  },
+                  {
+                    "id": "guro-b2",
+                    "dongId": "guro",
+                    "name": "바른공인중개사사무소",
+                    "regNo": "11530-2022-14209",
+                    "phone": "02-939-7332",
+                    "lat": 37.49651213023066,
+                    "lng": 126.88646833457472
+                  },
+                  {
+                    "id": "guro-b3",
+                    "dongId": "guro",
+                    "name": "햇살공인중개사사무소",
+                    "regNo": "11530-2021-14006",
+                    "phone": "02-906-7966",
+                    "lat": 37.49642886490375,
+                    "lng": 126.88464578502183
+                  }
+                ],
+                "buildings": [
+                  "푸른빌라 5차",
+                  "새솔하우스 12차",
+                  "푸른하우스 2차",
+                  "정원오피스텔 10차"
+                ],
+                "score": 37.1,
+                "rank": 3
+              }
+            ],
+            "losses": [
+              {
+                "key": "rent",
+                "count": 543,
+                "suggest": 70
+              },
+              {
+                "key": "deposit",
+                "count": 99,
+                "suggest": 2000
+              }
+            ],
+            "asOf": "2026-10-31"
+          },
+          "workplace": "yeouido"
+        }
+      ],
+      "chips": [
+        "3곳 동네 다 전화해줘",
+        "다른 동네도 보여줘",
+        "더 싼 데 없어?",
+        "1번 자세히 알려줘"
+      ],
+      "sources": [
+        {
+          "label": "서울시 부동산 전월세가 정보(최근 12개월 계약)",
+          "kind": "example"
+        },
+        {
+          "label": "카카오맵 대중교통 경로",
+          "kind": "example"
+        },
+        {
+          "label": "서울시 버스운행노선",
+          "kind": "example"
+        },
+        {
+          "label": "서울시 중개업소 정보",
+          "kind": "example"
+        },
+        {
+          "label": "전월세전환율 5%",
+          "kind": "standard"
+        }
+      ],
+      "at": "2026-11-21T02:42:36.472Z"
+    },
+    {
+      "id": "mmwpsyw5h7",
+      "role": "user",
+      "text": "고른 동네 중개사무소들에 전화",
+      "cards": [],
+      "chips": [],
+      "sources": [],
+      "at": "2026-11-21T02:42:36.485Z"
+    },
+    {
+      "id": "mmwpsyw5i9",
+      "role": "bot",
+      "text": "대림동, 신림동, 구로동의 등록 중개사무소 9곳에 전화할게요. 입주 희망일과 계약 기간을 고르면 전화를 시작할 수 있어요.",
+      "cards": [
+        {
+          "kind": "callPrep",
+          "id": "kmwpsyw5i8",
+          "done": false
+        }
+      ],
+      "chips": [],
+      "sources": [
+        {
+          "label": "서울시 중개업소 정보",
+          "kind": "example"
+        }
+      ],
+      "at": "2026-11-21T02:42:36.485Z"
+    }
+  ],
+  "search": {
+    "dongs": [
+      {
+        "id": "daerim",
+        "name": "대림동",
+        "gu": "영등포구",
+        "station": "대림",
+        "lat": 37.4935,
+        "lng": 126.896,
+        "dealCount": 34,
+        "rentRange": [
+          35,
+          64
+        ],
+        "median": 54,
+        "commute": {
+          "minutes": 28,
+          "transfers": 1,
+          "route": [
+            "대림역까지 걸어서 5분",
+            "2호선 7분",
+            "환승",
+            "5호선 5분",
+            "걸어서 5분"
+          ]
+        },
+        "bus": {
+          "route": "6513",
+          "interval": 9,
+          "last": "23:20"
+        },
+        "brokers": [
+          {
+            "id": "daerim-b1",
+            "dongId": "daerim",
+            "name": "햇살공인중개사사무소",
+            "regNo": "11560-2024-45453",
+            "phone": "02-838-8204",
+            "lat": 37.49368493151851,
+            "lng": 126.89718069419264
+          },
+          {
+            "id": "daerim-b2",
+            "dongId": "daerim",
+            "name": "참공인중개사사무소",
+            "regNo": "11560-2024-88824",
+            "phone": "02-840-7210",
+            "lat": 37.49039595026336,
+            "lng": 126.89182877958612
+          },
+          {
+            "id": "daerim-b3",
+            "dongId": "daerim",
+            "name": "으뜸공인중개사사무소",
+            "regNo": "11560-2019-50393",
+            "phone": "02-805-1175",
+            "lat": 37.492336735786864,
+            "lng": 126.89888646186749
+          }
+        ],
+        "buildings": [
+          "한빛하우스 12차",
+          "해든맨션 6차",
+          "푸른맨션 9차",
+          "다온시티 4차"
+        ],
+        "score": 37.2,
+        "rank": 1
+      },
+      {
+        "id": "sinlim",
+        "name": "신림동",
+        "gu": "관악구",
+        "station": "신림",
+        "lat": 37.4842,
+        "lng": 126.9297,
+        "dealCount": 29,
+        "rentRange": [
+          41,
+          64
+        ],
+        "median": 56,
+        "commute": {
+          "minutes": 28,
+          "transfers": 1,
+          "route": [
+            "신림역까지 걸어서 6분",
+            "2호선 8분",
+            "환승",
+            "5호선 5분",
+            "걸어서 3분"
+          ]
+        },
+        "bus": {
+          "route": "5516",
+          "interval": 7,
+          "last": "23:30"
+        },
+        "brokers": [
+          {
+            "id": "sinlim-b1",
+            "dongId": "sinlim",
+            "name": "바른공인중개사사무소",
+            "regNo": "11620-2021-66429",
+            "phone": "02-801-8768",
+            "lat": 37.487640848618746,
+            "lng": 126.9285851620392
+          },
+          {
+            "id": "sinlim-b2",
+            "dongId": "sinlim",
+            "name": "하나공인중개사사무소",
+            "regNo": "11620-2024-36610",
+            "phone": "02-880-6428",
+            "lat": 37.48471699491404,
+            "lng": 126.92634615409844
+          },
+          {
+            "id": "sinlim-b3",
+            "dongId": "sinlim",
+            "name": "참공인중개사사무소",
+            "regNo": "11620-2021-19829",
+            "phone": "02-936-6512",
+            "lat": 37.48205312949121,
+            "lng": 126.93073286920068
+          }
+        ],
+        "buildings": [
+          "한빛맨션 12차",
+          "늘봄빌 2차",
+          "하늘빌라 6차",
+          "하늘스테이 7차"
+        ],
+        "score": 37.2,
+        "rank": 2
+      },
+      {
+        "id": "guro",
+        "name": "구로동",
+        "gu": "구로구",
+        "station": "구로디지털단지",
+        "lat": 37.4955,
+        "lng": 126.8875,
+        "dealCount": 40,
+        "rentRange": [
+          44,
+          64
+        ],
+        "median": 58,
+        "commute": {
+          "minutes": 30,
+          "transfers": 1,
+          "route": [
+            "구로디지털단지역까지 걸어서 7분",
+            "2호선 8분",
+            "환승",
+            "5호선 5분",
+            "걸어서 4분"
+          ]
+        },
+        "bus": {
+          "route": "5619",
+          "interval": 8,
+          "last": "23:30"
+        },
+        "brokers": [
+          {
+            "id": "guro-b1",
+            "dongId": "guro",
+            "name": "든든공인중개사사무소",
+            "regNo": "11530-2017-91899",
+            "phone": "02-815-9196",
+            "lat": 37.493011186299846,
+            "lng": 126.88471158548259
+          },
+          {
+            "id": "guro-b2",
+            "dongId": "guro",
+            "name": "바른공인중개사사무소",
+            "regNo": "11530-2022-14209",
+            "phone": "02-939-7332",
+            "lat": 37.49651213023066,
+            "lng": 126.88646833457472
+          },
+          {
+            "id": "guro-b3",
+            "dongId": "guro",
+            "name": "햇살공인중개사사무소",
+            "regNo": "11530-2021-14006",
+            "phone": "02-906-7966",
+            "lat": 37.49642886490375,
+            "lng": 126.88464578502183
+          }
+        ],
+        "buildings": [
+          "푸른빌라 5차",
+          "새솔하우스 12차",
+          "푸른하우스 2차",
+          "정원오피스텔 10차"
+        ],
+        "score": 37.1,
+        "rank": 3
+      }
+    ],
+    "losses": [
+      {
+        "key": "rent",
+        "count": 543,
+        "suggest": 70
+      },
+      {
+        "key": "deposit",
+        "count": 99,
+        "suggest": 2000
+      }
+    ],
+    "asOf": "2026-10-31"
+  },
+  "selectedDongIds": [
+    "daerim",
+    "sinlim",
+    "guro"
+  ],
+  "prep": {
+    "dongIds": [
+      "daerim",
+      "sinlim",
+      "guro"
+    ],
+    "moveIn": "12월 초",
+    "term": "2년",
+    "pet": null,
+    "visitSlot": "sat-pm",
+    "share": {
+      "condition": true,
+      "slot": true,
+      "surname": false,
+      "contact": false
+    }
+  },
+  "batch": null,
+  "listings": [],
+  "selectedListingIds": [],
+  "testCall": {
+    "id": "tmwpsyw6ca",
+    "phone": "010-****-5678",
+    "status": "done",
+    "lines": [
+      {
+        "who": "agent",
+        "text": "안녕하세요, 저는 살구의 AI 비서예요. 집을 구하는 분을 대신해 전화드렸어요. 원하지 않으시면 말씀해 주세요."
+      },
+      {
+        "who": "agent",
+        "text": "근처에 월세 60만 원 이하, 보증금 1,000만 원 정도 방이 있을까요? 입주는 12월 초이에요."
+      },
+      {
+        "who": "agent",
+        "text": "보여 주실 수 있는 시간이 언제일까요?"
+      },
+      {
+        "who": "system",
+        "text": "시험 전화가 끝났어요. 중개사무소에는 이 대본으로 걸어요."
+      }
+    ],
+    "startedAt": "2026-11-21T02:42:36.490Z",
+    "doneAt": "2026-11-21T02:42:36.519Z"
+  },
+  "visits": [],
+  "plan": null,
+  "brokers": [],
+  "live": false
+}

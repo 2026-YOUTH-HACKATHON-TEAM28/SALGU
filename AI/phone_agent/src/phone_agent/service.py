@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import re
 import json
 import secrets
 import threading
@@ -87,6 +88,8 @@ class CallService:
                 self._advance()
                 return existing, False
             policy.check_mode(self.settings)
+            for call_request in request.calls():
+                policy.check_dial_target(self.settings, call_request.broker.phone)
             now = self.now()
             batch = self._new_batch("inquiry", request.approval_id, now)
             for i, call_request in enumerate(request.calls()):
@@ -303,9 +306,12 @@ class CallService:
         return build_sms_draft(request)
 
     def _dial_to(self, rec: dict, request: CallRequest) -> str:
-        """mock은 요청 번호, demo는 시연 번호로만(사무소 순서대로 돌아가며, 재발신·확정은 처음 번호)."""
+        """mock은 요청 번호, demo는 시연 번호로만(사무소 순서대로 돌아가며, 재발신·확정은 처음 번호).
+        PHONE_AGENT_DIAL_REQUESTED=1 이면 demo 도 요청 번호(화면에서 사용자가 입력한 본인 휴대폰)로 건다."""
         if self.settings.mode != "demo":
             return request.broker.phone
+        if self.settings.dial_requested and rec["kind"] != "confirm":
+            return re.sub(r"\D", "", request.broker.phone)
         numbers = self.settings.demo_numbers
         if rec["dialed_to"]:
             return rec["dialed_to"]

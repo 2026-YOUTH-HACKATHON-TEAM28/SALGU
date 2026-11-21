@@ -1,0 +1,19 @@
+node_modules/
+dist/
+.data/
+.data-e2e/
+playwright-report/
+test-results/
+*.log
+
+# 키·비밀 (값은 서버 환경 변수나 .env 에만)
+.env
+.env.*
+!.env.example
+
+# 배포 서버 주소
+.deploy-host
+*.tgz
+agent-upload-*/
+fe-upload-*/
+stack-upload-*/

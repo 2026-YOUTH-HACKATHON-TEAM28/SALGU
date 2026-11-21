@@ -48,7 +48,7 @@ cp .env.example .env          # mock 모드는 비워 둬도 됩니다(.env가 d
 | 모드 | 동작 |
 |---|---|
 | `PHONE_AGENT_MODE=mock` (기본) | 전화·문자를 보내지 않고 정해진 결과를 돌려줍니다. 키가 필요 없습니다. |
-| `PHONE_AGENT_MODE=demo` | **`PHONE_AGENT_DEMO_TO`에 적은 시연 번호로만** 겁니다. 요청에 담긴 중개사 번호는 쓰지 않습니다. 번호가 하나면 모든 전화가 그 번호로, 쉼표로 둘 이상 적으면 사무소 순서대로 나눠 겁니다(재발신·확정은 처음 받은 번호로). 알림 문자는 첫 번호(또는 `PHONE_AGENT_NOTIFY_TO`)로 갑니다. 공급사 키와 `OPENAI_API_KEY`가 필요합니다. |
+| `PHONE_AGENT_MODE=demo` | **`PHONE_AGENT_DEMO_TO`에 적은 시연 번호로만** 겁니다. 요청에 담긴 중개사 번호는 쓰지 않습니다. 번호가 하나면 모든 전화가 그 번호로, 쉼표로 둘 이상 적으면 사무소 순서대로 나눠 겁니다(재발신·확정은 처음 받은 번호로). 알림 문자는 첫 번호(또는 `PHONE_AGENT_NOTIFY_TO`)로 갑니다. 공급사 키와 `OPENAI_API_KEY`가 필요합니다. `PHONE_AGENT_DIAL_REQUESTED=1`이면 시연 번호 대신 **요청에 담긴 휴대폰 번호**로 겁니다(살구 화면이 사용자가 입력한 본인 번호를 담아 보냄). 휴대폰(01x)이 아닌 번호가 오면 `phone_not_allowed`로 거절합니다. |
 
 시험 통화와 속도 측정: `python -m phone_agent.trial run --agent <에이전트ID> --label <설정이름>`으로 시연 번호에 걸어 결과와 응답 지연을 바로 보고, `python -m phone_agent.trial measure <callId>`로 끝난 통화의 속도를 잽니다. 절차와 기록표는 [속도 실험](experiments/2026-11-20-speed.md)에 있습니다.
 
