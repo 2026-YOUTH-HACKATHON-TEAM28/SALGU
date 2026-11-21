@@ -26,9 +26,9 @@
 | 사용자가 방문 일정을 승인했을 때 | `POST /api/visit-confirmations` | `201`/`200`, 걸 수 없으면 `409` |
 | 확정 진행·결과 보기 | `GET /api/visit-confirmations/{batch_id}` | 묶음 전체 |
 | 통화 한 건만 보기 | `GET /api/broker-calls/{call_id}` | 통화 한 건 |
-| 사용자가 등기부 PDF를 올릴 때 | `POST /api/broker-calls/{call_id}/registry-docs?listing_index=0` | `201` (본문에 PDF 그대로) |
-| 등기부 첨부 받기 | `GET /api/registry-docs/{message_id}/media/{i}` | 파일 |
-| 등기 정리 뒤 올린 원본 지우기 | `DELETE /api/registry-docs/{message_id}` | `204` |
+| 사용자가 등기부 PDF를 올릴 때 | `POST /api/broker-calls/{call_id}/registry-docs?listing_index=0` | `201` (본문에 PDF 그대로) — **11-21 구현에 없음(C6 제외)** |
+| 등기부 첨부 받기 | `GET /api/registry-docs/{message_id}/media/{i}` | 파일 — **11-21 구현에 없음(C6 제외)** |
+| 등기 정리 뒤 올린 원본 지우기 | `DELETE /api/registry-docs/{message_id}` | `204` — **11-21 구현에 없음(C6 제외)** |
 | 서버 상태 | `GET /api/health` | `{ok, mode, …}` |
 
 ## ① 문의 요청 (최소)
@@ -63,7 +63,7 @@
 | `broker_slots[]` | 중개사가 방을 보여 줄 수 있다고 한 시각 → 방문 시각 고르기 |
 | `registry_docs[]` | 등기부(문자로 받음 / 사용자가 올림). 첨부는 `media` 주소 |
 
-묶음에는 `duplicate_groups`(같은 방일 수 있는 매물)와 `notifications`(보낸 알림)가 함께 옵니다.
+묶음에는 `duplicate_groups`(같은 방일 수 있는 매물)와 `notifications`(보낸 알림)가 함께 옵니다. (11-21 구현: 알림은 만들지 않아 `notifications`·`registry_docs`는 빈 배열)
 
 ## ③ 확정 요청
 

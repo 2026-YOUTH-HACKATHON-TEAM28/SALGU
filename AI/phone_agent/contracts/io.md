@@ -7,6 +7,8 @@
 
 > 서버의 동작 규칙은 [서버 정의](call_broker.md)에 있습니다. v0.2(한 번 통화로 약속까지)와는 호환되지 않습니다.
 
+> **11-21 구현 범위**: 알림·등기부(C6)는 만들지 않았습니다. 결과의 `notifications`·`registry_docs`는 항상 빈 배열이고, 등기부 업로드·첨부·삭제 엔드포인트(`/registry-docs`)는 없습니다(404). 아래 해당 절은 계획으로 남겨 둡니다.
+
 ```
 챗봇 ──문의 묶음──▶ 전화 에이전트 ──(한 통씩)──▶ 중개사무소
   ▲                     │  ◀── 등기부 문자(살구 번호) ──┘
@@ -138,7 +140,7 @@
 | `registry_reply` | 등기부 요청에 대한 답: `will_send`, `at_visit`, `refused`, `null` |
 | `registry_docs[]` | 등기부. 살구 번호로 들어온 문자·MMS(`source: "sms"`)와 사용자가 올린 PDF(`source: "upload"`, `type: "upload"`)가 함께 들어옵니다. 첨부는 `media` 주소로 받습니다. `listing_index`는 업로드할 때 방을 지정했으면 그 방(문자는 `null`). 문자 본문의 주민등록번호는 가립니다. |
 | `unverified` | 확인되지 않아 비운 값의 이름. 화면에는 '확인 필요'로 |
-| `corrections[]` | 중개사가 말을 고친 흔적 `{field, value 또는 dropped, reason, line}`. `corrected_value`(고친 뒤 값을 받음, `value`), `corrected`(고치기 전 값이라 버림, `dropped`), `echoed`(AI가 말한 조건을 되풀이한 값이라 버림), `hedged`(중개사도 확실하지 않아 버림). 화면에 "통화 중 바뀐 값"으로 보여 줄 수 있습니다. |
+| `corrections[]` | 중개사가 말을 고친 흔적 `{field, value 또는 dropped, reason, line}`. `corrected_value`(고친 뒤 값을 받음, `value`), `corrected`(고치기 전 값이라 버림, `dropped`), `echoed`(AI가 말한 조건을 되풀이한 값이라 버림), `hedged`(중개사도 확실하지 않아 버림). 화면에 "통화 중 바뀐 값"으로 보여 줄 수 있습니다. 전사 보정도 여기에 남습니다: `name_matched`(전사된 건물 이름을 참고 건물 이름에 맞춤, `heard`에 들린 값), `read_back`(AI가 되읽고 중개사가 "네"라고 한 입주 시기로 받음, `heard`에 들린 값). |
 | `timing` | 통화 속도(초): 응답 지연 중앙값·p90·최대, AI 한 번 발화 평균·최대, AI가 끊은 횟수, 중개사가 끊은 횟수, 통화 길이. 시각이 없는 대화록(mock)이면 `null`. 확정 통화 결과에도 있습니다. |
 | `evidence`, `quotes` | 값이 나온 줄 번호와 그 줄의 내용(전문 보관에 동의하지 않아도 남습니다). `quotes`의 `start`·`end`는 통화 시작부터 센 초로, 대화록에 시각이 있을 때만 붙습니다(mock에는 없음). |
 | `transcript` | 대화 전문. `keep_transcript`가 `true`일 때만, 30일 동안 |

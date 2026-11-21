@@ -2,7 +2,7 @@
 
 살구의 마지막 단계(기획서 ④·⑤)입니다. 사용자가 고른 동네의 중개사무소에 AI가 전화해 방과 조건, 중개사가 되는 시간을 확인하고, 사용자가 일정을 승인하면 다시 전화해 방문을 확정합니다. 결과와 알림(카카오톡 '나에게 보내기')을 돌려줍니다.
 
-**지금 상태 (2026-11-20)**: API·MCP 서버가 v0.3.1(문의 → 확정 두 번 통화)로 동작하고 자동 테스트 115개가 통과합니다. 11-19~20에 실제 통화 12건을 걸어 설정을 비교했고, 기본 에이전트를 live(GPT-Live)로 정했습니다. live로 **문의 → 확정 통화를 실제로 이어 걸어** 결과가 문서 형식대로 나오는 것까지 확인했습니다(응답 1.8~2.1초). 문자·카카오 알림 실제 발송, 등기부 MMS 실제 수신은 아직 확인하지 않았고, 챗봇·화면과도 아직 연결하지 않았습니다.
+**지금 상태 (2026-11-21)**: 11-20판을 spec(`specs/`)과 자료만으로 다시 만들었습니다(팀 리포 SALGU, 브랜치 `ai/kkiha/phone-agent`). C1~C5(문의 → 확정 두 번 통화)와 C7(MCP 입구·중복 매물)이 v0.3.1 형식대로 동작하고 자동 테스트 124개가 통과합니다. live 에이전트로 실제 통화 3건(문의 2, 확정 1)을 걸어 문의 → 확정이 이어서 되는 것과 결과 형식을 확인했습니다(응답 1.5~2.0초). **C6(카카오·문자 알림, 등기부 문자 수신·PDF 업로드)은 팀 결정으로 만들지 않았습니다**: 결과의 `notifications`·`registry_docs`는 항상 빈 배열이고 등기부 엔드포인트는 없습니다. 챗봇·화면과는 아직 연결하지 않았습니다.
 
 ## 동작 흐름
 
@@ -27,7 +27,7 @@
 
 - 묶음 번호로 1~2초마다 조회합니다. 문의 결과의 `broker_slots`로 동선·시간을 배치하고, `duplicate_groups`로 중복 의심을 표시합니다.
 - 확정 결과는 방마다 `rooms[].visit_status`(`requesting` 요청 중 / `confirmed` / `needs_approval` / `not_scheduled`)로 보여 주세요. 일정은 `confirmed`인 방만 만듭니다.
-- 등기부 첨부는 `registry_docs[].media` 주소로 받습니다. 중개사가 문자로 보낸 것과 사용자가 직접 올린 PDF(`POST /api/broker-calls/{call_id}/registry-docs`)가 같은 자리에 들어오고, `source`(`sms`/`upload`)로 구분합니다.
+- 등기부 첨부·업로드와 알림은 이번 구현에 없습니다(C6 제외). `registry_docs`·`notifications`는 빈 배열로 옵니다.
 - 전화를 걸지 않는 mock 모드로 먼저 붙여 볼 수 있습니다.
 
 ### 아직 정하지 않은 것
@@ -39,7 +39,7 @@
 ```bash
 cd AI/phone_agent
 uv venv .venv && uv pip install -p .venv -e ".[dev,mcp]"
-cp .env.example .env          # mock 모드는 비워 둬도 됩니다
+cp .env.example .env          # mock 모드는 비워 둬도 됩니다(.env가 demo여도 PHONE_AGENT_MODE=mock을 앞에 붙이면 mock)
 .venv/bin/uvicorn phone_agent.app:app --port 8090     # REST + http://localhost:8090/mcp
 .venv/bin/python -m phone_agent.mcp_server            # MCP만 stdio로
 .venv/bin/python -m pytest    # 테스트
@@ -86,11 +86,24 @@ curl localhost:8090/api/visit-confirmations/<batch_id>
 - 시연 모드에서는 요청에 담긴 중개사 번호로 걸지 않고 허용한 한 번호로만 겁니다.
 - 결과의 숫자·시각·날짜는 중개사가 한 말(근거 줄)에 실제로 있을 때만 씁니다. 확인되지 않으면 비웁니다.
 - 결론(방 있음, 확정 등)은 LLM이 아니라 코드가 정합니다.
-- 대화 전문은 동의했을 때만 30일 보관하고, 녹음은 받지 않습니다. 등기부 문자 본문의 주민등록번호는 바로 가리고, 문자 첨부는 저장하지 않습니다. 사용자가 올린 PDF는 메모리에만 두고 사실 정리 뒤 `DELETE /api/registry-docs/{id}`로 지웁니다(안 지우면 24시간 뒤 자동 삭제).
+- 대화 전문은 동의(`keep_transcript`)했을 때만 결과에 남기고, 아니면 근거 줄(`quotes`)만 남깁니다. **30일 뒤 자동 삭제는 아직 구현하지 않았습니다.** 서버는 녹음을 받지 않지만, **공급사 발신 번호의 녹음이 켜져 있습니다**(11-21 확인, 대시보드에서 꺼야 함).
+- 통화 뒤 녹음 전사가 중개사 말을 틀리게 적을 수 있어("헤든빌라", "다음 달 추석부터"), 건물 이름은 참고 건물 이름에 자모가 거의 같을 때만 맞추고, 입주 시기는 AI가 한 번 되묻고 중개사가 "네"라고 한 표현으로 받습니다. 들은 값은 `corrections`에 남깁니다.
 
 하지 않는 일: 동네·사무소 고르기와 전화 순서 정하기(챗봇), 동선·이동 시간 점검과 일정 화면·스케줄러 반영(화면), 등기부 사실 정리와 소재지로 중복 최종 판정(등기 담당).
 
 ## 시험 통화 결과
+
+### 2026-11-21: 다시 만든 코드로 문의 → 확정 (3건, live)
+
+| 확인한 것 | 결과 |
+|---|---|
+| 문의(C3): 첫마디 AI 고지, 조건·가능 시간·등기부 질문, 약속 없이 마무리 | 통과. 관리비 정정("오만… 이 방은 칠만") 확인 후 결과 7 |
+| 문의 → 확정(C5) 이어 걸기 | 통과. 가능 시간 시작(11-23 14시)으로 자동 확정 전화 → `confirmed`, 302호 |
+| 시각 없이 "네, 되시네요"로만 받은 확정(L8) | `confirmed`로 판정 |
+| 확정 되읽기 날짜(L11·L14) | "11월 23일 월요일 오후 2시"로 정확 |
+| 응답 지연(중앙값) | 문의 1.73~2.04초, 확정 1.48초 |
+
+고친 것: 확정 통화에서 중개사가 호수를 먼저 말했는데 다시 물음 → 지시문 수정. 전사 오류("헤든빌라", "추석") → 건물 이름 맞추기·입주 시기 되읽기. 아직 실제 통화로 확인하지 않은 것: 이 두 수정, 등기부 질문 중 엉뚱한 말 한 번("이미 포함된 관리비가 금액인데요"), 날짜 더듬기("11월 12, 3일").
 
 ### 2026-11-19~20: 설정 비교와 두 번 통화 (12건)
 
@@ -146,32 +159,27 @@ curl localhost:8090/api/visit-confirmations/<batch_id>
 | `specs/lessons.md`, `specs/prompts.md` | 실제로 겪은 함정 목록, 해커톤 당일 프롬프트 |
 | `specs/interfaces.md`, `specs/assets/` | 모듈·함수 이름과 시그니처 / 그대로 가져갈 자료(pyproject, 예시 요청, 오류 문구, mock 대화록, LLM 지시, 낱말 목록) |
 | `prompts/agent_prompt.md` | 공급사 에이전트의 고정 프롬프트(문의/확정)와 통화별 지시 예시 |
+| `src/phone_agent/config.py` | 설정(`.env`와 환경 변수) |
 | `src/phone_agent/app.py` | REST API와 `/mcp` 연결 |
-| `src/phone_agent/mcp_server.py` | MCP 입구 `mcp-phone`: `call_brokers`, `get_call_results`, `confirm_visits` |
+| `src/phone_agent/mcp_server.py` | MCP 입구 `mcp-phone`: `call_brokers`, `get_call_results`, `confirm_visits` (mcp 2.x `MCPServer`) |
 | `src/phone_agent/schemas.py` | 요청 형식(문의 묶음, 확정 묶음, 통화 한 건) |
-| `src/phone_agent/service.py` | 접수, 한 통씩 거는 줄, 통화 진행, 알림, 등기부 수신(문자·사용자 업로드), 보관 기간, 결과 |
-| `src/phone_agent/policy.py` | 발신 전 검사(영업시간·공휴일, 하루 제한, 확정 통화 수) |
+| `src/phone_agent/service.py` | 접수, 한 통씩 거는 줄, 통화 진행, 재발신, 확정 묶음, 결과, `build_service` |
+| `src/phone_agent/policy.py` | 발신 전 검사(영업시간·공휴일, 하루 제한, 확정 통화 수), 확정 시각 안전장치 |
 | `src/phone_agent/instruction.py` | 요청 → 통화별 지시문(문의/확정), 문자 초안 |
-| `src/phone_agent/provider.py` | 한국AI통신 호출(전화·문자)과 전화를 걸지 않는 `MockProvider` |
-| `src/phone_agent/extract.py` | 대화록 → 결과. LLM이 값을 찾고, 코드가 중개사 근거 줄·날짜와 대조해 결론을 정함 |
+| `src/phone_agent/provider.py` | 한국AI통신 호출(`KatProvider`)과 전화를 걸지 않는 `MockProvider` |
+| `src/phone_agent/extract.py` | 대화록 → 결과. LLM이 값을 찾고, 코드가 중개사 근거 줄·날짜와 대조해 결론을 정함. 전사 보정 |
 | `src/phone_agent/dedupe.py` | 출처가 다른 매물의 중복 후보 묶기 |
-| `src/phone_agent/notify.py` | 카카오톡 '나에게 보내기', 문자 대체 |
 | `src/phone_agent/timing.py` | 통화 속도 측정(응답 지연, AI 발화 길이, 끊은 횟수) |
-| `src/phone_agent/trial.py` | 시험 통화 도구(`run`, `measure`) |
+| `src/phone_agent/trial.py` | 시험 통화 도구(`run [--confirm]`, `measure`) |
 | `experiments/2026-11-20-speed.md` | 속도·정정 실험 절차, 기준값, 기록표 |
 
 공급사는 한국AI통신입니다(국내 070 발신·문자, REST API). 공급사 API와의 대응은 서버 정의의 '공급사 대응'에 있습니다. API 키, 발신 번호, 시연 번호, 카카오 토큰은 로컬 `.env`에만 둡니다.
 
 ## 남은 일
 
-- [x] 서버를 v0.2 형식으로 고치기 (묶음 접수, 매물 여러 건, 등기부 답변)
-- [x] v0.3: 문의/확정 두 번 통화, MCP 입구, 중복 후보, 등기부 수신, 알림, 보관 기간
-- [x] 정정 감지, 통화 속도 측정, 시험 통화 도구, '빠르고 자연스럽게' 프롬프트
-- [x] 고정 프롬프트 v0.3을 공급사 에이전트에 올리기, 실험용 에이전트 3개(high·realtime·live) 만들기
-- [x] 속도 실험: 기존 / high / realtime / live 비교 → live로 결정(11-20)
-- [x] v0.3 시험 통화(한 번호로 문의 → 확정)
-- [x] 등기부 PDF 사용자 업로드를 통화에 연결, 시연 번호 여러 개로 나눠 걸기
-- [ ] 문자·카카오 알림 실제 발송, 등기부 MMS 실제 수신
-- [ ] 공급사 발신 번호의 녹음 끄기
-- [ ] 챗봇, 화면 쪽과 연결
-- [ ] 서버를 띄울 곳 정하고 배포
+- [x] 11-21: spec대로 다시 만들기 C1~C5, C7 (C6 알림·등기부는 팀 결정으로 제외)
+- [x] 11-21: live로 문의 → 확정 실제 통화, 호수 중복 질문·전사 오류 보정
+- [ ] 공급사 발신 번호의 녹음 끄기(대시보드)
+- [ ] 동의한 대화 전문 30일 뒤 자동 삭제
+- [ ] 호수 중복 질문 수정·입주 시기 되읽기를 실제 통화로 확인(리허설)
+- [ ] 챗봇, 화면 쪽과 연결(서버를 띄울 곳 정하고 배포)
