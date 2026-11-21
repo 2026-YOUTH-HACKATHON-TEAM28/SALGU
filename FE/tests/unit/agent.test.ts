@@ -72,6 +72,25 @@ describe('조건 카드(v0.2) -> 화면 조건', () => {
     );
     expect(m.conds[0]).toMatchObject({ key: 'workplace', value: 'hongdae', source: 'filled' });
   });
+
+  it('반려동물·주차 바람은 전화로 확인할 조건으로', () => {
+    const m = mapAgentCard(
+      {
+        conditions: {},
+        unverifiable: [
+          { phrase: '고양이 키워도 되는 데', message: '데이터로 확인할 수 없어요' },
+          { phrase: '주차 되는 곳', message: '데이터로 확인할 수 없어요' },
+        ],
+      },
+      WORKPLACES,
+    );
+    expect(m.conds).toEqual(
+      expect.arrayContaining([
+        { key: 'pet', value: true, source: 'said' },
+        { key: 'parking', value: true, source: 'said' },
+      ]),
+    );
+  });
 });
 
 /* 에이전트 서버를 흉내 내요 */

@@ -166,6 +166,14 @@ export function mapAgentCard(card: AgentCard | null, workplaces: Workplace[], no
   if (c.max_walk_to_station_min) out.notApplied.push(`역까지 걸어서 ${c.max_walk_to_station_min.value}분`);
 
   out.unverifiable = (card.unverifiable ?? []).map((u) => u.phrase);
+  // 반려동물·주차는 데이터로는 못 보지만 화면에 '전화로 확인' 칸이 있어 그쪽으로 넣어요.
+  for (const phrase of out.unverifiable) {
+    if (/고양이|강아지|반려|애완/.test(phrase) && !/안\s*키|없/.test(phrase)) {
+      out.conds.push({ key: 'pet', value: true, source: 'said' });
+    }
+    if (/주차/.test(phrase) && !/필요\s*없/.test(phrase))
+      out.conds.push({ key: 'parking', value: true, source: 'said' });
+  }
   const q = card.clarifications?.[0];
   if (q) out.ask = { question: q.question, options: q.options.map((o) => ({ label: o, text: o })) };
   return out;
