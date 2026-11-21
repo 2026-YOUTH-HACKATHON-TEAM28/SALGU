@@ -557,6 +557,8 @@ p {
   flex-direction: column;
   gap: 14px;
   scroll-behavior: smooth;
+  /* 스크롤바 자리를 양쪽에 같게 둬서 메시지 칸이 입력창과 같은 가운데에 오게 */
+  scrollbar-gutter: stable both-edges;
 }
 .log > * {
   width: 100%;
@@ -780,14 +782,10 @@ p {
 .composer {
   display: flex;
   gap: 8px;
-  padding: 10px 16px 14px;
+  /* 배경은 끝까지, 입력칸은 메시지 칸(최대 860px)과 같은 너비로 */
+  padding: 10px max(16px, calc((100% - 860px) / 2)) 14px;
   background: var(--surface);
-  max-width: 892px;
   width: 100%;
-  margin: 0 auto;
-}
-.chat > .composer {
-  max-width: none;
 }
 .composer textarea {
   flex: 1;
