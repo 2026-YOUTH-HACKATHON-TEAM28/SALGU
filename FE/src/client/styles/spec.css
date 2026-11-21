@@ -883,3 +883,15 @@ button.pin-wrap {
   background: var(--apricot);
   background-clip: padding-box;
 }
+
+/* 겹침 정리: 지도(및 지도 위 버튼·범례)는 자기 칸 안에서만 쌓이게 하고,
+   헤더의 대화 목록·계정 메뉴가 늘 지도 위에 오게 해요. */
+.top {
+  z-index: 50;
+}
+.bigmap-wrap,
+.mini,
+.side,
+.m-pane {
+  isolation: isolate;
+}
