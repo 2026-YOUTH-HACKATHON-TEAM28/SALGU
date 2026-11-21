@@ -63,3 +63,10 @@
 - 서버의 옛 zipsa(v119 화면) 서비스를 멈추고 자동 시작을 끔. 옛 salgu-api(127.0.0.1:8700)와 전화 에이전트 도커(127.0.0.1:8090)는 그대로 둠
 - `STOP_OLD=1 bash deploy/deploy.sh` 로 v1 배포(~/salgu-fe/releases, systemd salgu-fe, 8080). 배포 묶음을 지금 폴더에 만들도록 고침(Windows scp 가 /tmp 경로를 못 읽음)
 - 확인: https://sample.localhostbar.com/api/health 가 version 1, 세션 쿠키 HttpOnly·Secure·SameSite=Lax, 프록시 뒤 방문자 IP 기록, 공개 주소에서 로그인과 조건 카드까지 콘솔 오류 없음, 설정 파일 600·데이터 폴더 700
+
+### 7. 옛 AI 백엔드·전화 에이전트 내리기
+
+> 둘 다 내려줘
+
+- 옛 salgu-api(127.0.0.1:8700) 서비스를 멈추고 자동 시작을 끔, 전화 에이전트 도커 salgu-phone(127.0.0.1:8090)을 멈춤(컨테이너는 지우지 않음, 재시작 정책 unless-stopped 라 서버를 다시 켜도 안 뜸)
+- 확인: 8700·8090 열린 곳 없음, salgu-fe(8080)와 공개 주소 health 정상
