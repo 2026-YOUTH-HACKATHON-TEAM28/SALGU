@@ -316,6 +316,15 @@ function toCommute(c: Cand): DongResult['commute'] {
   };
 }
 
+/** 첫차·막차 시각을 'HH:MM' 으로. 원본은 '23:40', '2340', '245830'(시분초, 24시 넘으면 다음 날) 등 */
+function clock(raw: string | null | undefined): string {
+  const d = (raw ?? '').replace(/\D/g, '');
+  if (d.length < 3) return '-';
+  const hh = Number(d.length % 2 ? d.slice(0, 1) : d.slice(0, 2));
+  const mm = d.length % 2 ? d.slice(1, 3) : d.slice(2, 4);
+  return `${String(hh % 24).padStart(2, '0')}:${mm}`;
+}
+
 /** 경로의 첫 버스 구간(배차·막차는 서울시 버스 DB). 버스가 없으면 첫 지하철 구간 */
 function toBus(c: Cand): DongResult['bus'] {
   const legs = c.transit_legs ?? [];
@@ -326,7 +335,7 @@ function toBus(c: Cand): DongResult['bus'] {
   return {
     route: (l.route_names ?? []).slice(0, 2).join('·') || (l.mode === 'bus' ? '버스' : '지하철'),
     interval: Math.round(l.headway_min),
-    last: l.last_time ? l.last_time.slice(0, 5) : '-',
+    last: clock(l.last_time),
   };
 }
 
