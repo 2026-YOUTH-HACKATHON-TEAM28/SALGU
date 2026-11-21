@@ -88,6 +88,21 @@ CASES = [
     ("역세권 오피스텔 1000/50", {"max_walk_to_station_min": 10, "housing_types": [OT]}, True),
     ("강남역에서 30분 이내면 좋겠어", {"max_walk_to_station_min": None}, False),
 
+    # QA에서 나온 말들 (2026-11-21)
+    ("오피스탤 보증굼 1000 월쎄 50", {"housing_types": [OT], "deposit_manwon": 1000, "monthly_rent_manwon": 50}, True),
+    ("월세 50 아니 60", {"monthly_rent_manwon": 60}, False),
+    ("보증금 500 아니다 1000으로 월세 40", {"deposit_manwon": 1000, "monthly_rent_manwon": 40}, False),
+    ("월세 좀만 더 올려도 돼 60까지", {"monthly_rent_manwon": 60}, None),
+    ("강남 서초 송파 쪽 아무데나 월세 100 보증금 1억",
+     {"preferred_areas": ["강남", "서초", "송파"], "monthly_rent_manwon": 100, "deposit_manwon": 10000}, None),
+    ("1000/50인데 전세로", {"lease_types": None, "deposit_manwon": 1000}, False),
+    ("판교 근처 오피스텔 1000/60", {"preferred_areas": None, "housing_types": [OT]}, None),
+    ("부산 해운대 1000/50", {"preferred_areas": None, "deposit_manwon": 1000}, None),
+    ("전세사기 어떻게 피해?", {"lease_types": None}, False),
+    ("학교 근처 원룸 50만원 이하", {"monthly_rent_manwon": 50}, None),
+    ("직장 근처로 집 구해요", {"workplace": None}, None),
+    ("점심 뭐 먹지 그리고 홍대 원룸 1000/50", {"preferred_areas": ["홍대"], "deposit_manwon": 1000}, False),
+
     # 확인 불가
     ("강아지 키울 수 있는 집", {}, False),
     ("주차 되는 오피스텔 1000/50", {"housing_types": [OT]}, True),

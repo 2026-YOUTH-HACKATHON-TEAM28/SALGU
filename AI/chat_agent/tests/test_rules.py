@@ -38,6 +38,30 @@ class RulesTest(unittest.TestCase):
         self.assertEqual(rules.parse("오늘 점심 뭐 먹지?")["intent"], "other")
         self.assertEqual(rules.parse("자취방 알아보는 중")["intent"], "search")
 
+    def test_question_words_only(self):
+        for t in ("반전세가 뭐예요", "확정일자 뭐임", "전세사기 어떻게 피해?", "오피스텔이랑 빌라 차이가 뭐야"):
+            with self.subTest(text=t):
+                self.assertEqual(rules.parse(t)["intent"], "question")
+        r = rules.parse("보증금 1000이면 월세 얼마가 적당해?")
+        self.assertEqual((r["intent"], r["asked"]), ("search", True))
+
+    def test_outside_seoul(self):
+        card = rules.parse("분당 쪽 전세 2억")["card"]
+        self.assertEqual(card["unverifiable"][0]["message"], rules.OUTSIDE_MESSAGE)
+        self.assertNotIn("preferred_areas", card["conditions"])
+        # 회사 위치로는 서울 밖도 괜찮다
+        card = rules.parse("회사가 판교인데 1000/50")["card"]
+        self.assertEqual(card["conditions"]["workplace"]["label"], "판교")
+        self.assertEqual(card["unverifiable"], [])
+
+    def test_control(self):
+        cases = {"아니 그냥 처음부터 다시": ("reset", None), "취소": ("stop", None), "됐어 안 해": ("stop", None),
+                 "ㅇㅇ": ("ack", None), "좋아요!": ("ack", None), "다른 거 더 보여줘": ("more", None),
+                 "2번째꺼 자세히": ("pick", 2), "두 번째 집 어때": ("pick", 2), "신촌 1000/50": (None, None)}
+        for text, want in cases.items():
+            with self.subTest(text=text):
+                self.assertEqual(rules.control(text), want)
+
     def test_workplace_tail(self):
         label = rules.parse("회사가 판교라서 1000/50")["card"]["conditions"]["workplace"]["label"]
         self.assertEqual(label, "판교")

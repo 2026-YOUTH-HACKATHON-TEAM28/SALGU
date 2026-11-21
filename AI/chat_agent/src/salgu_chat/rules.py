@@ -26,7 +26,7 @@ _UNDER = (rf"(?:(?:{_D}|{_K})?천(?:(?:{_D}|{_K})?백)?(?:{_K}?십)?{_KEND}"
           rf"|{_D})")
 _MONEY = rf"((?:{_D}|{_K})\s*억(?:\s*{_UNDER})?(?:\s*만)?(?:\s*원)?|{_UNDER}(?:\s*만)?(?:\s*원)?)"
 _RENT = rf"({_K}?십{_KEND}|{_K}?백|\d{{1,3}})(?!\d)"
-_NOT_MONEY_UNIT = r"(?!\s*(?:분|평|층|년|번|개|살|세|%|㎡|m))"
+_NOT_MONEY_UNIT = r"(?!\s*(?:분|평|층|년|번|개|살|세|%|㎡|m|억|천))"
 _KD = {"일": 1, "이": 2, "삼": 3, "사": 4, "오": 5, "육": 6, "칠": 7, "팔": 8, "구": 9}
 _UNIT = {"천": 1000, "백": 100, "십": 10}
 
@@ -45,15 +45,23 @@ _AVOID = (r"(?:말고|빼고|빼줘|제외|싫|별로|피해|피하고|안\s*돼
 _KNOWN_AREAS = {name[:-1] for name in DISTRICT_NAME.values() if len(name) > 2} | {
     "홍대", "신촌", "이대", "합정", "망원", "연남", "상수", "신림", "봉천", "건대", "성수", "왕십리", "잠실", "여의도",
     "이태원", "한남", "회기", "혜화", "대학로", "종각", "을지로", "충무로", "명동", "사당", "노량진", "목동", "신도림",
-    "문래", "당산", "선릉", "역삼", "삼성", "논현", "신사", "압구정", "청담", "방배", "교대", "판교", "안암", "대치",
+    "문래", "당산", "선릉", "역삼", "삼성", "논현", "신사", "압구정", "청담", "방배", "교대", "안암", "대치",
     "광화문", "시청", "마곡", "상암", "가산", "구디", "서울역", "수유", "미아", "창동", "길음", "성신여대", "외대",
 }
+# 서울 밖 지명: 살 곳으로는 받지 않고 '아직 서울만'이라고 알린다 (회사 위치로는 괜찮음)
+_OUTSIDE_SEOUL = {"판교", "분당", "일산", "부산", "해운대", "인천", "송도", "수원", "광교", "용인", "성남", "고양", "부천",
+                  "광명", "하남", "안양", "평촌", "의정부", "김포", "대전", "대구", "광주", "울산", "제주", "세종", "천안",
+                  "파주", "남양주", "구리", "과천", "동탄", "경기", "경기도"}
+OUTSIDE_MESSAGE = "서울 밖은 아직 찾아 드리지 못해요(서울만)"
+# 흔한 오타·줄임말 → 바른 말 (말을 읽기 전에 바꾼다)
+_TYPOS = [(r"오피스탤|오피스땔|오피스텔ㄹ|옵텔|오피(?=\s|$)", "오피스텔"), (r"보증굼|보증검|보즘금|보증금금|보증ㄱ", "보증금"),
+          (r"월쎄|월새|윌세|월셰", "월세"), (r"전쎄|젼세", "전세"), (r"빌러|빌나", "빌라"), (r"원룸ㅁ|원룸룸", "원룸")]
 
 # 어떤 말이 있으면 규칙만으로 확정하지 않고 Gemini에 맡긴다 (부정·대체·살 곳 지정·물음 등)
 # 물음표는 여기 넣지 않는다: "홍대는 좀?"처럼 규칙이 다 읽은 물음은 바로 답하고, 못 읽은 말이 남으면 어차피 Gemini로 간다
 _NEEDS_LLM = re.compile(r"말고|아니|대신|빼고|제외|살고\s*싶|근처에\s*살|쪽에\s*살|동네(?:에서|로)|상관없")
-_QUESTION = re.compile(r"뭐(?:예요|에요|야|지)|뭔가요|무엇|이란|란\s*$|어떻게|왜|차이|설명|가능해|되나요|돼요\?")
-_SEARCH_VERB = re.compile(r"찾아|찾고|찾는|구해|구하|구함|알아봐|알아보|추천|보여|살\s*집|집\s*좀|매물|자취방|이사")
+_QUESTION = re.compile(r"뭐(?:예요|에요|야|지|임)|머임|뭔데|뭔가요|무엇|이란|란\s*$|어떻게|어케|왜|차이|설명|가능해|되나요|돼요\?|적당")
+_SEARCH_VERB = re.compile(r"찾아|찾고|찾는|구해|구하|구함|알아봐|알아보|추천|보여|살\s*집|집\s*좀|매물|자취|이사|원룸|투룸|쓰리룸|오피스텔|빌라|집\s*있|방\s*있")
 _UNVERIFIABLE = {"조용": "조용한", "채광": "채광", "햇빛": "햇빛", "밝은": "밝은", "뷰": "뷰", "치안": "치안",
                  "분위기": "분위기", "강아지": "반려동물", "고양이": "반려동물", "반려": "반려동물", "주차": "주차",
                  "엘리베이터": "엘리베이터", "엘베": "엘리베이터", "풀옵션": "풀옵션", "옵션": "옵션"}
@@ -105,7 +113,7 @@ def _clean_label(label):
 
 def _is_area(label):
     """살 곳·피할 곳으로 쓸 수 있는 이름인지 (구·동·역 이름이나 잘 알려진 동네)."""
-    if not label or label in _STOP_LABELS or len(label) < 2:
+    if not label or label in _STOP_LABELS or len(label) < 2 or label in _OUTSIDE_SEOUL:
         return False
     return label in _KNOWN_AREAS or (label[-1] in "역동구" and not _VERBISH.search(label)) or bool(re.search(r"\d가$", label))
 
@@ -123,6 +131,8 @@ def _workplace(t):
     for pat in patterns:
         for m in re.finditer(pat, t):
             label = _clean_label(m.group(1))
+            if re.match(r"근처|쪽|부근|주변|인근|가까|어디|다니|다녀|이랑|에서|으로|로$", label):
+                continue  # "직장 근처로", "학교 어디" 같은 말은 이름이 아니다
             if len(label) >= 2 and label not in _STOP_LABELS and not _VERBISH.search(label):
                 return label, m.group(0)
     return None, None
@@ -137,7 +147,7 @@ def _listed_before(t, start):
     """"망원이나 합정 쪽"처럼 앞에 나열된 이름들 → [(label, 구절)]."""
     out = []
     while True:
-        m = re.search(r"(?<![가-힣A-Za-z0-9])([가-힣A-Za-z0-9]+?)\s*(?:이나|나|이랑|랑|하고|와|과|,|/|or)\s*$", t[:start])
+        m = re.search(r"(?<![가-힣A-Za-z0-9])([가-힣A-Za-z0-9]+?)(?:\s*(?:이나|나|이랑|랑|하고|와|과|,|/|or)\s*|\s+)$", t[:start])
         if not m or not _is_area(m.group(1)):
             return out
         out.append((m.group(1), t[m.start():start]))
@@ -179,10 +189,48 @@ def _areas(t, work_label):
     return prefer, avoid, guessed
 
 
+def normalize(text):
+    """흔한 오타·줄임말을 바른 말로 바꾼다 (예: 오피스탤 → 오피스텔, 보증굼 → 보증금)."""
+    t = (text or "").strip()
+    for pat, good in _TYPOS:
+        t = re.sub(pat, good, t)
+    return t
+
+
+# 대화를 이끄는 짧은 말 (조건이 아니라 대화 동작)
+_CONTROL = [
+    ("reset", re.compile(r"(?:아니\s*)?(?:그냥\s*)?(?:처음부터(?:\s*다시)?|다시\s*처음부터|다시\s*시작|새로\s*시작|리셋|초기화|"
+                         r"(?:전부|다)\s*지워)(?:\s*(?:할래|하자|해\s*줘|해줘|해요|할게요?))?[\s!.~ㅠㅜ]*")),
+    ("stop", re.compile(r"(?:취소|그만|그만할래|됐어|됐어요|됐다|안\s*할래|안\s*해|나중에|다음에)(?:\s*(?:할게요?|해요|안\s*해|할래))?[\s!.~ㅠㅜ]*")),
+    ("ack", re.compile(r"(?:ㅇㅇ|ㅇㅋ|응+|웅|네+|넹|넵|예|오케이|ok|okay|좋아요?|좋네요?|괜찮아요?|그래요?|맞아요?|알겠어요?|굿|굳)"
+                       r"[\s!.~ㅎㅋ^]*", re.I)),
+    ("more", re.compile(r".{0,6}(?:다른\s*(?:거|것|곳|데|집|매물)|더\s*(?:보여|있어|없어|찾아|추천)|또\s*(?:있어|없어|보여)|"
+                        r"다음\s*(?:거|꺼|곳)).{0,10}")),
+    ("pick", re.compile(r".{0,4}?(\d|첫|두|세|네|다섯)\s*(?:번째|번|째)\s*(?:거|꺼|곳|집|매물)?.{0,12}")),
+]
+_ORDINAL = {"첫": 1, "두": 2, "세": 3, "네": 4, "다섯": 5}
+
+
+def control(text):
+    """'처음부터 다시', '취소', 'ㅇㅇ', '다른 거 더 보여줘', '2번째꺼 자세히' → (종류, 번호) 또는 (None, None)."""
+    t = normalize(text)
+    if len(t) > 30:
+        return None, None
+    for kind, pat in _CONTROL:
+        m = pat.fullmatch(t)
+        if m:
+            if kind == "pick":
+                g = m.group(1)
+                return kind, int(g) if g.isdigit() else _ORDINAL[g]
+            return kind, None
+    return None, None
+
+
 def parse(text):
-    """사용자 말 → {"intent", "card", "covered"}."""
-    t = text.strip()
+    """사용자 말 → {"intent", "card", "covered", "asked"}. asked: 집 찾기 말 속에 질문이 섞여 있음."""
+    t = normalize(text)
     conds, priorities, unverifiable, used = {}, [], [], []
+    conflict = False
 
     approx = {"approx": True} if re.search(r"정도|쯤|안팎|내외|언저리", t) else {}
 
@@ -201,10 +249,36 @@ def parse(text):
     m = re.search(rf"(?<![\d일이삼사오육칠팔구십])월(?:세)?\s*(?:는|은|가|이)??\s*{_RENT}(?:\s*만\s*원?)?{_NOT_MONEY_UNIT}", t)
     if m:
         conds["monthly_rent_manwon"] = _cond(money(m.group(1)), m.group(0))
+    # "월세 좀만 더 올려도 돼 60까지"처럼 사이에 말이 끼어 있어도 끝에 '까지·이하·정도' 등이 붙으면 읽는다
+    _until = r"\s*(?:만\s*원?)?\s*(?:까지|이하|정도|쯤|로|면|선|안쪽|가능)"
+    if "monthly_rent_manwon" not in conds:
+        m = re.search(rf"(?<![\d일이삼사오육칠팔구십])월세(?:(?!보증|전세)[^\d/\n]){{1,14}}?{_RENT}{_until}", t)
+        if m:
+            conds["monthly_rent_manwon"] = _cond(money(m.group(1)), m.group(0))
+    if "deposit_manwon" not in conds:
+        m = re.search(rf"보증금(?:(?!월세|월\s)[^\d/\n]){{1,14}}?{_MONEY}{_until}", t)
+        if m:
+            conds["deposit_manwon"] = _cond(money(m.group(1)), m.group(0))
+    # "원룸 50만원 이하"처럼 '월세'라는 말 없이 작은 금액만 말하면 월세로 해석 (추론 표시)
+    if "monthly_rent_manwon" not in conds and "deposit_manwon" not in conds and not re.search(r"전세|보증", t):
+        m = re.search(r"(?<![\d/])(\d{1,3})\s*만\s*원?\s*(?:이하|까지|안쪽|정도|쯤|선)", t)
+        if m and int(m.group(1)) <= 150:
+            conds["monthly_rent_manwon"] = _cond(int(m.group(1)), m.group(0), "inferred", "금액이 작아 월세로 해석")
+    # 말하다가 고친 값: "월세 50 아니 60", "보증금 500 아니다 1000으로" → 뒤의 값
+    _fix = r"\s*(?:아니|아니다|아니고|아니야|아냐|말고)[,.\s]*"
+    m = re.search(rf"월(?:세)?\s*(?:는|은)?\s*{_RENT}(?:\s*만\s*원?)?{_fix}(?:월세\s*)?{_RENT}(?:\s*만\s*원?)?", t)
+    if m:
+        conds["monthly_rent_manwon"] = _cond(money(m.group(2)), m.group(0))
+    m = re.search(rf"보증금\s*(?:은|는)?\s*{_MONEY}{_fix}(?:보증금\s*)?{_MONEY}", t)
+    if m:
+        conds["deposit_manwon"] = _cond(money(m.group(2)), m.group(0))
 
     # ---- 월세·전세·반전세 ----
-    leases = re.findall(r"반전세|(?<!반)전세(?!\s*대출)|월세", t)
+    leases = re.findall(r"반전세|(?<!반)전세(?!\s*(?:대출|사기|보험|자금|계약|권|금\s*반환))|월세", t)
     lease_types = [k for k, word in (("monthly", "월세"), ("jeonse", "전세"), ("semi_jeonse", "반전세")) if word in leases]
+    if lease_types == ["jeonse"] and "monthly_rent_manwon" in conds:
+        conflict = True  # "1000/50인데 전세로": 전세와 월세가 부딪힘 → Gemini가 판단, 규칙은 숫자만 둔다
+        lease_types = []
     if lease_types:
         conds["lease_types"] = _cond(lease_types, " ".join(dict.fromkeys(leases)))
 
@@ -223,7 +297,8 @@ def parse(text):
     # ---- 회사 위치, 살 곳, 피할 곳 ----
     label, evidence = _workplace(t)
     if label:
-        conds["workplace"] = _cond("place", evidence, label=label)
+        kind = "school" if re.search(r"학교|캠퍼스|다니는\s*학교|대학", evidence) or re.search(r"대$|대학교$", label) else "work"
+        conds["workplace"] = _cond("place", evidence, label=label, kind=kind)
     prefer, avoid, guessed = _areas(t, label)
     if prefer:
         conds["preferred_areas"] = _cond([a for a, _ in prefer], " ".join(e for _, e in prefer))
@@ -233,6 +308,11 @@ def parse(text):
     if avoid:
         conds["avoid_areas"] = _cond([a for a, _ in avoid], " ".join(e for _, e in avoid))
     used.extend(e for _, e in prefer + avoid + guessed)  # 나열된 이름은 구절이 따로 떨어져 있다
+    for m in re.finditer(r"[가-힣]+", t):  # 서울 밖 지명 (회사 위치가 아니면)
+        name = re.sub(r"(?:에서|에|은|는|이|가|쪽|이랑|랑|으로|로|근처)$", "", m.group(0))
+        if name in _OUTSIDE_SEOUL and name != label and all(u["phrase"] != name for u in unverifiable):
+            unverifiable.append({"phrase": name, "message": OUTSIDE_MESSAGE})
+            used.append(m.group(0))
 
     # ---- 통근 ----
     m = (re.search(r"(?:통근|출퇴근|출근|회사까지)[^\d]{0,12}(\d{1,3})\s*분", t)
@@ -333,18 +413,27 @@ def parse(text):
                 unverifiable.append({"phrase": phrase, "message": "데이터로 확인할 수 없어요"})
     used.extend(hits)
 
-    if conds or unverifiable or _SEARCH_VERB.search(t):
+    asked = bool(_QUESTION.search(t))
+    if asked and set(conds) <= {"lease_types", "housing_types", "price_band"} and not unverifiable:
+        intent = "question"  # "반전세가 뭐예요", "오피스텔이랑 빌라 차이가 뭐야": 낱말만 나온 질문
+    elif conds or unverifiable or _SEARCH_VERB.search(t):
         intent = "search"
-    elif _QUESTION.search(t):
+    elif asked:
         intent = "question"
     else:
         intent = "other"
 
     card = {"version": VERSION, "utterance": t, "conditions": conds, "priorities": priorities,
             "unverifiable": unverifiable, "clarifications": []}
+    # "학교 근처 원룸"처럼 학교·회사를 말했는데 이름이 없으면, 어디인지 물을 수 있게 표시한다
+    if "workplace" not in conds:
+        m = re.search(r"학교|캠퍼스|학원|회사|직장|사무실|일터", t)
+        if m:
+            card["workplace_hint"] = "학교" if m.group(0) in ("학교", "캠퍼스") else (
+                "학원" if m.group(0) == "학원" else "회사")
     used.extend(c["evidence"] for c in conds.values() if c.get("evidence"))
-    covered = intent == "search" and not _NEEDS_LLM.search(t) and _all_read(t, used)
-    return {"intent": intent, "card": card, "covered": covered}
+    covered = intent == "search" and not conflict and not _NEEDS_LLM.search(t) and _all_read(t, used)
+    return {"intent": intent, "card": card, "covered": covered, "asked": asked and intent == "search"}
 
 
 def _all_read(t, used):
