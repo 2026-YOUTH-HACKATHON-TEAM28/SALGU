@@ -1,0 +1,48 @@
+{
+  "approval_id": "ap-20261120-01",
+  "search": {
+    "dong": "봉천동",
+    "ref_building": "해든빌라",
+    "housing_type": "villa",
+    "deposit_manwon": 1000,
+    "monthly_rent_manwon": 60,
+    "area_m2": 25
+  },
+  "prep": {
+    "move_in": "12월 초",
+    "term": "1년",
+    "pet": false,
+    "surname": "김"
+  },
+  "share": {
+    "conditions": true,
+    "visit_time": true,
+    "surname": false,
+    "contact": false
+  },
+  "brokers": [
+    {
+      "reg": "11620-2019-00123",
+      "name": "한빛공인중개사",
+      "phone": "02-555-0123",
+      "visit_windows": [
+        {
+          "start": "2026-11-21T14:00:00+09:00",
+          "end": "2026-11-21T17:00:00+09:00"
+        }
+      ]
+    },
+    {
+      "reg": "11620-2021-00456",
+      "name": "새봄공인중개사",
+      "phone": "02-555-0456",
+      "visit_windows": [
+        {
+          "start": "2026-11-21T14:00:00+09:00",
+          "end": "2026-11-21T17:00:00+09:00"
+        }
+      ]
+    }
+  ],
+  "keep_transcript": false
+}

@@ -1,0 +1,847 @@
+{
+ "_note": "MockProvider가 돌려주는 대화록과 LLM 추출 흉내 값(canned_extraction). 요청 값(건물·예산·시간대)으로 채워지며, 아래는 request.example.json의 첫 사무소와 그 방의 확정(11-21 14:00) 기준 예시. 이 값도 실제 통화와 같은 검증·판정 코드(decide)를 거친다.",
+ "progression": {
+  "steps": [
+   "queued",
+   "ringing",
+   "in_progress",
+   "in_progress",
+   "ended"
+  ],
+  "rule": "공급사 조회(get_call) 한 번에 한 단계 진행. no_answer는 in_progress 차례에 answered=false로 끝남. registry는 끝날 때 등기부 MMS 한 통이 수신함에 들어옴(본문 '등기부등본 보내드립니다.', 첨부 1개, 내용 b'%PDF-1.4 mock registry')"
+ },
+ "default_when_missing": {
+  "inquiry": [
+   "listing",
+   "registry",
+   "listing",
+   "no_listing",
+   "listing",
+   "no_answer"
+  ],
+  "confirm": [
+   "confirmed",
+   "confirmed",
+   "shifted",
+   "alternative",
+   "confirmed"
+  ],
+  "rule": "X-Mock-Scenario가 없거나 그 종류(문의/확정)에 없는 값이면 int(sha256(등록번호).hexdigest(), 16) % 길이로 이 목록에서 고름"
+ },
+ "inquiry": {
+  "listing": {
+   "transcript": [
+    {
+     "speaker": "speaker_0",
+     "text": "안녕하세요, 한빛공인중개사이죠? 집을 구하는 분의 요청으로 전화드린 AI 비서 살구입니다. 잠시 통화 괜찮으실까요?"
+    },
+    {
+     "speaker": "speaker_1",
+     "text": "네, 말씀하세요."
+    },
+    {
+     "speaker": "speaker_0",
+     "text": "봉천동 해든빌라 근처에 보증금 1000만 원, 월세 60만 원 정도로 지금 볼 수 있는 방이 있을까요?"
+    },
+    {
+     "speaker": "speaker_1",
+     "text": "하나 있어요. 해든빌라 3층이고 보증금 1000만 원에 월세 60만 원이에요."
+    },
+    {
+     "speaker": "speaker_0",
+     "text": "네, 알겠습니다. 관리비와 입주 가능일은 어떻게 되나요?"
+    },
+    {
+     "speaker": "speaker_1",
+     "text": "관리비는 7만 원인데 수도랑 인터넷 포함이에요. 입주는 다음 달 초부터 돼요."
+    },
+    {
+     "speaker": "speaker_0",
+     "text": "등기부등본을 방문 전에 미리 받아 볼 수 있을까요?"
+    },
+    {
+     "speaker": "speaker_1",
+     "text": "등기부는 방문하시면 보여 드릴게요."
+    },
+    {
+     "speaker": "speaker_0",
+     "text": "손님이 2026년 11월 21일 토요일 오후 2시부터 가능하신데, 방 보여 주실 수 있는 시간이 있을까요?"
+    },
+    {
+     "speaker": "speaker_1",
+     "text": "토요일 오후 2시부터 오후 3시까지는 괜찮아요."
+    },
+    {
+     "speaker": "speaker_0",
+     "text": "손님께 여쭤보고 보러 갈 시간 정해서 다시 연락드릴게요. 감사합니다."
+    }
+   ],
+   "extraction": {
+    "declined": false,
+    "voicemail": false,
+    "available": true,
+    "listings": [
+     {
+      "location": "해든빌라 3층",
+      "building": "해든빌라",
+      "floor": "3층",
+      "unit": null,
+      "area_m2": null,
+      "deposit_manwon": 1000,
+      "monthly_rent_manwon": 60,
+      "maintenance_fee_manwon": 7,
+      "maintenance_includes": "수도·인터넷",
+      "move_in": "다음 달 초",
+      "evidence": {
+       "location": 3,
+       "building": 3,
+       "floor": 3,
+       "deposit_manwon": 3,
+       "monthly_rent_manwon": 3,
+       "maintenance_fee_manwon": 5,
+       "maintenance_includes": 5,
+       "move_in": 5
+      }
+     }
+    ],
+    "evidence": {
+     "registry_reply": 7
+    },
+    "registry_reply": "at_visit",
+    "pet_allowed": null,
+    "broker_slots": [
+     {
+      "start": "2026-11-21T14:00:00+09:00",
+      "end": "2026-11-21T15:00:00+09:00",
+      "evidence": 9
+     }
+    ]
+   }
+  },
+  "two_rooms": {
+   "transcript": [
+    {
+     "speaker": "speaker_0",
+     "text": "안녕하세요, 한빛공인중개사이죠? 집을 구하는 분의 요청으로 전화드린 AI 비서 살구입니다. 잠시 통화 괜찮으실까요?"
+    },
+    {
+     "speaker": "speaker_1",
+     "text": "네, 말씀하세요."
+    },
+    {
+     "speaker": "speaker_0",
+     "text": "봉천동 해든빌라 근처에 보증금 1000만 원, 월세 60만 원 정도로 지금 볼 수 있는 방이 있을까요?"
+    },
+    {
+     "speaker": "speaker_1",
+     "text": "하나 있어요. 해든빌라 3층이고 보증금 1000만 원에 월세 60만 원이에요."
+    },
+    {
+     "speaker": "speaker_0",
+     "text": "네, 알겠습니다. 관리비와 입주 가능일은 어떻게 되나요?"
+    },
+    {
+     "speaker": "speaker_1",
+     "text": "관리비는 7만 원인데 수도랑 인터넷 포함이에요. 입주는 다음 달 초부터 돼요."
+    },
+    {
+     "speaker": "speaker_0",
+     "text": "등기부등본을 방문 전에 미리 받아 볼 수 있을까요?"
+    },
+    {
+     "speaker": "speaker_1",
+     "text": "등기부는 방문하시면 보여 드릴게요."
+    },
+    {
+     "speaker": "speaker_1",
+     "text": "아, 그리고 새솔빌 2층에도 하나 있어요. 보증금 1000만 원에 월세 65만 원이요."
+    },
+    {
+     "speaker": "speaker_0",
+     "text": "손님이 2026년 11월 21일 토요일 오후 2시부터 가능하신데, 방 보여 주실 수 있는 시간이 있을까요?"
+    },
+    {
+     "speaker": "speaker_1",
+     "text": "토요일 오후 2시부터 오후 3시까지는 괜찮아요."
+    },
+    {
+     "speaker": "speaker_0",
+     "text": "손님께 여쭤보고 보러 갈 시간 정해서 다시 연락드릴게요. 감사합니다."
+    }
+   ],
+   "extraction": {
+    "declined": false,
+    "voicemail": false,
+    "available": true,
+    "listings": [
+     {
+      "location": "해든빌라 3층",
+      "building": "해든빌라",
+      "floor": "3층",
+      "unit": null,
+      "area_m2": null,
+      "deposit_manwon": 1000,
+      "monthly_rent_manwon": 60,
+      "maintenance_fee_manwon": 7,
+      "maintenance_includes": "수도·인터넷",
+      "move_in": "다음 달 초",
+      "evidence": {
+       "location": 3,
+       "building": 3,
+       "floor": 3,
+       "deposit_manwon": 3,
+       "monthly_rent_manwon": 3,
+       "maintenance_fee_manwon": 5,
+       "maintenance_includes": 5,
+       "move_in": 5
+      }
+     },
+     {
+      "location": "새솔빌 2층",
+      "building": "새솔빌",
+      "floor": "2층",
+      "deposit_manwon": 1000,
+      "monthly_rent_manwon": 65,
+      "evidence": {
+       "location": 8,
+       "building": 8,
+       "floor": 8,
+       "deposit_manwon": 8,
+       "monthly_rent_manwon": 8
+      }
+     }
+    ],
+    "evidence": {
+     "registry_reply": 7
+    },
+    "registry_reply": "at_visit",
+    "pet_allowed": null,
+    "broker_slots": [
+     {
+      "start": "2026-11-21T14:00:00+09:00",
+      "end": "2026-11-21T15:00:00+09:00",
+      "evidence": 10
+     }
+    ]
+   }
+  },
+  "registry": {
+   "transcript": [
+    {
+     "speaker": "speaker_0",
+     "text": "안녕하세요, 한빛공인중개사이죠? 집을 구하는 분의 요청으로 전화드린 AI 비서 살구입니다. 잠시 통화 괜찮으실까요?"
+    },
+    {
+     "speaker": "speaker_1",
+     "text": "네, 말씀하세요."
+    },
+    {
+     "speaker": "speaker_0",
+     "text": "봉천동 해든빌라 근처에 보증금 1000만 원, 월세 60만 원 정도로 지금 볼 수 있는 방이 있을까요?"
+    },
+    {
+     "speaker": "speaker_1",
+     "text": "하나 있어요. 해든빌라 3층이고 보증금 1000만 원에 월세 60만 원이에요."
+    },
+    {
+     "speaker": "speaker_0",
+     "text": "네, 알겠습니다. 관리비와 입주 가능일은 어떻게 되나요?"
+    },
+    {
+     "speaker": "speaker_1",
+     "text": "관리비는 7만 원인데 수도랑 인터넷 포함이에요. 입주는 다음 달 초부터 돼요."
+    },
+    {
+     "speaker": "speaker_0",
+     "text": "등기부등본을 방문 전에 미리 받아 볼 수 있을까요?"
+    },
+    {
+     "speaker": "speaker_1",
+     "text": "네, 이 번호로 문자 보내 드릴게요."
+    },
+    {
+     "speaker": "speaker_0",
+     "text": "손님이 2026년 11월 21일 토요일 오후 2시부터 가능하신데, 방 보여 주실 수 있는 시간이 있을까요?"
+    },
+    {
+     "speaker": "speaker_1",
+     "text": "토요일 오후 2시부터 오후 3시까지는 괜찮아요."
+    },
+    {
+     "speaker": "speaker_0",
+     "text": "손님께 여쭤보고 보러 갈 시간 정해서 다시 연락드릴게요. 감사합니다."
+    }
+   ],
+   "extraction": {
+    "declined": false,
+    "voicemail": false,
+    "available": true,
+    "listings": [
+     {
+      "location": "해든빌라 3층",
+      "building": "해든빌라",
+      "floor": "3층",
+      "unit": null,
+      "area_m2": null,
+      "deposit_manwon": 1000,
+      "monthly_rent_manwon": 60,
+      "maintenance_fee_manwon": 7,
+      "maintenance_includes": "수도·인터넷",
+      "move_in": "다음 달 초",
+      "evidence": {
+       "location": 3,
+       "building": 3,
+       "floor": 3,
+       "deposit_manwon": 3,
+       "monthly_rent_manwon": 3,
+       "maintenance_fee_manwon": 5,
+       "maintenance_includes": 5,
+       "move_in": 5
+      }
+     }
+    ],
+    "evidence": {
+     "registry_reply": 7
+    },
+    "registry_reply": "will_send",
+    "pet_allowed": null,
+    "broker_slots": [
+     {
+      "start": "2026-11-21T14:00:00+09:00",
+      "end": "2026-11-21T15:00:00+09:00",
+      "evidence": 9
+     }
+    ]
+   }
+  },
+  "no_listing": {
+   "transcript": [
+    {
+     "speaker": "speaker_0",
+     "text": "안녕하세요, 한빛공인중개사이죠? 집을 구하는 분의 요청으로 전화드린 AI 비서 살구입니다. 잠시 통화 괜찮으실까요?"
+    },
+    {
+     "speaker": "speaker_1",
+     "text": "네, 말씀하세요."
+    },
+    {
+     "speaker": "speaker_0",
+     "text": "봉천동 해든빌라 근처에 보증금 1000만 원, 월세 60만 원 정도로 지금 볼 수 있는 방이 있을까요?"
+    },
+    {
+     "speaker": "speaker_1",
+     "text": "지금 나온 게 없어요. 근처에도 그 가격대는 없네요."
+    },
+    {
+     "speaker": "speaker_0",
+     "text": "알겠습니다. 감사합니다."
+    }
+   ],
+   "extraction": {
+    "declined": false,
+    "voicemail": false,
+    "available": false,
+    "listings": [],
+    "evidence": {}
+   }
+  },
+  "no_answer": {
+   "transcript": [
+    {
+     "speaker": "speaker_0",
+     "text": "안녕하세요, 한빛공인중개사이죠? 집을 구하는 분의 요청으로 전화드린 AI 비서 살구입니다. 잠시 통화 괜찮으실까요?"
+    },
+    {
+     "speaker": "speaker_1",
+     "text": "네, 말씀하세요."
+    },
+    {
+     "speaker": "speaker_0",
+     "text": "봉천동 해든빌라 근처에 보증금 1000만 원, 월세 60만 원 정도로 지금 볼 수 있는 방이 있을까요?"
+    },
+    {
+     "speaker": "speaker_1",
+     "text": "하나 있어요. 해든빌라 3층이고 보증금 1000만 원에 월세 60만 원이에요."
+    },
+    {
+     "speaker": "speaker_0",
+     "text": "네, 알겠습니다. 관리비와 입주 가능일은 어떻게 되나요?"
+    },
+    {
+     "speaker": "speaker_1",
+     "text": "관리비는 7만 원인데 수도랑 인터넷 포함이에요. 입주는 다음 달 초부터 돼요."
+    },
+    {
+     "speaker": "speaker_0",
+     "text": "등기부등본을 방문 전에 미리 받아 볼 수 있을까요?"
+    },
+    {
+     "speaker": "speaker_1",
+     "text": "등기부는 방문하시면 보여 드릴게요."
+    },
+    {
+     "speaker": "speaker_0",
+     "text": "손님이 2026년 11월 21일 토요일 오후 2시부터 가능하신데, 방 보여 주실 수 있는 시간이 있을까요?"
+    },
+    {
+     "speaker": "speaker_1",
+     "text": "토요일 오후 2시부터 오후 3시까지는 괜찮아요."
+    },
+    {
+     "speaker": "speaker_0",
+     "text": "손님께 여쭤보고 보러 갈 시간 정해서 다시 연락드릴게요. 감사합니다."
+    }
+   ],
+   "extraction": {
+    "declined": false,
+    "voicemail": false,
+    "available": true,
+    "listings": [
+     {
+      "location": "해든빌라 3층",
+      "building": "해든빌라",
+      "floor": "3층",
+      "unit": null,
+      "area_m2": null,
+      "deposit_manwon": 1000,
+      "monthly_rent_manwon": 60,
+      "maintenance_fee_manwon": 7,
+      "maintenance_includes": "수도·인터넷",
+      "move_in": "다음 달 초",
+      "evidence": {
+       "location": 3,
+       "building": 3,
+       "floor": 3,
+       "deposit_manwon": 3,
+       "monthly_rent_manwon": 3,
+       "maintenance_fee_manwon": 5,
+       "maintenance_includes": 5,
+       "move_in": 5
+      }
+     }
+    ],
+    "evidence": {
+     "registry_reply": 7
+    },
+    "registry_reply": "at_visit",
+    "pet_allowed": null,
+    "broker_slots": [
+     {
+      "start": "2026-11-21T14:00:00+09:00",
+      "end": "2026-11-21T15:00:00+09:00",
+      "evidence": 9
+     }
+    ]
+   }
+  },
+  "voicemail": {
+   "transcript": [
+    {
+     "speaker": "speaker_1",
+     "text": "지금은 전화를 받을 수 없습니다. 삐 소리 후 메시지를 남겨 주세요."
+    }
+   ],
+   "extraction": {
+    "declined": false,
+    "voicemail": true,
+    "available": null,
+    "listings": [],
+    "evidence": {}
+   }
+  },
+  "declined": {
+   "transcript": [
+    {
+     "speaker": "speaker_0",
+     "text": "안녕하세요, 한빛공인중개사이죠? 집을 구하는 분의 요청으로 전화드린 AI 비서 살구입니다. 잠시 통화 괜찮으실까요?"
+    },
+    {
+     "speaker": "speaker_1",
+     "text": "AI 전화는 안 받아요. 끊을게요."
+    },
+    {
+     "speaker": "speaker_0",
+     "text": "알겠습니다. 실례했습니다."
+    }
+   ],
+   "extraction": {
+    "declined": true,
+    "voicemail": false,
+    "available": null,
+    "listings": [],
+    "evidence": {}
+   }
+  }
+ },
+ "confirm": {
+  "confirmed": {
+   "transcript": [
+    {
+     "speaker": "speaker_0",
+     "text": "안녕하세요, 한빛공인중개사이죠? 아까 방 문의드렸던 AI 비서 살구입니다. 손님이 그 방을 보러 가고 싶어 하셔서 다시 전화드렸어요."
+    },
+    {
+     "speaker": "speaker_1",
+     "text": "네, 말씀하세요."
+    },
+    {
+     "speaker": "speaker_0",
+     "text": "해든빌라 3층, 그 방 아직 있죠? 호수가 몇 호예요?"
+    },
+    {
+     "speaker": "speaker_1",
+     "text": "네, 그 방 맞아요. 아직 있어요. 302호예요."
+    },
+    {
+     "speaker": "speaker_0",
+     "text": "2026년 11월 21일 토요일 오후 2시에 보러 가도 될까요?"
+    },
+    {
+     "speaker": "speaker_1",
+     "text": "네, 토요일 오후 2시에 사무소로 오세요."
+    },
+    {
+     "speaker": "speaker_0",
+     "text": "네, 2026년 11월 21일 토요일 오후 2시에 사무소에서 뵙겠습니다. 계약과 가격 이야기는 방문 때 본인이 직접 하실 거예요."
+    }
+   ],
+   "extraction": {
+    "declined": false,
+    "voicemail": false,
+    "rooms": [
+     {
+      "index": 0,
+      "evidence": {
+       "still_available": 3,
+       "same_listing": 3,
+       "unit": 3,
+       "visit.at": 5
+      },
+      "still_available": true,
+      "same_listing": true,
+      "unit": "302호",
+      "agreed_visit": {
+       "at": "2026-11-21T14:00:00+09:00",
+       "place": "한빛공인중개사 사무소"
+      }
+     }
+    ]
+   }
+  },
+  "shifted": {
+   "transcript": [
+    {
+     "speaker": "speaker_0",
+     "text": "안녕하세요, 한빛공인중개사이죠? 아까 방 문의드렸던 AI 비서 살구입니다. 손님이 그 방을 보러 가고 싶어 하셔서 다시 전화드렸어요."
+    },
+    {
+     "speaker": "speaker_1",
+     "text": "네, 말씀하세요."
+    },
+    {
+     "speaker": "speaker_0",
+     "text": "해든빌라 3층, 그 방 아직 있죠? 호수가 몇 호예요?"
+    },
+    {
+     "speaker": "speaker_1",
+     "text": "네, 그 방 맞아요. 아직 있어요. 302호예요."
+    },
+    {
+     "speaker": "speaker_0",
+     "text": "2026년 11월 21일 토요일 오후 2시에 보러 가도 될까요?"
+    },
+    {
+     "speaker": "speaker_1",
+     "text": "네, 토요일 오후 2시에 사무소로 오세요."
+    },
+    {
+     "speaker": "speaker_0",
+     "text": "네, 2026년 11월 21일 토요일 오후 2시에 사무소에서 뵙겠습니다. 계약과 가격 이야기는 방문 때 본인이 직접 하실 거예요."
+    }
+   ],
+   "extraction": {
+    "declined": false,
+    "voicemail": false,
+    "rooms": [
+     {
+      "index": 0,
+      "evidence": {
+       "still_available": 3,
+       "same_listing": 3,
+       "unit": 3,
+       "visit.at": 5
+      },
+      "still_available": true,
+      "same_listing": true,
+      "unit": "302호",
+      "agreed_visit": {
+       "at": "2026-11-21T14:00:00+09:00",
+       "place": "한빛공인중개사 사무소"
+      }
+     }
+    ]
+   }
+  },
+  "alternative": {
+   "transcript": [
+    {
+     "speaker": "speaker_0",
+     "text": "안녕하세요, 한빛공인중개사이죠? 아까 방 문의드렸던 AI 비서 살구입니다. 손님이 그 방을 보러 가고 싶어 하셔서 다시 전화드렸어요."
+    },
+    {
+     "speaker": "speaker_1",
+     "text": "네, 말씀하세요."
+    },
+    {
+     "speaker": "speaker_0",
+     "text": "해든빌라 3층, 그 방 아직 있죠? 호수가 몇 호예요?"
+    },
+    {
+     "speaker": "speaker_1",
+     "text": "네, 그 방 맞아요. 아직 있어요. 302호예요."
+    },
+    {
+     "speaker": "speaker_0",
+     "text": "2026년 11월 21일 토요일 오후 2시에 보러 가도 될까요?"
+    },
+    {
+     "speaker": "speaker_1",
+     "text": "그 시간은 안 되고 토요일 오후 4시는 괜찮아요."
+    },
+    {
+     "speaker": "speaker_0",
+     "text": "나머지는 본인께 확인하고 다시 연락드리겠습니다. 감사합니다."
+    }
+   ],
+   "extraction": {
+    "declined": false,
+    "voicemail": false,
+    "rooms": [
+     {
+      "index": 0,
+      "evidence": {
+       "still_available": 3,
+       "same_listing": 3,
+       "unit": 3,
+       "proposal.at": 5
+      },
+      "still_available": true,
+      "same_listing": true,
+      "unit": "302호",
+      "proposed_visit": {
+       "at": "2026-11-21T16:00:00+09:00",
+       "note": "오후 4시는 가능하다고 함"
+      }
+     }
+    ]
+   }
+  },
+  "no_time": {
+   "transcript": [
+    {
+     "speaker": "speaker_0",
+     "text": "안녕하세요, 한빛공인중개사이죠? 아까 방 문의드렸던 AI 비서 살구입니다. 손님이 그 방을 보러 가고 싶어 하셔서 다시 전화드렸어요."
+    },
+    {
+     "speaker": "speaker_1",
+     "text": "네, 말씀하세요."
+    },
+    {
+     "speaker": "speaker_0",
+     "text": "해든빌라 3층, 그 방 아직 있죠? 호수가 몇 호예요?"
+    },
+    {
+     "speaker": "speaker_1",
+     "text": "네, 그 방 맞아요. 아직 있어요. 302호예요."
+    },
+    {
+     "speaker": "speaker_0",
+     "text": "2026년 11월 21일 토요일 오후 2시에 보러 가도 될까요?"
+    },
+    {
+     "speaker": "speaker_1",
+     "text": "그날은 하루 종일 안 돼요."
+    }
+   ],
+   "extraction": {
+    "declined": false,
+    "voicemail": false,
+    "rooms": [
+     {
+      "index": 0,
+      "evidence": {
+       "still_available": 3,
+       "same_listing": 3,
+       "unit": 3
+      },
+      "still_available": true,
+      "same_listing": true,
+      "unit": "302호"
+     }
+    ]
+   }
+  },
+  "unavailable": {
+   "transcript": [
+    {
+     "speaker": "speaker_0",
+     "text": "안녕하세요, 한빛공인중개사이죠? 아까 방 문의드렸던 AI 비서 살구입니다. 손님이 그 방을 보러 가고 싶어 하셔서 다시 전화드렸어요."
+    },
+    {
+     "speaker": "speaker_1",
+     "text": "네, 말씀하세요."
+    },
+    {
+     "speaker": "speaker_0",
+     "text": "해든빌라 3층, 그 방 아직 있죠? 호수가 몇 호예요?"
+    },
+    {
+     "speaker": "speaker_1",
+     "text": "아, 그 방은 어제 나갔어요."
+    },
+    {
+     "speaker": "speaker_0",
+     "text": "나머지는 본인께 확인하고 다시 연락드리겠습니다. 감사합니다."
+    }
+   ],
+   "extraction": {
+    "declined": false,
+    "voicemail": false,
+    "rooms": [
+     {
+      "index": 0,
+      "evidence": {
+       "still_available": 3
+      },
+      "still_available": false
+     }
+    ]
+   }
+  },
+  "partial": {
+   "transcript": [
+    {
+     "speaker": "speaker_0",
+     "text": "안녕하세요, 한빛공인중개사이죠? 아까 방 문의드렸던 AI 비서 살구입니다. 손님이 그 방을 보러 가고 싶어 하셔서 다시 전화드렸어요."
+    },
+    {
+     "speaker": "speaker_1",
+     "text": "네, 말씀하세요."
+    },
+    {
+     "speaker": "speaker_0",
+     "text": "해든빌라 3층, 그 방 아직 있죠? 호수가 몇 호예요?"
+    },
+    {
+     "speaker": "speaker_1",
+     "text": "네, 그 방 맞아요. 아직 있어요. 302호예요."
+    },
+    {
+     "speaker": "speaker_0",
+     "text": "2026년 11월 21일 토요일 오후 2시에 보러 가도 될까요?"
+    },
+    {
+     "speaker": "speaker_1",
+     "text": "네, 토요일 오후 2시에 사무소로 오세요."
+    },
+    {
+     "speaker": "speaker_0",
+     "text": "네, 2026년 11월 21일 토요일 오후 2시에 사무소에서 뵙겠습니다. 계약과 가격 이야기는 방문 때 본인이 직접 하실 거예요."
+    }
+   ],
+   "extraction": {
+    "declined": false,
+    "voicemail": false,
+    "rooms": [
+     {
+      "index": 0,
+      "evidence": {
+       "still_available": 3,
+       "same_listing": 3,
+       "unit": 3,
+       "visit.at": 5
+      },
+      "still_available": true,
+      "same_listing": true,
+      "unit": "302호",
+      "agreed_visit": {
+       "at": "2026-11-21T14:00:00+09:00",
+       "place": "한빛공인중개사 사무소"
+      }
+     }
+    ]
+   }
+  },
+  "no_answer": {
+   "transcript": [
+    {
+     "speaker": "speaker_0",
+     "text": "안녕하세요, 한빛공인중개사이죠? 아까 방 문의드렸던 AI 비서 살구입니다. 손님이 그 방을 보러 가고 싶어 하셔서 다시 전화드렸어요."
+    },
+    {
+     "speaker": "speaker_1",
+     "text": "네, 말씀하세요."
+    },
+    {
+     "speaker": "speaker_0",
+     "text": "해든빌라 3층, 그 방 아직 있죠? 호수가 몇 호예요?"
+    },
+    {
+     "speaker": "speaker_1",
+     "text": "네, 그 방 맞아요. 아직 있어요. 302호예요."
+    },
+    {
+     "speaker": "speaker_0",
+     "text": "2026년 11월 21일 토요일 오후 2시에 보러 가도 될까요?"
+    },
+    {
+     "speaker": "speaker_1",
+     "text": "네, 토요일 오후 2시에 사무소로 오세요."
+    },
+    {
+     "speaker": "speaker_0",
+     "text": "네, 2026년 11월 21일 토요일 오후 2시에 사무소에서 뵙겠습니다. 계약과 가격 이야기는 방문 때 본인이 직접 하실 거예요."
+    }
+   ],
+   "extraction": {
+    "declined": false,
+    "voicemail": false,
+    "rooms": [
+     {
+      "index": 0,
+      "evidence": {
+       "still_available": 3,
+       "same_listing": 3,
+       "unit": 3,
+       "visit.at": 5
+      },
+      "still_available": true,
+      "same_listing": true,
+      "unit": "302호",
+      "agreed_visit": {
+       "at": "2026-11-21T14:00:00+09:00",
+       "place": "한빛공인중개사 사무소"
+      }
+     }
+    ]
+   }
+  },
+  "declined": {
+   "transcript": [
+    {
+     "speaker": "speaker_0",
+     "text": "안녕하세요, 한빛공인중개사이죠? 아까 방 문의드렸던 AI 비서 살구입니다. 손님이 그 방을 보러 가고 싶어 하셔서 다시 전화드렸어요."
+    },
+    {
+     "speaker": "speaker_1",
+     "text": "AI 전화는 안 받아요."
+    }
+   ],
+   "extraction": {
+    "declined": true,
+    "voicemail": false,
+    "rooms": []
+   }
+  }
+ }
+}

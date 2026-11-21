@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "phone-agent"
+version = "0.3.0"
+description = "살구 전화 에이전트: 중개사무소 문의·방문 확정 전화 (해커톤 MVP)"
+requires-python = ">=3.11"
+dependencies = ["fastapi>=0.110", "uvicorn>=0.29", "httpx>=0.27", "pydantic>=2.6"]
+
+[project.optional-dependencies]
+dev = ["pytest", "mcp>=2.3"]
+mcp = ["mcp>=2.3"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

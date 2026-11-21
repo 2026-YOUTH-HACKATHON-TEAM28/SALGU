@@ -1,0 +1,28 @@
+{
+ "policy_errors": {
+  "already_called_today": "같은 중개사무소에는 하루 1번만 문의 전화를 해요.",
+  "daily_limit": "오늘 걸 수 있는 문의 전화를 다 썼어요.",
+  "confirm_limit": "이 중개사무소에는 오늘 확정 전화를 더 걸 수 없어요.",
+  "window_passed": "방문 시간이 지났거나, 중개사무소 영업시간 안에 전화할 수 없어요.",
+  "not_allowed": "시연 모드에서 전화를 받을 번호가 설정되지 않았어요.",
+  "call_not_found": "확정할 문의 통화를 찾을 수 없어요.",
+  "listing_not_found": "문의 통화에서 그 방이 확인되지 않았어요.",
+  "outside_broker_slots": "중개사가 문의 통화에서 말한 가능 시간 밖이에요. 그 시간 안에서 다시 골라 주세요."
+ },
+ "upload_errors": {
+  "call_not_found": "등기부를 붙일 문의 통화를 찾을 수 없어요.",
+  "listing_not_found": "그 통화에서 확인된 방이 아니에요.",
+  "not_pdf": "등기부는 PDF 파일만 올릴 수 있어요.",
+  "too_large": "파일이 너무 커요(10MB까지)."
+ },
+ "holidays": [
+  "2026-12-25",
+  "2027-01-01",
+  "2027-03-01"
+ ],
+ "business_hours": {
+  "open": 9,
+  "close": 19,
+  "days": "월~토"
+ }
+}
