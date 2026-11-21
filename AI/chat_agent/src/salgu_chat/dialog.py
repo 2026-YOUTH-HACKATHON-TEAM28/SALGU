@@ -43,9 +43,6 @@ def describe(c):
         details.append(f"{c['construction_year']}년 준공")
     if c.get("station") and c.get("walk_to_station_min") is not None:
         details.append(f"{c['station']}까지 걸어서 {c['walk_to_station_min']}분")
-    bus = (c.get("transit") or {}).get("bus")
-    if bus:
-        details.append(f"버스 {bus['route']} 배차 {bus['headway_min']}분")
     if c.get("contract_date"):
         y, m = str(c["contract_date"])[:7].split("-")
         n = c.get("transaction_count")
