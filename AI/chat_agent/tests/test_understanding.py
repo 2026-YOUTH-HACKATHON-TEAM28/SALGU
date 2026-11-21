@@ -101,6 +101,7 @@ CASES = [
     ("전세사기 어떻게 피해?", {"lease_types": None}, False),
     ("학교 근처 원룸 50만원 이하", {"monthly_rent_manwon": 50}, None),
     ("직장 근처로 집 구해요", {"workplace": None}, None),
+    ("보증금 1000에 월세 60 정도", {"deposit_manwon": 1000, "monthly_rent_manwon": 60}, True),
     ("점심 뭐 먹지 그리고 홍대 원룸 1000/50", {"preferred_areas": ["홍대"], "deposit_manwon": 1000}, False),
 
     # 확인 불가

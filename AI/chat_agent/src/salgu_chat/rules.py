@@ -242,13 +242,13 @@ def parse(text):
         conds["monthly_rent_manwon"] = _cond(money(m.group(2)), m.group(0), **approx)
     m = re.search(rf"보증금\s*(?:은|는|이|가|이고)??\s*{_MONEY}", t)
     if m:
-        conds["deposit_manwon"] = _cond(money(m.group(1)), m.group(0))
+        conds["deposit_manwon"] = _cond(money(m.group(1)), m.group(0), **approx)
     m = re.search(rf"(?<!반)전세(?:금|보증금)?\s*(?:은|는|이|가|로)??\s*{_MONEY}", t)
     if m:
         conds["deposit_manwon"] = _cond(money(m.group(1)), m.group(0))
     m = re.search(rf"(?<![\d일이삼사오육칠팔구십])월(?:세)?\s*(?:는|은|가|이)??\s*{_RENT}(?:\s*만\s*원?)?{_NOT_MONEY_UNIT}", t)
     if m:
-        conds["monthly_rent_manwon"] = _cond(money(m.group(1)), m.group(0))
+        conds["monthly_rent_manwon"] = _cond(money(m.group(1)), m.group(0), **approx)
     # "월세 좀만 더 올려도 돼 60까지"처럼 사이에 말이 끼어 있어도 끝에 '까지·이하·정도' 등이 붙으면 읽는다
     _until = r"\s*(?:만\s*원?)?\s*(?:까지|이하|정도|쯤|로|면|선|안쪽|가능)"
     if "monthly_rent_manwon" not in conds:
