@@ -46,16 +46,27 @@ class FakeRepository:
 
 
 class FakeCommuteProvider:
-    async def measure_regions(self, workplace, regions):
+    async def measure_regions(
+        self, workplace, regions, *, max_transfers=None, max_bus_headway_min=None
+    ):
         return {
             "서울특별시 마포구": CommuteMetric(minutes=35, transfers=1)
         }
 
-    async def measure_properties(self, workplace, candidates):
+    async def measure_properties(
+        self, workplace, candidates, *, max_transfers=None, max_bus_headway_min=None
+    ):
         return {
             candidate.key: CommuteMetric(minutes=32, transfers=0)
             for candidate in candidates
         }
+
+
+class RegionOnlyCommuteProvider(FakeCommuteProvider):
+    async def measure_properties(
+        self, workplace, candidates, *, max_transfers=None, max_bus_headway_min=None
+    ):
+        return {}
 
 
 @pytest.mark.asyncio
@@ -107,3 +118,22 @@ async def test_commute_regions_are_filtered_before_properties() -> None:
     assert result.count == 1
     assert result.candidates[0].commute_minutes == 32
     assert result.query.evaluated_region_count == 1
+    assert result.query.commute_evaluated_count == 1
+
+
+@pytest.mark.asyncio
+async def test_region_estimate_is_not_used_as_property_commute() -> None:
+    criteria = RecommendationInput(
+        deposit_manwon=1000,
+        monthly_rent_manwon=50,
+        workplace="강남역",
+        max_commute_min=40,
+        as_of_date=date(2026, 11, 21),
+    )
+
+    result = await PropertyRecommendationService(
+        FakeRepository(), RegionOnlyCommuteProvider()
+    ).recommend(criteria)
+
+    assert result.count == 0
+    assert result.query.commute_evaluated_count == 0
