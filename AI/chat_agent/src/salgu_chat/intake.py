@@ -27,17 +27,22 @@ def merge(prev_card, new_card):
         return new_card
     card = copy.deepcopy(prev_card)
     conds = card["conditions"]
-    new = new_card["conditions"]
-    for key in ("preferred_areas", "avoid_areas"):
-        if key in new:
-            other = "avoid_areas" if key == "preferred_areas" else "preferred_areas"
-            if other in conds:
-                conds[other]["value"] = [a for a in conds[other]["value"] if a not in new[key]["value"]]
-                if not conds[other]["value"]:
-                    conds.pop(other)
-            if key in conds:
-                merged = list(dict.fromkeys(conds[key]["value"] + new[key]["value"]))
-                new[key] = {**new[key], "value": merged}
+    new = dict(new_card["conditions"])
+
+    # 살 곳·피할 곳: 이전 것에 새 것을 더하되, 새로 피하라고 한 곳은 살 곳에서 빼고 그 반대도 같다
+    def vals(d, key):
+        return (d.get(key) or {}).get("value") or []
+    new_pref, new_avoid = vals(new, "preferred_areas"), vals(new, "avoid_areas")
+    areas = {
+        "preferred_areas": [a for a in dict.fromkeys(vals(conds, "preferred_areas") + new_pref) if a not in new_avoid],
+        "avoid_areas": [a for a in dict.fromkeys(vals(conds, "avoid_areas") + new_avoid) if a not in new_pref],
+    }
+    for key, value in areas.items():
+        base = new.pop(key, None) or conds.get(key)
+        if value:
+            conds[key] = {**base, "value": value}
+        else:
+            conds.pop(key, None)
     new_leases = (new.get("lease_types") or {}).get("value") or []
     if new_leases == ["jeonse"] and "monthly_rent_manwon" not in new:
         conds.pop("monthly_rent_manwon", None)  # 전세로 바꾸면 이전 월세 조건은 뺀다
@@ -121,7 +126,11 @@ def finalize(card):
     miss = missing_minimum(card)
     card["missing"] = miss
     card["ready"] = not miss
-    card["clarifications"] = _ask(miss)[1] if miss else []
+    avoid = (card["conditions"].get("avoid_areas") or {}).get("value") or []
+    card["clarifications"] = [
+        {**q, "options": [o for o in q["options"] if not any(a in o for a in avoid)]}  # 피하라고 한 곳은 버튼에서 뺀다
+        for q in (_ask(miss)[1] if miss else [])
+    ]
     return card
 
 
@@ -198,8 +207,6 @@ def reply(card, follow_up=False):
         text = f"{lead} 같이 찾아봐요."
     if miss:
         text += " " + _ask(miss)[0]
-    else:
-        text += " 더 원하는 게 있으면 편하게 말해 주세요."
     return text
 
 
