@@ -207,3 +207,10 @@ describe('맞는 동네가 없을 때', () => {
     expect(JSON.stringify(chat)).not.toContain('1234567');
   });
 });
+
+describe('보안 헤더', () => {
+  it('지도 타일이 막히지 않게 출처는 도메인까지 보내요', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/health' });
+    expect(res.headers['referrer-policy']).toBe('strict-origin-when-cross-origin');
+  });
+});

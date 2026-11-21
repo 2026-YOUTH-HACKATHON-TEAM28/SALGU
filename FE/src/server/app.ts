@@ -38,6 +38,8 @@ export async function buildApp(config: Config, store = new Store(config.dataDir)
       },
     },
     crossOriginEmbedderPolicy: false,
+    // 지도 타일 서버(OpenStreetMap)는 출처(Referer)가 없는 요청을 막아요(403). 주소 경로는 빼고 도메인만 보내요.
+    referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
   });
 
   await app.register(cookie);

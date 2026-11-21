@@ -70,3 +70,12 @@
 
 - 옛 salgu-api(127.0.0.1:8700) 서비스를 멈추고 자동 시작을 끔, 전화 에이전트 도커 salgu-phone(127.0.0.1:8090)을 멈춤(컨테이너는 지우지 않음, 재시작 정책 unless-stopped 라 서버를 다시 켜도 안 뜸)
 - 확인: 8700·8090 열린 곳 없음, salgu-fe(8080)와 공개 주소 health 정상
+
+### 8. 지도 403, AI 연결 여부
+
+> 화면 개선 진행해줘. 현재 지도에서 403 access denied 떠. 현재 AI 연결 되어 있어?
+
+- 원인: 보안 헤더가 `Referrer-Policy: no-referrer` 라 OpenStreetMap 타일 요청에 출처가 빠짐. OSM 타일 이용 정책상 출처 없는 요청은 403 으로 막힐 수 있음
+- 수정: 출처 정책을 `strict-origin-when-cross-origin`(도메인만 보냄)으로, Leaflet 타일에도 같은 값, OSM 저작권 링크. 시험 1개 추가(36개 통과)
+- 답: AI는 연결되어 있지 않음. 대화는 mock 규칙(`src/server/mock/nlu.ts`, `dialog.ts`)이고, 옛 AI 백엔드는 7번에서 내림
+- 배포 전(확인 후 배포)

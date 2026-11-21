@@ -54,8 +54,11 @@ class OsmProvider implements MapProvider {
       13,
     );
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; OpenStreetMap',
+      attribution:
+        '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>',
       maxZoom: 19,
+      // OSM 타일 이용 정책: 출처를 보내야 해요(없으면 403 Access denied)
+      referrerPolicy: 'strict-origin-when-cross-origin',
     }).addTo(this.map);
     this.layer = L.layerGroup().addTo(this.map);
   }
