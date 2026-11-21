@@ -126,6 +126,12 @@ def plan(card):
             conds.pop(key, None)
         base["priorities"] = [p for p in base.get("priorities") or [] if p not in ("commute", "bus_headway")]
         notes.append(f"{work}까지 {way} 시간·환승은 아직 계산하지 못해요(교통 데이터 연결 전).")
+    # 엔진은 workplace 없이 역 도보·배차 조건이 오면 오류를 낸다 → 빼고 알린다(회사·학교 유무와 상관없이)
+    said = [k for k in ("max_walk_to_station_min", "max_bus_headway_min") if conds.pop(k, None)]
+    if said:
+        base["priorities"] = [p for p in base.get("priorities") or [] if p != "bus_headway"]
+        what = "·".join({"max_walk_to_station_min": "역까지 걷는 시간", "max_bus_headway_min": "버스 배차"}[k] for k in said)
+        notes.append(f"{what} 조건은 아직 확인하지 못해요(교통 데이터 연결 전).")
 
     pref = (conds.get("preferred_areas") or {}).get("value") or []
     avoid = (conds.get("avoid_areas") or {}).get("value") or []
