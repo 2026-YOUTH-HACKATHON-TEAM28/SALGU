@@ -7,7 +7,9 @@
 recommendations = await recommend_properties(criteria, session, commute_provider)
 
 # 2. 사용자가 확정한 매물 주소로 공인중개사를 별도 조회한다.
-realtors = await find_nearest_realtors(realtor_criteria, provider)
+realtors = await find_nearest_realtors(
+    realtor_criteria, session, location_provider
+)
 ```
 
 두 메소드는 서로 자동 호출하지 않는다. 입력·출력 필드 설명은 Pydantic
@@ -21,6 +23,7 @@ realtors = await find_nearest_realtors(realtor_criteria, provider)
   "monthly_rent_manwon": 50,
   "deposit_approx": false,
   "monthly_rent_approx": true,
+  "price_band": null,
   "housing_types": ["officetel", "villa"],
   "lease_types": ["monthly"],
   "preferred_areas": ["마포구", "서대문구"],
@@ -31,9 +34,12 @@ realtors = await find_nearest_realtors(realtor_criteria, provider)
   "workplace": "강남역",
   "max_commute_min": 40,
   "max_transfers": 1,
+  "max_bus_headway_min": 15,
   "max_walk_to_station_min": 10,
   "priorities": ["commute", "price"],
-  "limit": 5
+  "limit": 5,
+  "history_months": 12,
+  "as_of_date": null
 }
 ```
 
@@ -41,6 +47,11 @@ realtors = await find_nearest_realtors(realtor_criteria, provider)
 - `approx=true`인 금액만 검색 상한을 10% 늘린다.
 - 월세·반전세는 `monthly_rent_manwon`이 필요하다.
 - 통근 조건을 쓰려면 `workplace`가 필요하다.
+- `housing_types`: `officetel`, `villa`
+- `lease_types`: `monthly`, `jeonse`, `semi_jeonse`
+- `price_band`: `median_or_below` 또는 `null`
+- `priorities`: `price`, `commute`, `bus_headway`, `building_age`, `area`
+- 선택 조건이 없으면 숫자·문자열은 `null`, 배열은 `[]`로 전달한다.
 
 ## 출력 예시
 
@@ -74,7 +85,12 @@ realtors = await find_nearest_realtors(realtor_criteria, provider)
           "guidance": "공덕역까지 도보 이동",
           "start_name": null,
           "end_name": null,
-          "route_names": []
+          "route_names": [],
+          "headway_min": null,
+          "first_time": null,
+          "last_time": null,
+          "scheduled_departures": null,
+          "public_data_applied": false
         },
         {
           "mode": "subway",
@@ -83,7 +99,20 @@ realtors = await find_nearest_realtors(realtor_criteria, provider)
           "guidance": null,
           "start_name": "공덕역",
           "end_name": "강남역",
-          "route_names": ["5호선", "2호선"]
+          "route_names": ["5호선", "2호선"],
+          "headway_min": 6.0,
+          "first_time": "05:30:00",
+          "last_time": "24:10:00",
+          "scheduled_departures": 180,
+          "public_data_applied": true
+        }
+      ],
+      "nearby_bus_stops": [
+        {
+          "name": "공덕역",
+          "ars_id": "14001",
+          "distance_m": 210,
+          "route_names": ["7016", "마포01"]
         }
       ],
       "score": 82.4,
@@ -120,7 +149,16 @@ realtors = await find_nearest_realtors(realtor_criteria, provider)
   "query": {
     "start_date": "2025-11-26",
     "end_date": "2026-11-21",
-    "source_tables": ["officetel_rentals", "multifamily_rentals"],
+    "source_tables": [
+      "officetel_rentals",
+      "multifamily_rentals",
+      "bus_routes",
+      "bus_stops",
+      "bus_route_stops",
+      "subway_stations",
+      "subway_first_last",
+      "subway_timetables"
+    ],
     "evaluated_count": 500,
     "evaluated_region_count": 12,
     "commute_evaluated_count": 30,
@@ -170,7 +208,10 @@ realtors = await find_nearest_realtors(realtor_criteria, provider)
       "distance_m": 120,
       "longitude": 126.951,
       "latitude": 37.541,
-      "place_url": "https://place.map.kakao.com/12345"
+      "place_url": "https://place.map.kakao.com/12345",
+      "registration_no": "마포-12345",
+      "status": "영업중",
+      "source": "database"
     }
   ]
 }
@@ -179,7 +220,11 @@ realtors = await find_nearest_realtors(realtor_criteria, provider)
 호출 메소드:
 
 ```python
-result = await find_nearest_realtors(criteria, provider=commute_provider)
+result = await find_nearest_realtors(
+    criteria,
+    session=db_session,
+    location_provider=commute_provider,
+)
 ```
 
 ## 점수
@@ -191,7 +236,7 @@ result = await find_nearest_realtors(criteria, provider=commute_provider)
 | 연식 | 10% | 건축연도 |
 | 최근성 | 15% | 최신 계약일 |
 | 근거량 | 10% | 같은 건물 실거래 수 |
-| 통근 | 20% | 외부 `CommuteProvider` 결과 |
+| 통근 | 20% | 카카오 경로 + 서울시 교통 DB 결과 |
 
 사용자가 말한 `priorities` 항목의 비중을 높인 뒤, 사용 가능한 항목끼리 합계가 100%가
 되도록 다시 계산한다. 최종 비중은 각 후보의 `applied_weights`로 반환한다.
@@ -199,3 +244,5 @@ result = await find_nearest_realtors(criteria, provider=commute_provider)
 가격·면적·연식·통근의 상한 또는 하한을 정확히 만족하면 0.5점이다. 조건 안에서 여유가
 클수록 최대 1점까지 올라간다. 가격 점수는 화면에 표시하는 최신 실거래 가격으로 계산하고,
 중앙값은 같은 건물·5㎡ 면적대의 비교 근거로만 사용한다.
+통근 상한을 입력하지 않은 경우에도 시간·환승·도보·배차간격이 커질수록 점수가 연속적으로
+낮아지며, 주변 정류장 수를 함께 반영한다.
