@@ -19,6 +19,12 @@
   .user { align-self:flex-end; background:var(--accent); color:#fff; border-bottom-right-radius:4px; }
   .bot { align-self:flex-start; background:var(--soft); border-bottom-left-radius:4px; }
   .meta { font-size:11px; color:var(--muted); margin-top:4px; }
+  .bot.backend_request, .bot.backend_response { background:#f3f1ee; color:#5f5850; font-size:13px; }
+  .bot.backend_request::before { content:"🔎 "; } .bot.backend_response::before { content:"📨 "; }
+  .chips { align-self:flex-start; display:flex; flex-wrap:wrap; gap:6px; }
+  .chips button { border-color:var(--accent); color:var(--accent); font-size:13px; }
+  .ready { font-size:12px; padding:2px 8px; border-radius:8px; background:#eee; margin-left:8px; }
+  .ready.ok { background:#e3f5e6; color:#2f7a3d; }
   form { display:flex; gap:8px; padding:12px; border-top:1px solid var(--line); }
   input { flex:1; font:inherit; padding:10px 12px; border:1px solid var(--line); border-radius:10px; }
   .side .body { padding:14px 16px; overflow:auto; }
@@ -41,7 +47,7 @@
     <form id="f"><input id="m" autocomplete="off" placeholder="원하는 집을 편하게 말해 보세요" autofocus><button class="primary">보내기</button></form>
   </section>
   <aside class="side">
-    <header><h1>조건 카드</h1></header>
+    <header><h1>조건 카드</h1><span class="ready" id="ready">최소 조건 대기</span></header>
     <div class="body" id="card"><p class="note">대화를 시작하면 이해한 조건이 여기에 보여요.</p></div>
   </aside>
 </div>
@@ -54,12 +60,19 @@ const NAMES = {
   max_bus_headway_min:"버스 배차 최대(분)"
 };
 const VALS = { officetel:"오피스텔", villa:"빌라", monthly:"월세", jeonse:"전세", semi_jeonse:"반전세", median_or_below:"시세 이하" };
-const EXAMPLES = ["홍대 근처 1000/50 오피스텔 찾아줘", "홍대는 좀?", "회사 강남역인데 전세 1억 5천, 반지하 싫어", "ㅂㅈㄱ 천 ㅇㅅ 오십 역세권 투룸", "오늘 점심 뭐 먹지?"];
+const EXAMPLES = ["안녕", "신촌에 원하는 매물좀 찾아줘", "홍대 근처 1000/50 오피스텔 찾아줘", "홍대는 좀?", "회사 강남역인데 전세 1억 5천, 반지하 싫어", "ㅂㅈㄱ 천 ㅇㅅ 오십 역세권 투룸", "오늘 점심 뭐 먹지?"];
 let sid = localStorage.getItem("salgu_sid") || null;
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const show = v => Array.isArray(v) ? v.map(x => VALS[x] || x).join(", ") : (VALS[v] || v);
 
+const MISSING = { area:"지역", deposit:"보증금", monthly_rent:"월세" };
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+function chips(clar) {
+  const d = document.createElement("div"); d.className = "chips";
+  clar.forEach(c => c.options.forEach(o => { const b = document.createElement("button"); b.type = "button"; b.textContent = o; b.onclick = () => send(o); d.appendChild(b); }));
+  $("log").appendChild(d); $("log").scrollTop = 1e9;
+}
 function bubble(text, who, meta) {
   const d = document.createElement("div");
   d.className = "msg " + who;
@@ -87,14 +100,24 @@ async function send(text) {
   const j = await r.json();
   if (!r.ok) { bubble("오류: " + JSON.stringify(j), "bot"); return; }
   sid = j.session_id; localStorage.setItem("salgu_sid", sid); $("sid").textContent = sid;
-  bubble(j.reply, "bot", `${j.via}${j.guard ? " · 막음:" + j.guard : ""} · ${j.seconds}초${j.fixes.length ? " · 고침 " + j.fixes.length : ""}`);
   renderCard(j.card, j.changed || []);
+  $("ready").textContent = j.ready ? "검색 가능" : (j.missing.length ? "빠짐: " + j.missing.map(m => MISSING[m]).join("·") : "최소 조건 대기");
+  $("ready").className = "ready" + (j.ready ? " ok" : "");
+  for (const [i, m] of j.messages.entries()) {
+    if (i) await sleep(m.kind === "backend_response" ? 900 : 500);  // BE에 요청하고 기다리는 느낌
+    let meta = "";
+    if (i === 0) meta = `${j.via}${j.guard ? " · 막음:" + j.guard : ""} · ${j.seconds}초${j.fixes.length ? " · 고침 " + j.fixes.length : ""}`;
+    if (m.kind === "backend_response" && j.backend) meta = `BE ${j.backend.mock ? "예시 응답(로컬)" : "응답"} · ${j.backend.seconds}초`;
+    bubble(m.text, "bot " + m.kind, meta);
+  }
+  if (j.card && j.card.clarifications && j.card.clarifications.length) chips(j.card.clarifications);
 }
 $("f").onsubmit = e => { e.preventDefault(); const t = $("m").value.trim(); if (t) { $("m").value = ""; send(t); } };
 $("reset").onclick = async () => {
   if (sid) await fetch("/api/reset", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ session_id:sid }) });
   sid = null; localStorage.removeItem("salgu_sid"); $("sid").textContent = ""; $("log").innerHTML = "";
   $("card").innerHTML = '<p class="note">대화를 시작하면 이해한 조건이 여기에 보여요.</p>';
+  $("ready").textContent = "최소 조건 대기"; $("ready").className = "ready";
 };
 EXAMPLES.forEach(t => { const b = document.createElement("button"); b.type = "button"; b.textContent = t; b.onclick = () => send(t); $("ex").appendChild(b); });
 $("sid").textContent = sid || "";
