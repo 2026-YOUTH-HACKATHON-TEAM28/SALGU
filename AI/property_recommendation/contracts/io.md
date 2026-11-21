@@ -1,5 +1,18 @@
 # 추천 메소드 I/O
 
+## 메소드 분리
+
+```python
+# 1. 조건에 맞는 매물을 기본 5개 추천한다.
+recommendations = await recommend_properties(criteria, session, commute_provider)
+
+# 2. 사용자가 확정한 매물 주소로 공인중개사를 별도 조회한다.
+realtors = await find_nearest_realtors(realtor_criteria, provider)
+```
+
+두 메소드는 서로 자동 호출하지 않는다. 입력·출력 필드 설명은 Pydantic
+`Field(description=...)`에 정의되어 FastAPI OpenAPI 문서에도 포함된다.
+
 ## 입력 예시
 
 ```json
@@ -18,6 +31,7 @@
   "workplace": "강남역",
   "max_commute_min": 40,
   "max_transfers": 1,
+  "max_walk_to_station_min": 10,
   "priorities": ["commute", "price"],
   "limit": 5
 }
@@ -47,6 +61,31 @@
       "contract_date": "2026-11-01",
       "commute_minutes": 35,
       "transfers": 1,
+      "commute_distance_km": 14.32,
+      "transit_fare_won": 1500,
+      "station": "공덕역",
+      "walk_to_station_min": 4,
+      "route_url": "https://map.kakao.com/...",
+      "transit_legs": [
+        {
+          "mode": "walking",
+          "minutes": 4,
+          "distance_m": 220,
+          "guidance": "공덕역까지 도보 이동",
+          "start_name": null,
+          "end_name": null,
+          "route_names": []
+        },
+        {
+          "mode": "subway",
+          "minutes": 25,
+          "distance_m": 12000,
+          "guidance": null,
+          "start_name": "공덕역",
+          "end_name": "강남역",
+          "route_names": ["5호선", "2호선"]
+        }
+      ],
       "score": 82.4,
       "score_breakdown": {
         "price": 0.4,
@@ -83,7 +122,10 @@
     "end_date": "2026-11-21",
     "source_tables": ["officetel_rentals", "multifamily_rentals"],
     "evaluated_count": 500,
-    "evaluated_region_count": 12
+    "evaluated_region_count": 12,
+    "commute_evaluated_count": 30,
+    "commute_search_depth": 1,
+    "commute_search_radius_km": 20
   },
   "unapplied_conditions": [],
   "applied_tolerances": ["월세 상한 +10%"]
@@ -92,6 +134,53 @@
 
 `is_live_listing=false`는 이 후보가 과거 계약 데이터라는 뜻이다. 현재 계약 가능한지는
 중개사 확인 결과로 갱신한다.
+
+`commute_evaluated_count`는 카카오 API로 주소 단위 통근 경로가 확인된 후보 수다.
+`commute_search_depth=0`은 최초 10km, `1`은 20km, `2`는 40km까지 확장했다는 뜻이다.
+
+## 건물 확정 후 공인중개사 검색
+
+입력:
+
+```json
+{
+  "property_address": "서울특별시 마포구 공덕동 1-1",
+  "limit": 5,
+  "max_distance_m": 5000
+}
+```
+
+- `property_address`: 사용자가 확정한 추천 결과의 `address`
+- `limit`: 반환 개수, 기본 5개, 최대 15개
+- `max_distance_m`: 선택 사항, 최대 20000m
+
+출력:
+
+```json
+{
+  "property_address": "서울특별시 마포구 공덕동 1-1",
+  "count": 1,
+  "offices": [
+    {
+      "place_id": "12345",
+      "name": "살구공인중개사",
+      "phone": "02-123-4567",
+      "address": "서울 마포구 공덕동 1-2",
+      "road_address": "서울 마포구 살구로 1",
+      "distance_m": 120,
+      "longitude": 126.951,
+      "latitude": 37.541,
+      "place_url": "https://place.map.kakao.com/12345"
+    }
+  ]
+}
+```
+
+호출 메소드:
+
+```python
+result = await find_nearest_realtors(criteria, provider=commute_provider)
+```
 
 ## 점수
 

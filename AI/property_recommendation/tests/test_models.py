@@ -1,4 +1,18 @@
-from property_recommendation.models import RecommendationInput
+import pytest
+from pydantic import ValidationError
+
+from property_recommendation import find_nearest_realtors, recommend_properties
+from property_recommendation.models import (
+    PropertyRecommendation,
+    QueryInfo,
+    RealtorOffice,
+    RealtorSearchInput,
+    RealtorSearchOutput,
+    RecommendationInput,
+    RecommendationOutput,
+    ScoreBreakdown,
+    TransitLeg,
+)
 
 
 def test_condition_card_is_converted_to_input() -> None:
@@ -23,4 +37,47 @@ def test_condition_card_is_converted_to_input() -> None:
     assert result.price_band == "median_or_below"
     assert result.workplace == "강남역"
     assert result.limit == 3
+
+
+def test_walk_limit_requires_workplace() -> None:
+    with pytest.raises(ValidationError):
+        RecommendationInput(
+            deposit_manwon=1000,
+            monthly_rent_manwon=50,
+            max_walk_to_station_min=10,
+        )
+
+
+def test_recommendation_defaults_to_five_properties() -> None:
+    criteria = RecommendationInput(
+        deposit_manwon=1000,
+        monthly_rent_manwon=50,
+    )
+
+    assert criteria.limit == 5
+
+
+def test_property_and_realtor_search_are_separate_methods() -> None:
+    assert recommend_properties is not find_nearest_realtors
+    assert RealtorSearchInput(property_address="서울 마포구 1-1").limit == 5
+
+
+@pytest.mark.parametrize(
+    "model",
+    [
+        RecommendationInput,
+        TransitLeg,
+        ScoreBreakdown,
+        PropertyRecommendation,
+        QueryInfo,
+        RecommendationOutput,
+        RealtorSearchInput,
+        RealtorOffice,
+        RealtorSearchOutput,
+    ],
+)
+def test_public_io_fields_have_descriptions(model) -> None:
+    properties = model.model_json_schema()["properties"]
+
+    assert all(field.get("description") for field in properties.values())
 
