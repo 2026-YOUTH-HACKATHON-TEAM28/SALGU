@@ -19,6 +19,7 @@
 | `workplace` | X | 회사·학교·역 이름 |
 | `max_commute_min` | X | 최대 통근시간 |
 | `max_transfers` | X | 최대 환승 횟수 |
+| `max_walk_to_station_min` | X | 첫 버스·지하철 승차지점까지 최대 도보시간 |
 | `priorities` | X | `price`, `commute`, `building_age` 등 우선순위 |
 | `limit` | X | 반환 개수, 기본 5개 |
 
@@ -43,7 +44,8 @@
 
 - 건물명, 주소, 주택·계약 유형
 - 대표 보증금·월세, 면적, 층, 건축연도
-- 통근시간·환승 횟수(제공된 경우)
+- 통근시간·경로거리·환승 횟수·요금
+- 버스·지하철 노선, 승하차 지점, 도보 구간
 - 총점과 항목별 점수
 - 실제 적용 가중치
 - 추천 이유
@@ -74,9 +76,13 @@ async with KakaoCommuteProvider(KakaoCommuteConfig.from_env()) as commute_provid
 활성화해야 한다. FastAPI에서는 provider를 요청마다 만들지 말고 lifespan에서 한 번 생성해
 HTTP 연결과 좌표·경로 캐시를 재사용한다.
 
-기본 호출 상한은 지역 경로 30건, 개별 매물 경로 30건이다. 지역은 직선거리로 먼저
-축소하며, 최종 결과에는 개별 매물 주소 경로가 확인된 후보만 사용한다. 카카오 응답에 없는
-버스 배차간격 조건은 추정하지 않고 `UnsupportedCommuteConditionError`를 발생시킨다.
+지역 검색 반경은 10km에서 시작한다. 조건을 만족하는 추천이 없으면 20km, 40km로
+확장하고 지역 경로 호출 상한도 10건, 20건, 30건으로 늘린다. 결과가 있으면 이후 단계는
+호출하지 않는다. 개별 매물은 최대 30건을 주소 단위로 측정하며, 확인된 후보만 사용한다.
+경로는 시간·환승·도보 제한을 먼저 만족시킨 뒤 환승 횟수, 소요시간 순으로 선택한다.
+
+카카오 응답에 없는 버스 배차간격 조건은 추정하지 않고
+`UnsupportedCommuteConditionError`를 발생시킨다.
 
 연동 확인:
 
@@ -84,6 +90,29 @@ HTTP 연결과 좌표·경로 캐시를 재사용한다.
 $env:KAKAO_REST_API_KEY="REST_API_KEY"
 python scripts/check_kakao_commute.py 강남역 "서울특별시 마포구 공덕동"
 ```
+
+## 건물 확정 후 공인중개사 검색
+
+추천 결과에서 사용자가 건물을 선택한 뒤 별도 메소드를 호출한다. 카카오 장소 카테고리
+`AG2`를 사용하고 선택 건물 좌표와의 거리순으로 반환한다.
+
+```python
+from property_recommendation import RealtorSearchInput, find_nearest_realtors
+
+realtors = await find_nearest_realtors(
+    RealtorSearchInput(
+        property_address=selected_property.address,
+        limit=5,
+    ),
+    provider=commute_provider,
+)
+```
+
+`max_distance_m`을 넣으면 최대 20km 안에서만 검색하고, 생략하면 가장 가까운 중개업소를
+거리순으로 조회한다. 이름·전화번호·주소·거리·카카오맵 링크를 반환한다.
+
+사용 API: [카카오 대중교통 경로 조회](https://developers.kakao.com/docs/ko/kakaomap/rest-api),
+[카카오 카테고리 장소 검색](https://developers.kakao.com/docs/ko/local/dev-guide)
 
 ## 평가
 
