@@ -77,6 +77,13 @@ class FallbackTest(unittest.TestCase):
                 llm.generate_text("s", "u")
         self.assertEqual(called_models(u), [A])
 
+    def test_overload_moves_to_next_model(self):
+        busy = urllib.error.HTTPError("u", 503, "busy", {}, io.BytesIO(b'{"error": {"code": 503}}'))
+        with mock.patch("urllib.request.urlopen", side_effect=[busy, ok()]) as u:
+            llm.generate_text("s", "u")
+        self.assertEqual(called_models(u), [A, B])
+        self.assertAlmostEqual(llm._cool_until[A] - time.time(), llm.OVERLOAD_COOLDOWN_S, delta=1)
+
     def test_per_model_rpm_limit(self):
         config.GEMINI_MAX_RPM = 1
         with mock.patch("urllib.request.urlopen", side_effect=[ok(), ok()]) as u:

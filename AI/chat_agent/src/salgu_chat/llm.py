@@ -4,6 +4,7 @@
 - 무료 한도는 '프로젝트 × 모델'마다 따로다. 한 모델이 429(한도 초과)면 같은 요청 안에서 다음 모델로 넘어간다.
 - 하루 한도(PerDay)에 걸린 모델은 태평양 시간 다음 자정까지, 분당 한도는 retryDelay(없으면 설정값)만큼 쉰다.
 - 모델마다 최근 60초 요청 수를 config.GEMINI_MAX_RPM 이하로 묶는다.
+- 503(일시적 과부하)도 다음 모델로 넘어가고 그 모델은 잠깐 쉰다.
 - 시간 초과·기타 오류는 다음 모델을 시도하지 않고 바로 LLMError. 호출한 쪽이 규칙 결과로 답한다(속도 우선).
 키 값은 로그·오류 메시지·예외에 넣지 않는다.
 """
@@ -20,6 +21,7 @@ from datetime import datetime, timedelta, timezone
 from . import config
 
 BASE = "https://generativelanguage.googleapis.com/v1beta"
+OVERLOAD_COOLDOWN_S = 15  # 503(과부하) 뒤 그 모델을 쉬는 시간
 
 _lock = threading.Lock()
 _sent = {}        # 모델 → 최근 요청 시각 deque
@@ -137,6 +139,11 @@ def _request(model, system, user_text, json_mode, timeout):
             err = {}
         if e.code == 429:
             _cooldown_for(model, err)
+            raise _QuotaError(model) from None
+        if e.code == 503:
+            # 일시적 과부하("high demand"): 그 모델만 잠깐 쉬고 다음 모델로 넘어간다
+            with _lock:
+                _cool_until[model] = time.time() + OVERLOAD_COOLDOWN_S
             raise _QuotaError(model) from None
         raise LLMError(f"Gemini HTTP {e.code}: {str(err.get('message', ''))[:200]}") from None
     except Exception as e:
