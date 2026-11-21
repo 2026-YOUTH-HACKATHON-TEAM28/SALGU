@@ -4,7 +4,13 @@ from .kakao_commute import (
     KakaoCommuteProvider,
     UnsupportedCommuteConditionError,
 )
-from .models import RecommendationInput, RecommendationOutput
+from .models import (
+    RealtorSearchInput,
+    RealtorSearchOutput,
+    RecommendationInput,
+    RecommendationOutput,
+)
+from .realtor import RealtorProvider, find_nearest_realtors
 from .service import (
     CommuteProvider,
     CommuteProviderRequiredError,
@@ -19,8 +25,12 @@ __all__ = [
     "KakaoCommuteError",
     "KakaoCommuteProvider",
     "PropertyRecommendationService",
+    "RealtorProvider",
+    "RealtorSearchInput",
+    "RealtorSearchOutput",
     "RecommendationInput",
     "RecommendationOutput",
     "UnsupportedCommuteConditionError",
+    "find_nearest_realtors",
     "recommend_properties",
 ]

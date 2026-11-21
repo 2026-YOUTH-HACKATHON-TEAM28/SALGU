@@ -58,6 +58,7 @@ class RecommendationInput(BaseModel):
                 self.max_commute_min,
                 self.max_transfers,
                 self.max_bus_headway_min,
+                self.max_walk_to_station_min,
             )
         )
         if has_commute_limit and not self.workplace:
@@ -132,10 +133,25 @@ class PropertyCandidate(BaseModel):
         )
 
 
+class TransitLeg(BaseModel):
+    mode: Literal["bus", "subway", "walking"]
+    minutes: int = Field(ge=0)
+    distance_m: int = Field(ge=0)
+    guidance: str | None = None
+    start_name: str | None = None
+    end_name: str | None = None
+    route_names: list[str] = Field(default_factory=list)
+
+
 class CommuteMetric(BaseModel):
     minutes: int = Field(ge=0)
     transfers: int = Field(ge=0)
     bus_headway_min: int | None = Field(default=None, ge=0)
+    distance_km: float | None = Field(default=None, ge=0)
+    fare_won: int | None = Field(default=None, ge=0)
+    walk_to_transit_min: int | None = Field(default=None, ge=0)
+    route_url: str | None = None
+    legs: list[TransitLeg] = Field(default_factory=list)
 
 
 class ScoreBreakdown(BaseModel):
@@ -160,6 +176,10 @@ class PropertyRecommendation(BaseModel):
     contract_date: date
     commute_minutes: int | None = None
     transfers: int | None = None
+    commute_distance_km: float | None = None
+    transit_fare_won: int | None = None
+    transit_legs: list[TransitLeg] = Field(default_factory=list)
+    route_url: str | None = None
     station: str | None = None
     walk_to_station_min: int | None = None
     score: float
@@ -181,6 +201,8 @@ class QueryInfo(BaseModel):
     evaluated_count: int
     evaluated_region_count: int
     commute_evaluated_count: int = 0
+    commute_search_depth: int = Field(default=0, ge=0)
+    commute_search_radius_km: float | None = Field(default=None, ge=0)
 
 
 class RecommendationOutput(BaseModel):
@@ -189,4 +211,28 @@ class RecommendationOutput(BaseModel):
     query: QueryInfo
     unapplied_conditions: list[str] = Field(default_factory=list)
     applied_tolerances: list[str] = Field(default_factory=list)
+
+
+class RealtorSearchInput(BaseModel):
+    property_address: str = Field(min_length=1)
+    limit: int = Field(default=5, ge=1, le=15)
+    max_distance_m: int | None = Field(default=None, ge=1, le=20_000)
+
+
+class RealtorOffice(BaseModel):
+    place_id: str
+    name: str
+    phone: str | None = None
+    address: str
+    road_address: str | None = None
+    distance_m: int = Field(ge=0)
+    longitude: float
+    latitude: float
+    place_url: str
+
+
+class RealtorSearchOutput(BaseModel):
+    property_address: str
+    count: int = Field(ge=0)
+    offices: list[RealtorOffice] = Field(default_factory=list)
 
