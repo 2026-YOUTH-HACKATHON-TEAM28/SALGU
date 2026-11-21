@@ -177,6 +177,17 @@ function lines(quotes: Record<string, AgentQuote> | undefined): CallLine[] {
     }));
 }
 
+/** 전화 에이전트가 통화를 거절·실패한 이유(error 코드) -> 화면 문구 */
+const FAIL_REASON: Record<string, string> = {
+  already_called_today: '오늘 이미 같은 사무소에 문의해서 다시 걸지 않았어요(같은 곳은 하루 한 번).',
+  daily_limit: '오늘 걸 수 있는 통화(하루 10통)를 다 써서 걸지 않았어요.',
+  confirm_limit: '이 방의 확정 통화 횟수를 다 써서 걸지 않았어요.',
+  window_passed: '보여 줄 수 있는 시간이 이미 지나 걸지 않았어요.',
+  phone_not_allowed: '휴대폰 번호가 아니라서 걸지 않았어요.',
+  provider_error: '전화 회사 쪽 문제로 걸지 못했어요. 잠시 후 다시 시도해 주세요.',
+  no_answer: '두 번 걸었지만 받지 않았어요.',
+};
+
 const CALL_STATUS: Record<string, CallStatus> = {
   waiting: 'waiting',
   scheduled: 'waiting',
@@ -195,7 +206,11 @@ function toCall(a: AgentCall, broker: Broker | undefined, listingIds: string[]):
   const failed = a.status === 'failed' || a.status === 'rejected';
   const outcome = failed ? 'unclear' : ((a.outcome ?? null) as CallOutcome | null);
   const ls = lines(a.quotes);
-  if (failed) ls.push({ who: 'system', text: a.message || '이 사무소에는 전화를 걸지 못했어요.' });
+  if (failed)
+    ls.push({
+      who: 'system',
+      text: a.message || FAIL_REASON[a.error ?? ''] || '이 사무소에는 전화를 걸지 못했어요.',
+    });
   return {
     id: a.call_id,
     brokerId: broker?.id ?? a.broker?.reg ?? a.reg ?? '',
@@ -282,7 +297,10 @@ export async function startRealCalls(
   const start = slotStart(prep.visitSlot ?? 'sat-pm', ctx.now);
   const end = new Date(start.getTime() + 3 * 3600000);
   const window = { start: toKst(localIso(start)), end: toKst(localIso(end)) };
-  const stamp = `${String(ctx.now.getHours()).padStart(2, '0')}${String(ctx.now.getMinutes()).padStart(2, '0')}`;
+  // 시연에서 같은 사무소 하루 1번 규칙에 막히지 않게 등록번호에 '~시분초'를 붙여요(되돌릴 때 '~' 뒤를 떼요)
+  const stamp = [ctx.now.getHours(), ctx.now.getMinutes(), ctx.now.getSeconds()]
+    .map((n) => String(n).padStart(2, '0'))
+    .join('');
 
   const plan = prep.dongIds.map((dongId) => ({
     dongId,
@@ -325,7 +343,7 @@ export async function startRealCalls(
         keep_transcript: false,
         brokers: brokers.map((b) => ({
           // 시연에서는 같은 사무소 하루 1번 규칙에 막히지 않게 등록번호에 시각을 붙여요.
-          reg: agent.uniqueReg ? `${b.regNo}-${stamp}` : b.regNo,
+          reg: agent.uniqueReg ? `${b.regNo}~${stamp}` : b.regNo,
           name: b.name,
           // 아직 실제 중개사무소에는 연락하지 않아요. 사용자가 적은 본인 번호로만 걸어요.
           phone: ctx.userPhone,
@@ -396,7 +414,7 @@ export async function syncReal(
         continue;
       }
       for (const a of batch.calls) {
-        const reg = (a.broker?.reg ?? '').replace(/-\d{4}$/, '');
+        const reg = (a.broker?.reg ?? '').replace(/~\d+$/, '').replace(/-\d{4}$/, '');
         const broker =
           chat.brokers.find((x) => x.regNo === reg && x.dongId === b.dongId) ??
           chat.brokers.find((x) => x.regNo === reg);

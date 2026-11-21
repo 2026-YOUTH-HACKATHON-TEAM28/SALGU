@@ -171,6 +171,7 @@ export async function registerRoutes(app: FastifyInstance, config: Config, store
     app.addHook('onClose', async () => clearInterval(timer));
   }
   const talkStates = new Map<string, { userId: string; at: number }>();
+  const startingCalls = new Set<string>();
   be.register(app);
   const phone = new PhoneAgent(config.phoneAgentUrl, {
     mockScenario: config.phoneMockScenario,
@@ -521,8 +522,12 @@ export async function registerRoutes(app: FastifyInstance, config: Config, store
       try {
         // 전화 에이전트가 있으면 문의·확정 통화는 실제 에이전트로(없으면 시뮬레이션)
         if (a.type === 'startCalls') {
+          // 같은 대화에서 거의 동시에 두 번 누르면 둘 다 걸리지 않게 막아요(전화 에이전트 요청 중에는 잠금)
+          if (startingCalls.has(rec.state.id))
+            throw new DialogError('calling', '지금 전화를 거는 중이에요. 잠시만 기다려 주세요.');
           // 이 프로젝트는 아직 실제 중개사무소에 연락하지 않아요. 사용자가 적은 본인 번호로만 걸어요.
           const digits = await callablePhone(a.phone);
+          startingCalls.add(rec.state.id);
           userSays(rec.state, '이대로 전화하기', new Date());
           try {
             await startRealCalls(rec.state, rec.internal, phone, {
@@ -533,6 +538,8 @@ export async function registerRoutes(app: FastifyInstance, config: Config, store
           } catch (err) {
             rec.state.messages.pop();
             throw err;
+          } finally {
+            startingCalls.delete(rec.state.id);
           }
         } else if (phone.enabled && rec.internal.real && a.type === 'planVisits') {
           userSays(rec.state, '고른 방으로 미팅 잡아줘', new Date());
