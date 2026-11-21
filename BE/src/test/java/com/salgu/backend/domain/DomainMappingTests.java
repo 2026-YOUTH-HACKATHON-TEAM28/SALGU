@@ -4,7 +4,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.test.context.ActiveProfiles;
 
 import java.util.Map;
 
@@ -12,7 +11,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /** Column counts per table must match the DB spec (common 3 columns included). */
 @SpringBootTest
-@ActiveProfiles("test")
 class DomainMappingTests {
 
     private static final Map<String, Integer> SPEC_COLUMN_COUNTS = Map.ofEntries(
@@ -35,7 +33,7 @@ class DomainMappingTests {
     void entityColumnsMatchSpec() {
         SPEC_COLUMN_COUNTS.forEach((table, expected) -> {
             Integer actual = jdbc.queryForObject(
-                    "SELECT COUNT(*) FROM information_schema.columns WHERE table_name = ?", Integer.class, table);
+                    "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = ?", Integer.class, table);
             assertThat(actual).as(table).isEqualTo(expected);
         });
     }
