@@ -183,6 +183,19 @@ export async function boot(): Promise<void> {
       toast('카카오 로그인을 마치지 못했어요. 다시 시도해 주세요.', 'error');
       history.replaceState(null, '', location.pathname);
     }
+    // 카카오톡 알림 동의에서 돌아온 결과
+    const kakao = q.get('kakao');
+    if (kakao) {
+      const msg: Record<string, [string, 'info' | 'error']> = {
+        connected: ['카카오톡 알림을 연결했어요. 일정 화면에서 시험 알림을 보내 볼 수 있어요.', 'info'],
+        error: ['카카오톡 알림 연결을 마치지 못했어요. 다시 시도해 주세요.', 'error'],
+        login: ['카카오로 로그인한 뒤에 연결할 수 있어요.', 'error'],
+        unavailable: ['지금은 카카오톡 알림을 연결할 수 없어요.', 'error'],
+      };
+      const [text, tone] = msg[kakao] ?? msg.error!;
+      toast(text, tone);
+      history.replaceState(null, '', location.pathname);
+    }
   } catch (err) {
     update((s) => {
       s.boot = 'error';
@@ -466,7 +479,7 @@ export async function setKakaoTalk(on: boolean): Promise<void> {
     update((s) => {
       if (s.session) s.session.kakaoTalk = r.kakaoTalk;
     });
-    toast(on ? '카카오톡 알림을 시험 연결했어요.' : '카카오톡 알림 연결을 끊었어요.');
+    toast(on ? '카카오톡 알림을 연결했어요.' : '카카오톡 알림 연결을 끊었어요.');
   } catch (err) {
     fail(err);
   }
@@ -475,7 +488,7 @@ export async function setKakaoTalk(on: boolean): Promise<void> {
 export async function testNotify(): Promise<void> {
   try {
     await api.testNotify();
-    toast('시험 알림을 보냈어요. 지금은 시험 연결이라 실제 카카오톡으로는 가지 않아요.');
+    toast('카카오톡(나와의 채팅)으로 시험 알림을 보냈어요.');
   } catch (err) {
     fail(err);
   }

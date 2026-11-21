@@ -135,6 +135,14 @@ if [ -f "$FE_ENV" ]; then
   # 시험 전화(내 번호로 먼저 받아 보기)는 전화 에이전트 demo 의 시연 번호로만 실제로 걸려요
   DT="$(grep -E '^PHONE_AGENT_DEMO_TO=.+' "$HOME/salgu-phone/phone.env" 2>/dev/null | head -1 | cut -d= -f2- | tr -d ' ')"
   [ -n "$DT" ] && put_env "$FE_ENV" PHONE_TEST_NUMBERS "$DT"
+  # 카카오톡 알림(나에게 보내기)은 카카오 로그인 앱의 REST API 키·시크릿을 써요(BE 비밀 설정에서 가져와요)
+  BEY="$HOME/salgu-be/config/application.yml"
+  if [ -f "$BEY" ]; then
+    CID="$(grep -E '^[[:space:]]*client-id:' "$BEY" | head -1 | awk '{print $2}' | tr -d "'\"")"
+    CSC="$(grep -E '^[[:space:]]*client-secret:' "$BEY" | head -1 | awk '{print $2}' | tr -d "'\"")"
+    [ -n "$CID" ] && put_env "$FE_ENV" KAKAO_CLIENT_ID "$CID"
+    [ -n "$CSC" ] && put_env "$FE_ENV" KAKAO_CLIENT_SECRET "$CSC"
+  fi
   if systemctl is-active --quiet salgu-fe; then sudo -n systemctl restart salgu-fe; fi
 fi
 

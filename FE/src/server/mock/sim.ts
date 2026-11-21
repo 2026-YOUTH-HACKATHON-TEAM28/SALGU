@@ -47,6 +47,8 @@ export interface SimInternal {
   visitsAnnounced: boolean;
   /** 실제 전화 에이전트로 건 통화(있으면 시뮬레이션 대신 이 묶음을 따라가요) */
   real?: RealCalls | null;
+  /** 카카오톡으로 보낸 방문 알림(방문 id -> 'day' 전날 저녁, 'hour' 1시간 전) */
+  reminded?: Record<string, string[]>;
 }
 
 export interface RealCalls {

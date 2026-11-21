@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import type { ChatState, User } from '../shared/types.js';
 import type { SimInternal } from './mock/sim.js';
+import type { KakaoToken } from './kakaoTalk.js';
 
 export interface UserRecord extends User {
   createdAt: string;
@@ -11,6 +12,8 @@ export interface UserRecord extends User {
   calls: { date: string; count: number };
   /** BE users.id (카카오 로그인 후 BE /api/me 의 id) */
   beUserId?: number;
+  /** 카카오톡 '나에게 보내기' 토큰(동의했을 때만). 화면으로는 내보내지 않아요 */
+  kakaoToken?: (KakaoToken & { origin: string }) | null;
 }
 
 export interface SessionRecord {
@@ -153,6 +156,11 @@ export class Store {
     const cut = Date.now() - LIMITS.sessionDays * 86400000;
     for (const [sid, s] of Object.entries(this.db.sessions))
       if (s.lastSeen < cut) delete this.db.sessions[sid];
+  }
+
+  /** 카카오톡 알림을 연결한 사용자 */
+  kakaoUsers(): UserRecord[] {
+    return Object.values(this.db.users).filter((u) => u.kakaoTalk && u.kakaoToken);
   }
 
   /* 대화 */

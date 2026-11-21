@@ -19,16 +19,18 @@ function kakaoBox(): TemplateResult {
     <div class="kakao-row">
       <strong>카카오톡 알림</strong>
       <span class="badge ${s?.kakaoTalk ? 'tone-ok' : 'tone-muted'}"
-        ><span class="dot"></span>${s?.kakaoTalk ? '연결됨(시험 연결)' : '미연결 · 화면 알림'}</span
+        ><span class="dot"></span>${s?.kakaoTalk ? '연결됨' : '미연결 · 화면 알림'}</span
       >
     </div>
     <p class="note">
       ${
         s?.kakaoTalk
-          ? '방문 전날 저녁과 1시간 전에 본인 카카오톡으로 알려 드려요. 지금은 시험 연결이라 실제로 보내지 않아요.'
+          ? '중개사무소 통화가 끝났을 때, 방문이 확정됐을 때, 방문 전날 저녁과 1시간 전에 본인 카카오톡(나와의 채팅)으로 알려 드려요.'
           : guest
             ? '카카오로 로그인하면 카카오톡으로 알림을 받을 수 있어요. 지금은 이 화면이 열려 있을 때 화면 알림으로 알려 드려요.'
-            : '연결하면 카카오 화면에서 카카오톡 메시지 전송에 동의를 받아요. 지금은 화면 알림으로 알려 드려요.'
+            : s?.kakaoTalkReady
+              ? '연결하면 카카오 화면에서 카카오톡 메시지 전송에 동의를 받아요. 연결 전에는 화면 알림으로 알려 드려요.'
+              : '카카오톡 알림을 준비하고 있어요. 지금은 화면 알림으로 알려 드려요.'
       }
     </p>
     <div class="actions">
@@ -38,8 +40,8 @@ function kakaoBox(): TemplateResult {
               <button class="btn-ghost small" @click=${() => setKakaoTalk(false)}>연결 해제</button>`
           : html`<button
               class="btn-kakao small"
-              ?disabled=${guest}
-              @click=${() => setKakaoTalk(true)}
+              ?disabled=${guest || !s?.kakaoTalkReady}
+              @click=${() => location.assign('/api/notify/kakao/connect')}
               data-testid="kakao-connect"
             >
               카카오톡 연결

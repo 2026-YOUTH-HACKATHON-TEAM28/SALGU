@@ -29,6 +29,9 @@ import type { ChatRecord } from './store.js';
 import { BeAuth } from './beAuth.js';
 import { agentSearch, brokersFromAction, condQuestion, locateDongs, restoreAgentDongs } from './dongAgent.js';
 import { KakaoLocal } from './kakaoLocal.js';
+import { KakaoTalk } from './kakaoTalk.js';
+import { randomBytes } from 'node:crypto';
+import { dateTime } from '../shared/format.js';
 import { DONGS, STATIONS, WORKPLACES, dongById } from './mock/data.js';
 import { VISIT_SLOTS } from './mock/sim.js';
 
@@ -64,6 +67,87 @@ export async function registerRoutes(app: FastifyInstance, config: Config, store
   const agent = new ChatAgent(config.chatAgentUrl);
   const be = new BeAuth(config.beUrl);
   const kakao = new KakaoLocal(config.kakaoRestKey);
+  const talk = new KakaoTalk(config.kakaoClientId, config.kakaoClientSecret);
+
+  /* 카카오톡 알림 보내기(연결한 사용자만). 토큰이 끊겼으면 연결을 풀어요 */
+  const notify = async (userId: string, text: string): Promise<boolean> => {
+    const u = store.user(userId);
+    if (!u?.kakaoTalk || !u.kakaoToken || !talk.enabled) return false;
+    const r = await talk.send(u.kakaoToken, text, u.kakaoToken.origin);
+    if (r.newToken) u.kakaoToken = { ...r.newToken, origin: u.kakaoToken.origin };
+    if (r.revoked) {
+      u.kakaoTalk = false;
+      u.kakaoToken = null;
+    }
+    store.markDirty();
+    return r.ok;
+  };
+
+  /* 통화가 끝나거나 방문이 확정되면 알려요 */
+  const announce = async (rec: ChatRecord, before: { done: boolean; confirmed: Set<string> }) => {
+    const c = rec.state;
+    if (!before.done && c.batch?.doneAt) {
+      const calls = c.batch.calls;
+      const dongs = [...new Set(calls.map((x) => dongById(x.dongId)?.name).filter(Boolean))].join(', ');
+      const has = calls.filter((x) => x.outcome === 'listing').length;
+      const none = calls.filter((x) => x.outcome === 'no_listing').length;
+      await notify(
+        rec.userId,
+        `[살구] ${dongs || '고른 동네'} 중개사무소 ${calls.length}곳 문의가 끝났어요. 방 있음 ${has}곳 · 없음 ${none}곳 · 확인 못 함 ${calls.length - has - none}곳. 살구에서 방을 골라 주세요.`,
+      );
+    }
+    for (const v of c.visits) {
+      if (v.status !== 'confirmed' || before.confirmed.has(v.id)) continue;
+      const l = c.listings.find((x) => x.id === v.listingId);
+      const b = c.brokers.find((x) => x.id === l?.brokerId);
+      await notify(
+        rec.userId,
+        `[살구] 방문 확정 ${dateTime(v.at)} · ${dongById(l?.dongId ?? '')?.name ?? ''} ${l?.building ?? ''} ${l?.floor ? `${l.floor}층` : ''} · ${b?.name ?? '중개사무소'}`.replace(
+          /\s+/g,
+          ' ',
+        ),
+      );
+    }
+  };
+
+  /* 방문 알림: 전날 저녁 8시 이후 한 번, 1시간 전 한 번(서버가 5분마다 확인) */
+  const kstNow = () => new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 19);
+  const remind = async () => {
+    const now = kstNow();
+    for (const u of store.kakaoUsers()) {
+      for (const rec of store.chatsOf(u.id)) {
+        for (const v of rec.state.visits) {
+          if (v.status !== 'confirmed' || v.at <= now) continue;
+          const sent = (rec.internal.reminded ??= {})[v.id] ?? [];
+          const at = new Date(`${v.at}Z`);
+          const dayBefore = new Date(at.getTime() - 24 * 3600000).toISOString().slice(0, 10) + 'T20:00:00';
+          const hourBefore = new Date(at.getTime() - 3600000).toISOString().slice(0, 19);
+          const l = rec.state.listings.find((x) => x.id === v.listingId);
+          const where = `${dongById(l?.dongId ?? '')?.name ?? ''} ${l?.building ?? ''}`.trim();
+          let kind: string | null = null;
+          if (now >= hourBefore && !sent.includes('hour')) kind = 'hour';
+          else if (now >= dayBefore && now < hourBefore && !sent.includes('day')) kind = 'day';
+          if (!kind) continue;
+          const ok = await notify(
+            u.id,
+            kind === 'hour'
+              ? `[살구] 1시간 뒤 방문이에요. ${dateTime(v.at)} · ${where}`
+              : `[살구] 내일 방문이 있어요. ${dateTime(v.at)} · ${where}`,
+          );
+          if (ok) {
+            rec.internal.reminded![v.id] = [...sent, kind];
+            store.markDirty();
+          }
+        }
+      }
+    }
+  };
+  if (talk.enabled) {
+    const timer = setInterval(() => void remind().catch(() => undefined), 5 * 60000);
+    timer.unref();
+    app.addHook('onClose', async () => clearInterval(timer));
+  }
+  const talkStates = new Map<string, { userId: string; at: number }>();
   be.register(app);
   const phone = new PhoneAgent(config.phoneAgentUrl, {
     mockScenario: config.phoneMockScenario,
@@ -150,7 +234,14 @@ export async function registerRoutes(app: FastifyInstance, config: Config, store
     const t = Date.now();
     if (t - (lastSync.get(rec.state.id) ?? 0) < 1000) return;
     lastSync.set(rec.state.id, t);
-    if (await syncReal(rec.state, rec.internal, phone, new Date())) store.markDirty();
+    const before = {
+      done: Boolean(rec.state.batch?.doneAt),
+      confirmed: new Set(rec.state.visits.filter((v) => v.status === 'confirmed').map((v) => v.id)),
+    };
+    if (await syncReal(rec.state, rec.internal, phone, new Date())) {
+      store.markDirty();
+      await announce(rec, before);
+    }
   };
   // 에이전트가 맡는 말: 규칙이 흐름 명령으로 알아듣지 못한 자유로운 말
   const AGENT_INTENTS = new Set(['other', 'question', 'greeting', 'oneByOne']);
@@ -217,6 +308,7 @@ export async function registerRoutes(app: FastifyInstance, config: Config, store
       version: APP_VERSION,
       kakaoMapKey: config.kakaoMapKey,
       kakaoTalk: req.user?.kakaoTalk ?? false,
+      kakaoTalkReady: talk.enabled,
       phoneMode: await phoneMode(),
       brokersPerDong: config.phoneBrokersPerDong,
       kakaoLogin: be.enabled,
@@ -484,9 +576,15 @@ export async function registerRoutes(app: FastifyInstance, config: Config, store
           .code(403)
           .send({ error: 'login_required', message: '카카오톡 알림은 로그인한 뒤에 연결할 수 있어요.' });
       }
-      req.user!.kakaoTalk = req.body.on;
+      // 켜기는 카카오 동의 화면(/api/notify/kakao/connect)으로만 해요. 여기서는 끄기만
+      if (req.body.on)
+        return reply
+          .code(409)
+          .send({ error: 'consent_required', message: '카카오 화면에서 메시지 전송에 동의해 주세요.' });
+      req.user!.kakaoTalk = false;
+      req.user!.kakaoToken = null;
       store.markDirty();
-      return { kakaoTalk: req.user!.kakaoTalk };
+      return { kakaoTalk: false };
     },
   );
 
@@ -496,7 +594,41 @@ export async function registerRoutes(app: FastifyInstance, config: Config, store
     async (req, reply) => {
       if (!req.user!.kakaoTalk)
         return reply.code(409).send({ error: 'not_connected', message: '카카오톡이 연결되어 있지 않아요.' });
-      return { ok: true, simulated: true };
+      const ok = await notify(
+        req.user!.id,
+        '[살구] 카카오톡 알림이 연결됐어요. 통화 결과와 방문 일정을 여기로 알려 드릴게요.',
+      );
+      if (!ok)
+        return reply
+          .code(502)
+          .send({ error: 'send_failed', message: '카카오톡으로 보내지 못했어요. 연결을 다시 해 주세요.' });
+      return { ok: true };
+    },
+  );
+
+  /* 카카오톡 알림 동의: 카카오 화면으로 보냈다가 돌아와요 */
+  const callbackUrl = (req: FastifyRequest) => `${req.protocol}://${req.host}/api/notify/kakao/callback`;
+  app.get('/api/notify/kakao/connect', async (req, reply) => {
+    if (!req.user || req.user.kind === 'guest') return reply.redirect('/?kakao=login');
+    if (!talk.enabled) return reply.redirect('/?kakao=unavailable');
+    for (const [k, v] of talkStates) if (Date.now() - v.at > 10 * 60000) talkStates.delete(k);
+    const state = randomBytes(16).toString('hex');
+    talkStates.set(state, { userId: req.user.id, at: Date.now() });
+    return reply.redirect(talk.authorizeUrl(callbackUrl(req), state));
+  });
+  app.get<{ Querystring: { code?: string; state?: string; error?: string } }>(
+    '/api/notify/kakao/callback',
+    async (req, reply) => {
+      const st = talkStates.get(req.query.state ?? '');
+      talkStates.delete(req.query.state ?? '');
+      if (!st || !req.user || st.userId !== req.user.id || !req.query.code)
+        return reply.redirect('/?kakao=error');
+      const tok = await talk.exchange(req.query.code, callbackUrl(req));
+      if (!tok) return reply.redirect('/?kakao=error');
+      req.user.kakaoTalk = true;
+      req.user.kakaoToken = { ...tok, origin: `${req.protocol}://${req.host}/` };
+      store.markDirty();
+      return reply.redirect('/?kakao=connected');
     },
   );
 }
