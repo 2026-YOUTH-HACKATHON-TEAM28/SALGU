@@ -114,6 +114,7 @@ export type Intent =
   | { kind: 'oneByOne' }
   | { kind: 'greeting' }
   | { kind: 'concept'; topic: string }
+  | { kind: 'question' }
   | { kind: 'other' };
 
 export function intentOf(text: string): Intent {
@@ -138,5 +139,9 @@ export function intentOf(text: string): Intent {
   if (concept?.[1] && /(뭐|무엇|알려|설명|어떻게|받을\s*수|언제|\?)/.test(t)) {
     return { kind: 'concept', topic: concept[1].replace(/\s/g, '') };
   }
+  // 숫자도 회사·예산 말도 없는 물음은 조건이 아니라 질문으로 봐요(예: "원룸 처음 구할 때 실수가 뭐야?").
+  const asks = /(\?|뭐야|뭐예요|뭔가요|무엇|어떻게|왜|알려\s*줘|궁금|좋을까|좋아요\?|팁|주의할|실수)/;
+  const condWords = /\d|월세|보증금|출근|출퇴근|통근|회사|학교|역(?:으로|에서|\s|$)|예산|만\s*원/;
+  if (asks.test(t) && !condWords.test(t)) return { kind: 'question' };
   return { kind: 'other' };
 }

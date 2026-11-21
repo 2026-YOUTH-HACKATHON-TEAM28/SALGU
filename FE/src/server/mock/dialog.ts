@@ -676,6 +676,9 @@ export function handleText(chat: ChatState, internal: SimInternal, raw: string, 
     case 'final':
       showFinal(chat, now);
       break;
+    case 'question':
+      result = { askAi: { messageId: fallback(chat).id, question: text } };
+      break;
     case 'other': {
       const { changed, unknowns, ambiguous } = applyExtract(chat, text, ctx.aiValues);
       if (!changed.length && !unknowns.length && !ambiguous) {

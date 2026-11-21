@@ -91,3 +91,14 @@ describe('AI 대화 보조(OpenAI)', () => {
     expect(calls).toHaveLength(0);
   });
 });
+
+describe('질문과 조건 구분', () => {
+  it('숫자도 회사도 없는 물음은 조건으로 바꾸지 않고 AI가 답해요', async () => {
+    const chat = await post('/api/chats');
+    const after = await post(`/api/chats/${chat.id}/messages`, {
+      text: '원룸 처음 구할 때 가장 많이 하는 실수가 뭐야?',
+    });
+    expect(after.conditions.houseType).toBeUndefined();
+    expect(after.messages.at(-1)?.sources[0]?.kind).toBe('ai');
+  });
+});
