@@ -3,6 +3,7 @@
 파일 형식 (대화가 이어질 때마다 같은 파일을 덮어씀)
 {
   "session_id": "...", "started_at": "...", "updated_at": "...", "turn_count": 3,
+  "ready": true,                       # 최소 조건(지역·보증금·월세)이 다 모였는지
   "final_conditions": {"preferred_areas": ["홍대"], "deposit_manwon": 1000, ...},   # 분석용 평평한 값
   "final_card": {...조건 카드 전체...},
   "turns": [
@@ -38,7 +39,7 @@ def now():
 def new_conversation(session_id):
     t = now()
     return {"session_id": session_id, "started_at": t, "updated_at": t, "turn_count": 0,
-            "final_conditions": {}, "final_card": None, "turns": []}
+            "ready": False, "final_conditions": {}, "final_card": None, "turns": []}
 
 
 def add_turn(conv, user_text, result):
@@ -49,12 +50,14 @@ def add_turn(conv, user_text, result):
         "intent": result["intent"], "via": result["via"], "guard": result.get("guard"),
         "reply": result["reply"], "changed": result.get("changed", []), "fixes": result.get("fixes", []),
         "seconds": result.get("seconds"), "conditions": flat(card),
+        "ready": bool((card or {}).get("ready")), "missing": (card or {}).get("missing", []),
     })
     conv["turn_count"] = len(conv["turns"])
     conv["updated_at"] = conv["turns"][-1]["at"]
     if card:
         conv["final_card"] = card
         conv["final_conditions"] = flat(card)
+        conv["ready"] = bool(card.get("ready"))
     return save(conv)
 
 

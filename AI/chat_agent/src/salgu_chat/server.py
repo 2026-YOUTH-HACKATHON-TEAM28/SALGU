@@ -63,6 +63,8 @@ def chat(body: ChatIn):
         "reply": result["reply"],
         "card": result["card"],
         "conditions": sample_log.flat(result["card"]),
+        "ready": bool((result["card"] or {}).get("ready")),
+        "missing": (result["card"] or {}).get("missing", []),
         "intent": result["intent"],
         "via": result["via"],
         "guard": result["guard"],
