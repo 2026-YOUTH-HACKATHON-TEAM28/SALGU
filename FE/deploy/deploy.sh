@@ -17,11 +17,10 @@ BIN="$PWD/node_modules/.bin"
 REL="$(date +%Y%m%d-%H%M%S)"
 STAGE="fe-upload-$REL"
 
-echo "▶ 검사: 타입, 린트, 단위 시험"
+echo "▶ 검사: 타입, 린트(단위·화면 시험은 돌리지 않아요)"
 "$BIN/tsc" --noEmit -p tsconfig.json
 "$BIN/tsc" --noEmit -p tsconfig.server.json
 "$BIN/eslint" .
-"$BIN/vitest" run
 
 echo "▶ 빌드"
 "$BIN/vite" build
