@@ -395,6 +395,11 @@ export function viewCall(
 
 /* ---------- 방문 계획 · 확정 통화 ---------- */
 
+/** 14시, 14시 30분 */
+function clock(d: Date): string {
+  return `${d.getHours()}시${d.getMinutes() ? ` ${d.getMinutes()}분` : ''}`;
+}
+
 function km(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
   const dx = (a.lng - b.lng) * 88.4;
   const dy = (a.lat - b.lat) * 111;
@@ -406,8 +411,9 @@ export function travel(
   b: { lat: number; lng: number },
 ): { mode: string; minutes: number } {
   const dist = km(a, b);
-  if (dist < 1.2) return { mode: '도보', minutes: Math.max(3, Math.round(dist * 14)) };
-  return { mode: '버스·지하철', minutes: Math.round(8 + dist * 3) };
+  // 약속 시각이 보기 좋게 5분 단위로 올려요.
+  if (dist < 1.2) return { mode: '도보', minutes: Math.max(5, Math.ceil((dist * 14) / 5) * 5) };
+  return { mode: '버스·지하철', minutes: Math.ceil((8 + dist * 3) / 5) * 5 };
 }
 
 /** 가까운 순서로 30분 + 이동 시간 간격 */
@@ -458,16 +464,19 @@ export function planConfirmations(
           resolveAt: cursor,
           result: 'confirmed',
           proposedAt: null,
-          brokerSaid: `${at.getHours()}시${at.getMinutes() ? ' 30분' : ''}에 뵐게요.`,
+          brokerSaid: `${clock(at)}에 뵐게요.`,
         });
       } else if (x < 0.9) {
+        // 90분 뒤에서 가장 가까운 정시나 30분
         const p = new Date(at.getTime() + 90 * 60000);
+        if (p.getMinutes() > 30) p.setHours(p.getHours() + 1, 0, 0, 0);
+        else if (p.getMinutes() > 0) p.setMinutes(30, 0, 0);
         plans.push({
           visitId: visit.id,
           resolveAt: cursor,
           result: 'proposed',
           proposedAt: localIso(p),
-          brokerSaid: `그 시간은 어렵고 ${p.getHours()}시${p.getMinutes() ? ' 30분' : ''} 어떠세요?`,
+          brokerSaid: `그 시간은 어렵고 ${clock(p)} 어떠세요?`,
         });
       } else {
         plans.push({

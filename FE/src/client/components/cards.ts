@@ -4,6 +4,7 @@ import { condCard, condFormCard } from './cards/cond.js';
 import { dongDetailCard, dongsCard, noMatchCard } from './cards/dongs.js';
 import { callPrepCard, callsCard } from './cards/calls.js';
 import { checksCard } from './cards/checks.js';
+import { finalCard, planCard } from './cards/plan.js';
 
 function conceptCard(c: Extract<Card, { kind: 'concept' }>) {
   return html`<article class="card concept">
@@ -32,8 +33,9 @@ export function renderCard(card: Card, _msg: Message): TemplateResult {
     case 'checks':
       return checksCard(card);
     case 'plan':
+      return planCard(card);
     case 'final':
-      return html`<article class="card"><p class="muted">이 카드는 준비 중이에요.</p></article>`;
+      return finalCard(card);
     case 'concept':
       return conceptCard(card);
   }

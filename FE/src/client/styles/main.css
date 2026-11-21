@@ -280,6 +280,7 @@ p {
   height: 100dvh;
   display: grid;
   grid-template-rows: auto 1fr;
+  grid-template-columns: minmax(0, 1fr);
 }
 .top {
   position: relative;
@@ -440,7 +441,7 @@ p {
   min-height: 0;
 }
 .side {
-  width: 440px;
+  width: clamp(320px, 38vw, 440px);
   flex: none;
   border-left: 1px solid var(--line);
   background: var(--surface);
@@ -1564,9 +1565,170 @@ th {
   }
 }
 
+/* ---------- 미팅 · 최종 추천 ---------- */
+.notify {
+  background: var(--bg);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  font-size: 13.5px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.notify.on {
+  background: var(--ok-soft);
+}
+.timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.tl-item {
+  display: grid;
+  grid-template-columns: 92px 1fr;
+  gap: 4px 10px;
+}
+.tl-time {
+  display: grid;
+  gap: 4px;
+  align-content: start;
+  justify-items: start;
+  padding-top: 8px;
+}
+.tl-time strong {
+  font-size: 16px;
+}
+.travel {
+  grid-column: 2;
+  font-size: 12.5px;
+  color: var(--ink-3);
+  padding: 2px 0 6px 12px;
+  border-left: 2px dashed var(--line);
+  margin-left: 12px;
+}
+.said {
+  font-size: 13.5px;
+  color: var(--ink-2);
+}
+.listing.compact {
+  padding: 8px 10px;
+}
+.winner {
+  display: grid;
+  gap: 4px;
+}
+.winner .listing {
+  border-color: var(--apricot);
+  background: var(--apricot-soft);
+}
+.final .money {
+  font-weight: 700;
+}
+
+/* ---------- 일정 탭 ---------- */
+.schedule {
+  padding: 14px;
+  display: grid;
+  gap: 14px;
+}
+.kakao-box {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+}
+.kakao-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.kakao-box .btn-kakao {
+  width: auto;
+}
+.sched-day h3 {
+  font-size: 15px;
+  margin-bottom: 8px;
+}
+.sched-item {
+  display: grid;
+  grid-template-columns: 76px 1fr;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 10px;
+}
+.sched-time {
+  display: grid;
+  gap: 4px;
+  justify-items: start;
+  align-content: start;
+}
+.sched-time strong {
+  font-size: 17px;
+}
+.sched-body {
+  display: grid;
+  gap: 3px;
+  font-size: 14px;
+  min-width: 0;
+}
+.sched-body .actions {
+  margin-top: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.warn-text {
+  color: var(--warn);
+}
+.empty {
+  color: var(--ink-3);
+  background: var(--bg);
+  border-radius: var(--radius-sm);
+  padding: 14px;
+  font-size: 14px;
+}
+.ask-list summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+@media (max-width: 767px) {
+  .tl-item {
+    grid-template-columns: 1fr;
+  }
+  .tl-time {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-top: 4px;
+  }
+  .travel {
+    grid-column: 1;
+  }
+  .sched-item {
+    grid-template-columns: 1fr;
+  }
+  .sched-time {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .sched-body .actions > button {
+    flex: 1 1 auto;
+  }
+}
 .step-v {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 4px 8px;
+}
+.minimap {
+  max-width: 460px;
 }

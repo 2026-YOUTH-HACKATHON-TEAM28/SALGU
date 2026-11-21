@@ -383,6 +383,17 @@ document.addEventListener('visibilitychange', () => {
 
 /* ---------- 일정 · 알림 ---------- */
 
+/** 일정 탭의 버튼: 다른 대화의 방문일 수도 있어서 대화 id를 함께 보내요. */
+export async function actOn(chatId: string, action: Action): Promise<void> {
+  try {
+    const next = await api.act(chatId, action);
+    if (state.chat?.id === chatId) setChat(next);
+    await loadSchedule();
+  } catch (err) {
+    fail(err);
+  }
+}
+
 export async function loadSchedule(): Promise<void> {
   if (!state.session?.user) return;
   try {
@@ -390,6 +401,7 @@ export async function loadSchedule(): Promise<void> {
     update((s) => {
       s.schedule = items;
     });
+    notifyDue();
   } catch {
     /* 일정은 다음에 다시 불러와요 */
   }
@@ -415,6 +427,31 @@ export async function testNotify(): Promise<void> {
     fail(err);
   }
 }
+
+/** 화면 알림: 이 화면이 열려 있으면 방문 전날 저녁(20시 이후)과 1시간 전에 한 번씩 알려요. */
+function notifyDue(): void {
+  const now = Date.now();
+  for (const it of state.schedule) {
+    const at = new Date(it.visit.at).getTime();
+    const hourBefore = at - now <= 60 * 60000 && at > now;
+    const eve = new Date(at - 86400000);
+    eve.setHours(20, 0, 0, 0);
+    const dayBefore = now >= eve.getTime() && at - now > 60 * 60000;
+    const kind = hourBefore ? 'hour' : dayBefore ? 'day' : null;
+    if (!kind) continue;
+    const key = `salgu.notified.${it.visit.id}.${kind}`;
+    try {
+      if (localStorage.getItem(key)) continue;
+      localStorage.setItem(key, '1');
+    } catch {
+      /* 저장이 막힌 브라우저에서도 알림은 보여요 */
+    }
+    const when = kind === 'hour' ? '1시간 뒤' : '내일';
+    toast(`${when} ${it.listing.building} 방문이 있어요. ${it.broker?.name ?? ''}`);
+    break;
+  }
+}
+window.setInterval(notifyDue, 60000);
 
 /* ---------- 이동 ---------- */
 
