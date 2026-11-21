@@ -252,7 +252,7 @@ export type Card =
   | { kind: 'calls'; id: string }
   | { kind: 'checks'; id: string }
   | { kind: 'plan'; id: string }
-  | { kind: 'final'; id: string }
+  | { kind: 'final'; id: string; ranking: { listingId: string; burden: number }[] }
   | { kind: 'concept'; id: string; title: string; body: string[] };
 
 export interface Message {
@@ -341,6 +341,8 @@ export type Action =
   | { type: 'submitCondForm'; values: Partial<CondValues> }
   | { type: 'setCond'; key: CondKey; value: unknown }
   | { type: 'resetCond'; key: CondKey }
+  | { type: 'widen'; key: CondKey; value: unknown }
+  | { type: 'acceptProposal'; visitId: string }
   | { type: 'toggleDong'; dongId: string }
   | { type: 'prepCalls'; dongIds: string[] }
   | { type: 'updatePrep'; patch: Partial<CallPrep> }
