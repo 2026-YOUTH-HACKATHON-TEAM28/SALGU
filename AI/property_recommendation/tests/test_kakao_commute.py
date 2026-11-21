@@ -8,7 +8,7 @@ from property_recommendation.kakao_commute import (
     KakaoCommuteProvider,
     UnsupportedCommuteConditionError,
 )
-from property_recommendation.models import PropertyCandidate
+from property_recommendation.models import PropertyCandidate, RealtorSearchInput
 
 
 def _candidate(row: int, lot_address: str) -> PropertyCandidate:
@@ -206,4 +206,176 @@ async def test_bus_headway_condition_fails_explicitly() -> None:
             "강남역", ["서울특별시 마포구"], max_bus_headway_min=10
         )
 
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_route_prefers_fewer_transfers_and_returns_transit_legs() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        query = request.url.params.get("query")
+        if request.url.path.endswith("keyword.json") and query == "강남역":
+            return httpx.Response(200, json={"documents": [{"x": "127.027", "y": "37.498"}]})
+        if request.url.path.endswith("address.json"):
+            return httpx.Response(200, json={"documents": [{"x": "126.951", "y": "37.543"}]})
+        if request.url.path.endswith("publictraffic"):
+            return httpx.Response(
+                200,
+                json={
+                    "properties": {"landingURL": "https://map.kakao.com/route"},
+                    "routes": [
+                        {"properties": {"totalTime": 1500, "transfers": 2}},
+                        {
+                            "properties": {
+                                "totalTime": 2100,
+                                "transfers": 0,
+                                "totalDistance": 14320,
+                                "fare": {"value": 1500},
+                            },
+                            "steps": [
+                                {
+                                    "properties": {
+                                        "type": "WALKING",
+                                        "time": 181,
+                                        "distance": 220,
+                                        "guidance": "공덕역까지 도보 이동",
+                                    }
+                                },
+                                {
+                                    "properties": {
+                                        "type": "SUBWAY",
+                                        "time": 1800,
+                                        "distance": 13800,
+                                        "stops": [{"name": "공덕역"}, {"name": "강남역"}],
+                                        "vehicles": [{"name": "5호선"}],
+                                    }
+                                },
+                            ],
+                        },
+                    ],
+                },
+            )
+        return httpx.Response(404)
+
+    client = httpx.AsyncClient(
+        base_url="https://dapi.kakao.com",
+        transport=httpx.MockTransport(handler),
+    )
+    provider = KakaoCommuteProvider(
+        KakaoCommuteConfig(api_key="test-key", retry_count=0), client=client
+    )
+
+    result = await provider.measure_properties("강남역", [_candidate(1, "10-1")])
+    metric = result[_candidate(1, "10-1").key]
+
+    assert metric.minutes == 35
+    assert metric.transfers == 0
+    assert metric.walk_to_transit_min == 4
+    assert metric.distance_km == 14.32
+    assert metric.fare_won == 1500
+    assert metric.legs[1].route_names == ["5호선"]
+    assert metric.legs[1].start_name == "공덕역"
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_nearest_realtors_are_returned_by_distance() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        query = request.url.params.get("query")
+        if request.url.path.endswith("address.json") and query == "서울 마포구 1-1":
+            return httpx.Response(200, json={"documents": [{"x": "126.95", "y": "37.54"}]})
+        if request.url.path.endswith("category.json"):
+            assert request.url.params["category_group_code"] == "AG2"
+            assert request.url.params["sort"] == "distance"
+            return httpx.Response(
+                200,
+                json={
+                    "documents": [
+                        {
+                            "id": "2",
+                            "place_name": "먼중개사",
+                            "phone": "02-222-2222",
+                            "address_name": "서울 마포구 2-2",
+                            "road_address_name": "",
+                            "distance": "420",
+                            "x": "126.954",
+                            "y": "37.544",
+                            "place_url": "https://place.map.kakao.com/2",
+                        },
+                        {
+                            "id": "1",
+                            "place_name": "가까운중개사",
+                            "phone": "02-111-1111",
+                            "address_name": "서울 마포구 1-2",
+                            "road_address_name": "서울 마포구 살구로 1",
+                            "distance": "120",
+                            "x": "126.951",
+                            "y": "37.541",
+                            "place_url": "https://place.map.kakao.com/1",
+                        },
+                    ]
+                },
+            )
+        return httpx.Response(200, json={"documents": []})
+
+    client = httpx.AsyncClient(
+        base_url="https://dapi.kakao.com",
+        transport=httpx.MockTransport(handler),
+    )
+    provider = KakaoCommuteProvider(
+        KakaoCommuteConfig(api_key="test-key", retry_count=0), client=client
+    )
+
+    result = await provider.find_nearest_realtors(
+        RealtorSearchInput(property_address="서울 마포구 1-1", limit=2)
+    )
+
+    assert result.count == 2
+    assert result.offices[0].name == "가까운중개사"
+    assert result.offices[0].distance_m == 120
+    assert result.offices[0].road_address == "서울 마포구 살구로 1"
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_region_radius_expands_by_search_depth() -> None:
+    route_calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal route_calls
+        query = request.url.params.get("query")
+        if request.url.path.endswith("keyword.json") and query == "강남역":
+            return httpx.Response(200, json={"documents": [{"x": "127.0", "y": "37.5"}]})
+        if request.url.path.endswith("address.json"):
+            return httpx.Response(200, json={"documents": [{"x": "126.85", "y": "37.5"}]})
+        if request.url.path.endswith("publictraffic"):
+            route_calls += 1
+            return httpx.Response(
+                200,
+                json={"routes": [{"properties": {"totalTime": 1800, "transfers": 0}}]},
+            )
+        return httpx.Response(404)
+
+    client = httpx.AsyncClient(
+        base_url="https://dapi.kakao.com",
+        transport=httpx.MockTransport(handler),
+    )
+    provider = KakaoCommuteProvider(
+        KakaoCommuteConfig(
+            api_key="test-key",
+            region_radius_steps_km=(5.0, 20.0),
+            retry_count=0,
+        ),
+        client=client,
+    )
+
+    initial = await provider.measure_regions(
+        "강남역", ["서울특별시 마포구"], search_depth=0
+    )
+    expanded = await provider.measure_regions(
+        "강남역", ["서울특별시 마포구"], search_depth=1
+    )
+
+    assert initial == {}
+    assert expanded["서울특별시 마포구"].minutes == 30
+    assert route_calls == 1
     await client.aclose()

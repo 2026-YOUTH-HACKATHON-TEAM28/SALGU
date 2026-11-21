@@ -1,3 +1,6 @@
+import pytest
+from pydantic import ValidationError
+
 from property_recommendation.models import RecommendationInput
 
 
@@ -23,4 +26,13 @@ def test_condition_card_is_converted_to_input() -> None:
     assert result.price_band == "median_or_below"
     assert result.workplace == "강남역"
     assert result.limit == 3
+
+
+def test_walk_limit_requires_workplace() -> None:
+    with pytest.raises(ValidationError):
+        RecommendationInput(
+            deposit_manwon=1000,
+            monthly_rent_manwon=50,
+            max_walk_to_station_min=10,
+        )
 

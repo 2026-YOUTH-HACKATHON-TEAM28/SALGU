@@ -18,6 +18,7 @@ async def test_live_kakao_public_transit_route() -> None:
     config = KakaoCommuteConfig(
         api_key=api_key,
         max_region_routes=1,
+        region_radius_steps_km=(20.0,),
         retry_count=0,
     )
     async with KakaoCommuteProvider(config) as provider:
