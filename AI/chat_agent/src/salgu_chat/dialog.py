@@ -36,8 +36,14 @@ def describe(c):
         details.append(f"전용 {c['area_m2']:g}㎡")
     if c.get("floor") is not None:
         details.append(f"{c['floor']}층")
+    if c.get("construction_year"):
+        details.append(f"{c['construction_year']}년 준공")
     if c.get("station") and c.get("walk_to_station_min") is not None:
         details.append(f"{c['station']}까지 걸어서 {c['walk_to_station_min']}분")
+    if c.get("contract_date"):
+        y, m = str(c["contract_date"])[:7].split("-")
+        n = c.get("transaction_count")
+        details.append(f"{int(y)}년 {int(m)}월 계약" + (f"·실거래 {n}건" if n else ""))
     return f"'{c.get('name')}'({', '.join(details)})"
 
 
@@ -55,10 +61,17 @@ def answer(res):
     if not res["ok"]:
         return "잠시 후 다시 시도해 주세요. 말씀하신 조건은 그대로 기억해 둘게요."
     if res["count"] == 0 or not res["candidates"]:
-        return "예산을 조금 올리거나 지역을 넓혀 볼까요? 예: '월세 60까지 괜찮아', '마포 쪽도 봐 줘'"
+        text = "예산을 조금 올리거나 지역을 넓혀 볼까요? 예: '월세 60까지 괜찮아', '마포 쪽도 봐 줘'"
+        return " ".join([text] + [n for n in (res.get("notes") or [])[:2]])
     top = res["candidates"][0]
     name = str(top.get("name"))
     text = f"그중 추천 1순위는 '{name}'{_eyo(name)}. ({describe(top).split('(', 1)[1]}"
+    if top.get("reasons"):
+        text += " 이유: " + ", ".join(top["reasons"][:3]) + "."
+    if top.get("contract_date") and not res.get("mock"):
+        text += " 과거 실거래 기준이라 지금 계약할 수 있는지는 중개사 확인이 필요해요."
+    for note in (res.get("notes") or [])[:3]:
+        text += " " + note
     return text + " 다른 곳도 볼까요, 아니면 조건을 바꿔 볼까요?"
 
 

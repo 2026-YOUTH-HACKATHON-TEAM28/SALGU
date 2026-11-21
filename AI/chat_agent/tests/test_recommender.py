@@ -87,6 +87,17 @@ class RecommenderTest(unittest.TestCase):
         self.assertEqual([t.value for t in repo.calls[0].lease_types], ["jeonse"])
         self.assertIsNone(repo.calls[0].monthly_rent_manwon)
 
+    def test_answer_mentions_past_transactions(self):
+        res, _ = self.run_engine("신촌 1000/50")
+        res.update(ok=True, mock=False)
+        text = dialog.answer(res)
+        # 순서는 엔진 점수 그대로: 월세가 더 싼 '자두빌'이 1순위
+        self.assertEqual(res["candidates"][0]["name"], "자두빌")
+        self.assertGreater(res["candidates"][0]["score"], res["candidates"][1]["score"])
+        self.assertIn("'자두빌'", text)
+        self.assertIn("과거 실거래 기준", text)
+        self.assertIn("2026년 10월 계약", text)
+
 
 class AreaTest(unittest.TestCase):
     def test_resolve(self):
