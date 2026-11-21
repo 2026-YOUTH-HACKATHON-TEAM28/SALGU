@@ -587,3 +587,36 @@ def test_hangul_unit_and_floor_numbers():
     from phone_agent.extract import text_in_line
     assert text_in_line("unit", "301호", "삼백일호고 있어요") and text_in_line("unit", "302호", "302호예요")
     assert text_in_line("floor", "12층", "십이층이에요") and not text_in_line("unit", "301호", "삼백이호예요")
+
+
+# ---------------------------------------------------------------- 혼잣말(지시에 대한 대답·상태 보고)
+def test_real_call_1121_meta_talk_is_warned():
+    ending = [{"speaker": "ai", "text": "안녕하세요, AI 비서 살구입니다."}, {"speaker": "broker", "text": "네, 감사합니다"},
+              {"speaker": "ai", "text": "통화 마쳤습니다. 3층이고"}]                       # 검증 통화 끝
+    opening = [{"speaker": "broker", "text": "네 안녕하세요"},
+               {"speaker": "ai", "text": "네, 지금 하겠습니다. 안녕하세요, 한빛공인중개사이죠? 집을 구하는 분의 요청으로 전화드린 AI 비서 살구입니다."}]
+    assert decide(request(), raw(available=None), ending)["warnings"] == ["ai_meta_talk"]
+    assert decide(request(), raw(available=None), opening)["warnings"] == ["ai_meta_talk"]   # 고지는 있음
+
+
+def test_normal_closings_are_not_meta_talk():
+    lines = [{"speaker": "ai", "text": "안녕하세요, AI 비서 살구입니다."},
+             {"speaker": "ai", "text": "손님께 여쭤보고 보러 갈 시간 정해서 다시 연락드릴게요. 감사합니다."},
+             {"speaker": "ai", "text": "본인께 확인하고 다시 연락드리겠습니다."},
+             {"speaker": "ai", "text": "네, 11월 23일 월요일 오후 2시에 한빛공인중개사 사무소에서 뵙겠습니다."},
+             {"speaker": "broker", "text": "통화 마쳤습니다"}]                              # 중개사 말은 보지 않음
+    assert decide(request(), raw(available=None), lines)["warnings"] == []
+
+
+# ---------------------------------------------------------------- 한글로 적힌 날짜(실시간 전사)
+def test_hangul_dates_in_live_transcript_are_recognized():
+    segments = seg(("a", "AI 비서 살구입니다. 십일월 이십삼일 월요일 오후 두 시부터 다섯 시 사이에 볼 수 있을까요?"),
+                   ("b", "네, 괜찮아요."))
+    result = decide(request(), raw(available=True), segments)          # '네'만 한 가능 시간 + 한글 날짜
+    assert result["broker_slots"][0]["start"] == "2026-11-23T14:00:00+09:00"
+    wrong = seg(("a", "AI 비서 살구입니다. 십일월 이십사일 화요일 오후 두 시에 볼 수 있을까요?"), ("b", "네, 괜찮아요."))
+    assert decide(request(), raw(available=True), wrong)["broker_slots"] == []   # 23일 시간대와 날짜가 다름
+    confirm_lines = seg(("a", "AI 비서 살구입니다. 십일월 이십일일 토요일 오후 두 시에 뵐 수 있을까요?"), ("b", "당연하죠."))
+    res = decide(confirm_request(), confirm_raw({"index": 0, "agreed_visit": {"at": AT}, "evidence": {"visit.at": 1}}),
+                 confirm_lines)
+    assert res["outcome"] == "confirmed"

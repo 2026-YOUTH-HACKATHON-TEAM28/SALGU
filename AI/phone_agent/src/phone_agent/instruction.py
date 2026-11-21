@@ -21,6 +21,9 @@ ROOM_CHECK = "그 방 아직 있죠?"
 UNIT_ASK = "호수가 몇 호예요?"
 INQUIRY_CLOSING = "손님께 여쭤보고 보러 갈 시간 정해서 다시 연락드릴게요. 감사합니다."
 NOT_CONFIRMED = "본인께 확인하고 다시 연락드리겠습니다"
+NO_META = "하지 않을 말: '지금 하겠습니다', '통화 마쳤습니다'처럼 이 지시에 대한 대답이나 상태 보고 (모두 상대에게 들림)"  # 11-21 혼잣말
+FIRST_NOTE = "(이 문장 앞에 '네', '지금 하겠습니다' 같은 말을 붙이지 않음)"
+AFTER_LAST = "이 문장 뒤에는 아무 말도 하지 않음"
 SPEAK = "말하기: 평소보다 조금 빠르게, 한 번에 한 문장씩 짧게 말할 것. 괄호 안 안내는 소리 내어 말하지 않음"  # 11-21 속도
 MOVE_IN_READ_BACK = "다음 달 초부터요?"  # 전사가 중개사 말을 틀려도 AI 쪽 되읽기로 확인(11-21)
 AFTER_CLOSING = "계약과 가격 이야기는 방문 때 본인이 직접 하실 거예요. 감사합니다."
@@ -64,6 +67,46 @@ def window_text(window: VisitWindow) -> str:
     start, end = window.start.astimezone(KST), window.end.astimezone(KST)
     end_text = time_of(end) if start.date() == end.date() else when(end)
     return f"{when(start)}부터 {end_text}까지"
+
+
+# ------------------------------------------------------------------ 소리 내어 말할 날짜·시각(한글 읽기)
+# 숫자로 주면 "11월"을 "열하나월"처럼 읽을 때가 있어(11-21), AI가 말할 줄에는 읽는 법을 한글로 적는다.
+# 월·일은 한자어(십일월 이십삼일, 6월=유월, 10월=시월), 시는 고유어(두 시, 열한 시), 분은 한자어(삼십 분)·반.
+_SINO = ("", "일", "이", "삼", "사", "오", "육", "칠", "팔", "구")
+_NATIVE_HOUR = ("열두", "한", "두", "세", "네", "다섯", "여섯", "일곱", "여덟", "아홉", "열", "열한", "열두")
+
+
+def sino(n: int) -> str:
+    """1~99 → '일'~'구십구'."""
+    tens, ones = divmod(n, 10)
+    return (("" if tens == 1 else _SINO[tens]) + "십" if tens else "") + _SINO[ones]
+
+
+def say_time(dt: datetime) -> str:
+    """'오후 두 시', '오전 열 시 반', '오후 세 시 십오 분'."""
+    dt = dt.astimezone(KST)
+    half = "오전" if dt.hour < 12 else "오후"
+    text = f"{half} {_NATIVE_HOUR[dt.hour % 12]} 시"
+    if dt.minute == 30:
+        return text + " 반"
+    return text + (f" {sino(dt.minute)} 분" if dt.minute else "")
+
+
+def say_day(dt: datetime) -> str:
+    """'십일월 이십삼일 월요일'."""
+    dt = dt.astimezone(KST)
+    month = {6: "유", 10: "시"}.get(dt.month, sino(dt.month))
+    return f"{month}월 {sino(dt.day)}일 {DAYS[dt.weekday()]}요일"
+
+
+def say_when(dt: datetime) -> str:
+    return f"{say_day(dt)} {say_time(dt)}"
+
+
+def say_window(window: VisitWindow) -> str:
+    start, end = window.start.astimezone(KST), window.end.astimezone(KST)
+    end_text = say_time(end) if start.date() == end.date() else say_when(end)
+    return f"{say_when(start)}부터 {end_text}까지"
 
 
 def _asked(asked_at: Optional[datetime], now: datetime) -> str:
@@ -122,7 +165,7 @@ def _private_lines(request: CallRequest) -> list[str]:
 
 
 def _sections(first: str, header: str, body: list[str], request: CallRequest) -> str:
-    parts = ["[첫마디]", f'"{first}"', "", header, *[f"- {line}" for line in body]]
+    parts = ["[첫마디]", f'"{first}"', FIRST_NOTE, "", header, *[f"- {line}" for line in body]]
     shared = _shared_lines(request)
     if shared:
         parts += ["", "[말해도 되는 정보]", *[f"- {line}" for line in shared]]
@@ -144,6 +187,7 @@ def _inquiry(request: CallRequest) -> str:
     body = [
         f"전화한 곳: {request.broker.name}",
         SPEAK,
+        NO_META,
         f"문의할 곳: {place}",
         f"찾는 방: {TYPE_LABEL[s.housing_type]}, 보증금 {money(s.deposit_manwon)} / 월세 {money(s.monthly_rent_manwon)} 정도",
         "예산을 넘는 방: 거절하지 말고 그 방의 조건을 확인 (이 안내는 상대에게 말하지 않음)",
@@ -156,9 +200,9 @@ def _inquiry(request: CallRequest) -> str:
         body.append("반려동물: 손님이 반려동물을 키움. 방이 있으면 반려동물이 되는지 여쭤볼 것")
     windows = request.windows
     if windows:
-        times = ", ".join(window_text(w) for w in windows)
+        times = ", ".join(say_window(w) for w in windows)
         body.append(f"방문 가능 시간: 손님이 가능한 시간은 {times}. 이 중 방을 보여 주실 수 있는 시간을 여쭤볼 것 (약속은 잡지 않음)")
-    body.append(f'마무리: "{INQUIRY_CLOSING}"')
+    body.append(f'마무리: "{INQUIRY_CLOSING}" ({AFTER_LAST}, 상대 대답을 들은 뒤 끊을 것)')
     return _sections(inquiry_first(request), "[이번 통화: 문의 — 방문 약속은 확정하지 않음]", body, request)
 
 
@@ -187,11 +231,11 @@ def closing(rooms: list[TargetRoom], broker_name: str = "") -> str:
     rooms = sorted(rooms, key=lambda r: r.at)
     if len(rooms) == 1:
         room = rooms[0]
-        return f"네, {when(room.at, year=False)}에 {_place(room, broker_name)}에서 뵙겠습니다. {AFTER_CLOSING}"
+        return f"네, {say_when(room.at)}에 {_place(room, broker_name)}에서 뵙겠습니다. {AFTER_CLOSING}"
     parts, last_day = [], None
     for room in rooms:
         day = room.at.astimezone(KST).date()
-        stamp = when(room.at, year=False) if day != last_day else time_of(room.at)
+        stamp = say_when(room.at) if day != last_day else say_time(room.at)
         last_day = day
         parts.append(f"{stamp}에 {_room_name(room)}")
     places = {_place(room, broker_name) for room in rooms}
@@ -203,7 +247,7 @@ def _confirm(request: CallRequest, now: datetime) -> str:
     target = request.target
     rooms = sorted(target.rooms, key=lambda r: r.at)
     broker = request.broker.name
-    body = [f"전화한 곳: {broker}", SPEAK]
+    body = [f"전화한 곳: {broker}", SPEAK, NO_META]
     many = len(rooms) > 1
     for i, room in enumerate(rooms, 1):
         tag = f" {i}" if many else ""
@@ -217,13 +261,13 @@ def _confirm(request: CallRequest, now: datetime) -> str:
         body.append("방이 여러 개면 이른 방문부터 방마다 차례로 확인할 것")
     for i, room in enumerate(rooms, 1):
         tag = f" {i}" if many else ""
-        body.append(f"방문 요청 시각{tag}: {when(room.at)}, 만날 곳: {_place(room, broker)}")
+        body.append(f"방문 요청 시각{tag}: {say_when(room.at)}, 만날 곳: {_place(room, broker)}")
         if room.alternatives:
-            ranges = ", ".join(window_text(w) for w in room.alternatives)
+            ranges = ", ".join(say_window(w) for w in room.alternatives)
             body.append(f"그 시각이 안 되면{tag}: {ranges} 안에서만 다시 맞출 것")
     body.append(f'범위 밖 시간을 제안받으면: 그 시간을 받아 적고 "{NOT_CONFIRMED}"로 마무리 (확정하지 않음)')
     body.append(f'확정되면 이 문장을 그대로 말하고, 상대 대답을 들은 뒤 끊기: "{closing(rooms, broker)}" '
-                "(다른 시각으로 정해졌으면 시각만 바꿔서)")
+                f"(다른 시각으로 정해졌으면 시각만 바꿔서. {AFTER_LAST})")
     return _sections(confirm_first(request, now), "[이번 통화: 방문 확정]", body, request)
 
 
