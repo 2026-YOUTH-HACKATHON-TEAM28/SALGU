@@ -55,3 +55,11 @@
 - 지도: 카카오맵 키가 있으면 카카오맵, 없거나 실패하면 OpenStreetMap
 - 확인: 단위 시험 35개, 화면 동작 시험 14개(PC 7, 모바일 7) 통과, 미리보기 브라우저에서 조건부터 일정까지 직접 확인, 가로 넘침 없음
 - 배포: `deploy/deploy.sh`(서버 Node 24 확인, 옛 zipsa 가 8080을 쓰는 중이라 STOP_OLD=1 없이는 멈추지 않음). 아직 배포하지 않음
+
+### 6. 옛 서비스 내리고 배포
+
+> 내리고 배포해줘
+
+- 서버의 옛 zipsa(v119 화면) 서비스를 멈추고 자동 시작을 끔. 옛 salgu-api(127.0.0.1:8700)와 전화 에이전트 도커(127.0.0.1:8090)는 그대로 둠
+- `STOP_OLD=1 bash deploy/deploy.sh` 로 v1 배포(~/salgu-fe/releases, systemd salgu-fe, 8080). 배포 묶음을 지금 폴더에 만들도록 고침(Windows scp 가 /tmp 경로를 못 읽음)
+- 확인: https://sample.localhostbar.com/api/health 가 version 1, 세션 쿠키 HttpOnly·Secure·SameSite=Lax, 프록시 뒤 방문자 IP 기록, 공개 주소에서 로그인과 조건 카드까지 콘솔 오류 없음, 설정 파일 600·데이터 폴더 700

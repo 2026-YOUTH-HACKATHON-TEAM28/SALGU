@@ -24,7 +24,8 @@ echo "▶ 검사: 타입, 린트, 단위 시험"
 echo "▶ 빌드"
 "$BIN/vite" build
 "$BIN/tsc" -p tsconfig.server.json
-tar -czf "/tmp/salgu-fe-$REL.tgz" dist package.json package-lock.json
+PKG="salgu-fe-$REL.tgz"   # Windows scp 가 읽을 수 있게 지금 폴더에 만들어요
+tar -czf "$PKG" dist package.json package-lock.json
 
 echo "▶ 서버 확인: $HOST"
 $SSH "$HOST" "node -v" >/dev/null || { echo "서버에 Node 22 이상이 필요해요"; exit 1; }
@@ -40,7 +41,7 @@ fi
 
 echo "▶ 올리기: ~/salgu-fe/releases/$REL"
 $SSH "$HOST" "mkdir -p ~/salgu-fe/releases/$REL ~/salgu-fe/data && chmod 700 ~/salgu-fe/data"
-$SCP "/tmp/salgu-fe-$REL.tgz" "$HOST:~/salgu-fe/releases/$REL/app.tgz"
+$SCP "$PKG" "$HOST:~/salgu-fe/releases/$REL/app.tgz"
 $SSH "$HOST" "cd ~/salgu-fe/releases/$REL && tar -xzf app.tgz && rm app.tgz && npm ci --omit=dev --no-audit --no-fund --loglevel=error"
 
 echo "▶ 설정 파일(처음 한 번만 만들고, 있으면 그대로 둬요)"
@@ -58,5 +59,5 @@ $SSH "$HOST" "curl -fsS http://127.0.0.1:8080/api/health"
 echo
 echo "▶ 오래된 배포 정리(최근 5개만 남김)"
 $SSH "$HOST" 'cd ~/salgu-fe/releases && ls -1 | sort | head -n -5 | xargs -r rm -rf'
-rm -f "/tmp/salgu-fe-$REL.tgz"
+rm -f "$PKG"
 echo "배포 끝: $REL"
