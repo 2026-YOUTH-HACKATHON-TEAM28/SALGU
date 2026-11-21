@@ -2,8 +2,7 @@ import { html, nothing, type TemplateResult } from 'lit-html';
 import type { ScheduleItem } from '../../shared/types.js';
 import { PRICE_LABEL } from '../../shared/labels.js';
 import { dateOnly, depRent, hm } from '../../shared/format.js';
-import { actOn, openPanel, setKakaoTalk, state, testNotify } from '../store.js';
-import { confirmAction } from './common.js';
+import { actOn, askConfirm, openPanel, setKakaoTalk, state, testNotify } from '../store.js';
 import { typeName } from './cards/listing.js';
 
 const ASK = [
@@ -82,8 +81,16 @@ function visitItem(it: ScheduleItem): TemplateResult {
         </button>
         <button
           class="btn-ghost small"
-          @click=${() => {
-            if (confirmAction(`${dateOnly(v.at)} ${hm(v.at)} ${l.building} 방문을 취소할까요?`)) {
+          @click=${async () => {
+            if (
+              await askConfirm({
+                title: '방문을 취소할까요?',
+                body: `${dateOnly(v.at)} ${hm(v.at)} ${l.building} 방문이에요. 중개사무소에 알리는 취소 전화는 아직 시뮬레이션이에요.`,
+                ok: '방문 취소',
+                cancel: '그대로 두기',
+                danger: true,
+              })
+            ) {
               void actOn(it.chatId, { type: 'cancelVisit', visitId: v.id });
             }
           }}

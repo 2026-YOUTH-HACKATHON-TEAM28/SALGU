@@ -22,11 +22,6 @@ export function sources(list: SourceTag[]): TemplateResult | typeof nothing {
   </p>`;
 }
 
-/** 확인 대화상자 대신 쓰는 브라우저 confirm(취소 같은 되돌릴 수 없는 동작) */
-export function confirmAction(text: string): boolean {
-  return window.confirm(text);
-}
-
 export async function copyText(text: string): Promise<boolean> {
   try {
     await navigator.clipboard.writeText(text);

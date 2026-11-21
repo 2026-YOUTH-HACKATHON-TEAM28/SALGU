@@ -2,8 +2,8 @@ import { html, nothing } from 'lit-html';
 import { APP_VERSION } from '../../shared/version.js';
 import { STAGES } from '../../shared/labels.js';
 import { icons, logo } from '../icons.js';
-import { confirmAction } from './common.js';
 import {
+  askConfirm,
   deleteChat,
   login,
   logout,
@@ -82,9 +82,17 @@ function chatList() {
             <button
               class="icon-btn"
               aria-label="${c.title} 지우기"
-              @click=${() => {
-                if (confirmAction(`'${c.title}' 대화를 지울까요? 지우면 되돌릴 수 없어요.`))
+              @click=${async () => {
+                if (
+                  await askConfirm({
+                    title: '이 대화를 지울까요?',
+                    body: `'${c.title}' 대화와 그 안의 방문 일정이 함께 지워져요. 지우면 되돌릴 수 없어요.`,
+                    ok: '지우기',
+                    danger: true,
+                  })
+                ) {
                   void deleteChat(c.id);
+                }
               }}
             >
               ${icons.trash(18)}

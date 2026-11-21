@@ -232,3 +232,37 @@ test('헤더 일정·지도는 다시 누르면 닫혀요', async ({ page }) => 
   await page.getByTestId('hdr-sched').click();
   await expect(page.getByTestId('schedule')).toBeVisible();
 });
+
+test('대화 지우기는 브라우저 창이 아니라 화면 안 확인 창으로', async ({ page }) => {
+  page.on('dialog', () => {
+    throw new Error('브라우저 확인 창이 뜨면 안 돼요');
+  });
+  await startAsExample(page);
+  await say(page, '여의도역 출근, 월세 60');
+  await expect(page.getByTestId('cond-card')).toBeVisible();
+  await page.getByTestId('hdr-chats').click();
+  const list = page.getByTestId('chat-list');
+  const before = await list.locator('li').count();
+  await list
+    .getByRole('button', { name: /지우기$/ })
+    .first()
+    .click();
+  const dialog = page.getByTestId('confirm');
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole('heading', { name: '이 대화를 지울까요?' })).toBeVisible();
+  // 되돌릴 수 없는 동작이라 '취소'에 먼저 초점, Esc 로 닫기
+  await expect(dialog.getByTestId('confirm-cancel')).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  // 취소하면 대화 목록은 열린 채로, 아무것도 지워지지 않아요
+  await expect(page.getByTestId('chat-list').locator('li')).toHaveCount(before);
+  await page
+    .getByTestId('chat-list')
+    .getByRole('button', { name: /지우기$/ })
+    .first()
+    .click();
+  await page.getByTestId('confirm-ok').click();
+  await expect(page.getByTestId('confirm')).toHaveCount(0);
+  if (!(await page.getByTestId('chat-list').isVisible())) await page.getByTestId('hdr-chats').click();
+  await expect(page.getByTestId('chat-list').locator('li')).toHaveCount(Math.max(before - 1, 1));
+});

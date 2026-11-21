@@ -917,3 +917,86 @@ button.pin-wrap {
     width: 100%;
   }
 }
+
+/* 화면 안 확인 창(브라우저 confirm 대신) */
+.confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(43, 36, 32, 0.38);
+  animation: fade-in 0.15s ease-out;
+}
+.confirm {
+  width: min(400px, 100%);
+  background: var(--surface);
+  border-radius: 20px;
+  box-shadow: 0 12px 40px rgba(43, 36, 32, 0.25);
+  padding: 22px 22px 18px;
+  display: grid;
+  gap: 10px;
+  animation: pop-in 0.18s ease-out;
+}
+.confirm h2 {
+  font-size: 18px;
+}
+.confirm p {
+  color: var(--ink-2);
+  font-size: 14.5px;
+}
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+.confirm-actions button {
+  min-width: 96px;
+}
+.btn-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 46px;
+  padding: 0 20px;
+  border-radius: 14px;
+  border: 0;
+  background: var(--bad);
+  color: #fff;
+  font-weight: 700;
+  font-size: 15.5px;
+}
+.btn-danger:hover {
+  background: #a83524;
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .confirm-backdrop,
+  .confirm {
+    animation: none;
+  }
+}
+@media (max-width: 767px) {
+  .confirm-backdrop {
+    place-items: end center;
+  }
+  .confirm {
+    border-radius: 20px 20px 0 0;
+    padding-bottom: calc(18px + env(safe-area-inset-bottom));
+  }
+  .confirm-actions button {
+    flex: 1;
+  }
+}

@@ -15,6 +15,14 @@ export type Panel = 'map' | 'sched' | null;
 export type MobileTab = 'chat' | 'map' | 'sched';
 export type MapMode = 'dong' | 'listing' | 'route';
 
+export interface ConfirmOptions {
+  title: string;
+  body?: string;
+  ok: string;
+  cancel?: string;
+  danger?: boolean;
+}
+
 export interface UiState {
   panel: Panel;
   mobileTab: MobileTab;
@@ -38,6 +46,8 @@ export interface UiState {
   sheetOpen: boolean;
   mapDot: boolean;
   toast: { text: string; tone: 'info' | 'error' } | null;
+  /** 화면 안 확인 창(브라우저 confirm 대신) */
+  confirm: ConfirmOptions | null;
 }
 
 export interface AppState {
@@ -81,6 +91,7 @@ export const state: AppState = {
     sheetOpen: false,
     mapDot: false,
     toast: null,
+    confirm: null,
   },
 };
 
@@ -120,6 +131,26 @@ function fail(err: unknown): void {
     });
   }
   toast(err instanceof Error ? err.message : '잠시 문제가 생겼어요.', 'error');
+}
+
+/* ---------- 확인 창 ---------- */
+
+let confirmResolve: ((ok: boolean) => void) | null = null;
+
+/** 화면 안 확인 창을 띄우고, 누른 버튼을 돌려줘요(취소·Esc·바깥 누르기는 false) */
+export function askConfirm(opts: ConfirmOptions): Promise<boolean> {
+  confirmResolve?.(false);
+  return new Promise((resolve) => {
+    confirmResolve = resolve;
+    ui({ confirm: opts });
+  });
+}
+
+export function closeConfirm(ok: boolean): void {
+  const r = confirmResolve;
+  confirmResolve = null;
+  ui({ confirm: null });
+  r?.(ok);
 }
 
 /* ---------- 시작 · 로그인 ---------- */

@@ -7,6 +7,7 @@ import { loginView } from './login.js';
 import { sideView, tabsView } from './side.js';
 import { scheduleView } from './schedule.js';
 import { mapView } from '../map/mapView.js';
+import { confirmView } from './confirm.js';
 
 function toastView() {
   const t = state.ui.toast;
@@ -46,6 +47,6 @@ export function appView() {
         ${tab === 'sched' ? scheduleView() : nothing}
       </section>
     </div>
-    ${tabsView()} ${toastView()}
+    ${tabsView()} ${toastView()} ${confirmView()}
   </div>`;
 }
