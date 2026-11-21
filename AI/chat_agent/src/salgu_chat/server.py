@@ -1,6 +1,7 @@
 """살구 채팅 API 서버 (FastAPI).
 
-- POST /api/chat   {"session_id": 없으면 새 대화, "message": "..."} → 답 문장 + 조건 카드
+- POST /api/chat   {"session_id": 없으면 새 대화, "message": "..."} → 말풍선들 + 조건 카드
+                   (최소 조건이 모이면 BE에 검색 요청 → "~라고 합니다" → 답변, dialog.py)
 - POST /api/reset  {"session_id": "..."} → 그 대화를 끝내고 새로 시작
 - GET  /api/sessions/{session_id} → 지금까지의 대화 기록
 - GET  /health     → Gemini 모델 상태 (키 값은 넣지 않음)
@@ -18,7 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
-from . import config, guards, intake, llm, sample_log
+from . import config, dialog, guards, llm, sample_log
 
 app = FastAPI(title="살구 채팅 API", version="0.2")
 app.add_middleware(
@@ -55,12 +56,14 @@ def chat(body: ChatIn):
     session_id = body.session_id or uuid.uuid4().hex[:12]
     conv = _conversation(session_id)
     prev_card = conv["final_card"]
-    result = intake.intake(body.message, prev_card)
+    result = dialog.turn(body.message, prev_card)
     sample_log.add_turn(conv, guards.mask_pii(body.message or "").strip(), result)
     return {
         "session_id": session_id,
         "type": "condition_card" if result["intent"] == "search" and result["card"] else "message",
         "reply": result["reply"],
+        "messages": result["messages"],
+        "backend": result["backend"],
         "card": result["card"],
         "conditions": sample_log.flat(result["card"]),
         "ready": bool((result["card"] or {}).get("ready")),

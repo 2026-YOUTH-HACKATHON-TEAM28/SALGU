@@ -9,7 +9,9 @@
   "turns": [
     {"turn": 1, "at": "...", "user": "개인정보를 가린 사용자 말", "intent": "search", "via": "rules",
      "guard": null, "reply": "좋아요! ...", "changed": ["deposit_manwon", ...], "fixes": [], "seconds": 0.002,
-     "conditions": {...이 시점의 평평한 값...}}
+     "conditions": {...이 시점의 평평한 값...}, "ready": true, "missing": [],
+     "messages": [{"kind": "reply"|"backend_request"|"backend_response"|"answer", "text": "..."}],
+     "backend": {"called": true, "mock": true, "ok": true, "count": 3, "candidates": ["..."]}}
   ]
 }
 """
@@ -32,6 +34,14 @@ def flat(card):
     return {k: (c.get("label") if k == "workplace" else c.get("value")) for k, c in sorted(conds.items())}
 
 
+def _backend_summary(res):
+    """BE 검색 요청 결과 요약 (후보 이름까지)."""
+    if not res:
+        return {"called": False}
+    return {"called": True, "mock": res["mock"], "ok": res["ok"], "count": res["count"], "error": res["error"],
+            "seconds": res["seconds"], "candidates": [c.get("name") for c in res["candidates"]]}
+
+
 def now():
     return datetime.now().astimezone().isoformat(timespec="seconds")
 
@@ -51,6 +61,8 @@ def add_turn(conv, user_text, result):
         "reply": result["reply"], "changed": result.get("changed", []), "fixes": result.get("fixes", []),
         "seconds": result.get("seconds"), "conditions": flat(card),
         "ready": bool((card or {}).get("ready")), "missing": (card or {}).get("missing", []),
+        "messages": result.get("messages", []),
+        "backend": _backend_summary(result.get("backend")),
     })
     conv["turn_count"] = len(conv["turns"])
     conv["updated_at"] = conv["turns"][-1]["at"]
