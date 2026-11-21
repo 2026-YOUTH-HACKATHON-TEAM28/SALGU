@@ -164,6 +164,7 @@ def intake(message, prev_card=None, timeout=None):
 
     user = text if not prev_card else (
         f"이전 조건 카드:\n{json.dumps(prev_card, ensure_ascii=False)}\n\n새 말: {text}")
+    user += '\n\n출력은 최상위 키가 "intent", "card" 두 개인 JSON 객체 하나다.'
     try:
         out, _ = llm.generate_json(SYSTEM, user, timeout=timeout)
     except llm.LLMError as e:
@@ -173,9 +174,10 @@ def intake(message, prev_card=None, timeout=None):
         return _result(rule["intent"], prev_card, msg, f"rules(Gemini 실패: {e})", started, prev_card=prev_card)
 
     out = out if isinstance(out, dict) else {}
-    if "intent" not in out and "conditions" in out:
-        out = {"intent": "search", "card": out}
-    intent = out.get("intent") if out.get("intent") in ("search", "question", "other") else "other"
+    if not isinstance(out.get("card"), dict) and "conditions" in out:
+        # 카드만 주거나 intent와 카드 칸을 섞어 준 경우
+        out = {"intent": out.get("intent") or "search", "card": out}
+    intent =out.get("intent") if out.get("intent") in ("search", "question", "other") else "other"
     via = f"gemini({llm.last_model()})"
     if intent == "question":
         return _result("question", prev_card, guards.QUESTION_GUIDE, via, started, prev_card=prev_card)
