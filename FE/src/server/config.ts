@@ -13,7 +13,8 @@ export const config = {
   port: num('PORT', 8787),
   host: process.env.HOST || '127.0.0.1',
   dataDir: resolve(process.env.DATA_DIR || '.data'),
-  trustProxy: process.env.TRUST_PROXY === '1',
+  /** 앞단 프록시(Caddy)를 믿을지: '1' 이면 모두, '127.0.0.1,172.16.0.0/12' 처럼 주소를 적으면 그 주소만 */
+  trustProxy: (process.env.TRUST_PROXY === '1' ? true : process.env.TRUST_PROXY || false) as boolean | string,
   kakaoMapKey: process.env.KAKAO_MAP_KEY || '',
   timeScale: num('MOCK_TIME_SCALE', 1),
   clientDir: resolve(process.env.CLIENT_DIR || 'dist/client'),
