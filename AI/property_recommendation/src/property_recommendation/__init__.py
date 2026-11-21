@@ -1,3 +1,9 @@
+from .kakao_commute import (
+    KakaoCommuteConfig,
+    KakaoCommuteError,
+    KakaoCommuteProvider,
+    UnsupportedCommuteConditionError,
+)
 from .models import RecommendationInput, RecommendationOutput
 from .service import (
     CommuteProvider,
@@ -9,8 +15,12 @@ from .service import (
 __all__ = [
     "CommuteProvider",
     "CommuteProviderRequiredError",
+    "KakaoCommuteConfig",
+    "KakaoCommuteError",
+    "KakaoCommuteProvider",
     "PropertyRecommendationService",
     "RecommendationInput",
     "RecommendationOutput",
+    "UnsupportedCommuteConditionError",
     "recommend_properties",
 ]

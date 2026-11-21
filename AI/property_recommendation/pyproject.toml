@@ -9,6 +9,7 @@ description = "과거 전월세 실거래 기반 매물 추천 엔진"
 requires-python = ">=3.11"
 dependencies = [
     "asyncpg>=0.30,<1",
+    "httpx>=0.28,<1",
     "pydantic>=2.10,<3",
     "sqlalchemy[asyncio]>=2.0.36,<3",
 ]
@@ -24,4 +25,7 @@ addopts = "-q"
 asyncio_mode = "auto"
 pythonpath = ["src"]
 markers = ["integration: 실제 PostgreSQL 연결 테스트"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["property_recommendation"]
 
