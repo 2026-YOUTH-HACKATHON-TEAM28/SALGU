@@ -38,6 +38,12 @@ class ChatIn(BaseModel):
     session_id: str | None = Field(default=None, pattern=_SID)
 
 
+class RealtorsIn(BaseModel):
+    property_address: str = Field(min_length=1, max_length=200)
+    limit: int = Field(default=3, ge=1, le=15)
+    max_distance_m: int | None = Field(default=None, ge=1, le=20000)
+
+
 class ResetIn(BaseModel):
     session_id: str = Field(pattern=_SID)
 
@@ -77,6 +83,12 @@ def chat(body: ChatIn):
         "fixes": result["fixes"],
         "seconds": result["seconds"],
     }
+
+
+@app.post("/api/realtors")
+def realtors(body: RealtorsIn):
+    """확정 매물 주소 주변 공인중개사(추천 엔진 find_nearest_realtors). 화면의 전화 준비에서 쓴다."""
+    return recommender.realtors(body.property_address, body.limit, body.max_distance_m)
 
 
 @app.post("/api/reset")

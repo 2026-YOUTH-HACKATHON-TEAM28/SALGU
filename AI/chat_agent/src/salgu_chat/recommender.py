@@ -3,8 +3,10 @@
 추천 계산은 추천 엔진(수정 담당)이 한다. 이 모듈은 둘 사이의 차이만 맞춘다.
 - 동네 이름: 엔진은 DB 주소(region_address)에서 글자로 찾는다. "홍대"·"강남역"은 주소에 없으므로
   동 이름(서교동·역삼동)으로 바꿔 찾고, 결과가 없으면 그 구 전체로 넓힌다.
-- 회사·학교: 엔진은 통근 계산기(CommuteProvider) 없이 workplace가 오면 오류를 낸다. 교통 데이터가
-  연결되기 전까지는 통근 조건을 빼고 알린다. 살 곳을 말하지 않았으면 회사·학교가 있는 구에서 찾는다.
+- 회사·학교: 카카오 REST 키(KAKAO_REST_API_KEY)가 있으면 엔진에 카카오 통근 계산기(KakaoCommuteProvider)와
+  교통 공공데이터(버스·지하철 DB)를 넘겨 실제 통근·배차·주변 정류장까지 계산한다. 살 곳을 말하지 않았으면
+  엔진이 회사 기준 10→20→40km로 넓혀 찾는다. 키가 없으면 통근 조건을 빼고 알리고, 회사·학교가 있는 구에서 찾는다.
+- 중개사무소: realtors(주소)가 엔진의 find_nearest_realtors(카카오 AG2 거리순 + 중개업소 DB 대조)를 부른다.
 - 결과: 엔진 출력(RecommendationOutput)을 챗봇 후보 형식으로 바꾼다. 숫자는 엔진 값 그대로.
 
 DB 접속 정보(.env): SALGU_DB_HOST, SALGU_DB_USER, SALGU_DB_PASSWORD, SALGU_DB_PORT(5432), SALGU_DB_NAME(postgres)
@@ -111,14 +113,37 @@ def _engine_modules():
     return pr
 
 
-def plan(card):
+def commute_ready():
+    """카카오 통근 계산기를 쓸 수 있는지(REST 키가 있는지)."""
+    return bool(_env("KAKAO_REST_API_KEY"))
+
+
+def plan(card, commute=None):
     """조건 카드 → 엔진에 넘길 카드 단계들(좁게 → 넓게)과 알릴 말.
+    commute: 통근 계산기를 쓸 수 있는지(None 이면 키 유무로 판단).
     반환: (stages: [(card, note_or_None)], notes)"""
     base = copy.deepcopy(card)
     conds = base.setdefault("conditions", {})
     notes = []
     work = (conds.get("workplace") or {}).get("label")
     way = "통학" if (conds.get("workplace") or {}).get("kind") == "school" else "통근"
+    commute = commute_ready() if commute is None else commute
+
+    # 통근 계산기가 있으면 회사·통근 조건을 그대로 엔진에 넘긴다(통근권 10→20→40km 확장은 엔진이 한다)
+    if work and commute:
+        pref = (conds.get("preferred_areas") or {}).get("value") or []
+        avoid = (conds.get("avoid_areas") or {}).get("value") or []
+        if avoid:
+            conds["avoid_areas"] = {**conds["avoid_areas"],
+                                    "value": list(dict.fromkeys(n for a in avoid for n in avoid_names(a)))}
+        if not pref:
+            return [(base, f"{work}까지 실제 {way} 경로로 찾았어요.")], notes
+        narrow = []
+        for label in pref:
+            names, _gu = resolve_area(label)
+            narrow += names
+        base["conditions"]["preferred_areas"] = {"value": list(dict.fromkeys(narrow)), "source": "stated"}
+        return [(base, None)], notes
 
     # 통근 계산기가 아직 없다: 통근 조건을 빼고 알린다
     if work:
@@ -180,18 +205,22 @@ def to_candidate(item):
         "market_median_monthly_rent_manwon": d["market_median_monthly_rent_manwon"],
         "commute_minutes": d["commute_minutes"], "transfers": d["transfers"],
         "station": d.get("station"), "walk_to_station_min": d.get("walk_to_station_min"),
+        "commute_distance_km": d.get("commute_distance_km"), "transit_fare_won": d.get("transit_fare_won"),
+        "route_url": d.get("route_url"), "transit_legs": d.get("transit_legs") or [],
+        "nearby_bus_stops": d.get("nearby_bus_stops") or [],
         "source_table": d["source_table"], "source_row": d["source_row"], "is_live_listing": False,
     }
 
 
-async def recommend_async(card, repository):
-    """엔진을 단계별로 부른다(좁게 → 결과 없으면 넓게). repository는 엔진의 PropertyRepository."""
+async def recommend_async(card, repository, commute_provider=None, public_data=None):
+    """엔진을 단계별로 부른다(좁게 → 결과 없으면 넓게). repository는 엔진의 PropertyRepository.
+    commute_provider·public_data 가 있으면 실제 통근 경로와 버스·지하철 공공데이터를 붙인다."""
     pr = _engine_modules()
-    stages, notes = plan(card)
+    stages, notes = plan(card, commute=commute_provider is not None)
     out, used_note = None, None
     for stage_card, note in stages:
         criteria = pr.RecommendationInput.from_condition_card(stage_card, limit=LIMIT)
-        out = await pr.PropertyRecommendationService(repository).recommend(criteria)
+        out = await pr.PropertyRecommendationService(repository, commute_provider, public_data).recommend(criteria)
         used_note = note
         if out.count:
             break
@@ -208,7 +237,15 @@ class _Runner:
     def __init__(self):
         self._loop = None
         self._engine = None
+        self._commute = None
         self._lock = threading.Lock()
+
+    def _provider(self):
+        """카카오 통근 계산기(한 번만 만들어 경로·좌표 캐시를 재사용). 키가 없으면 None."""
+        if self._commute is None and commute_ready():
+            pr = _engine_modules()
+            self._commute = pr.KakaoCommuteProvider(pr.KakaoCommuteConfig(api_key=_env("KAKAO_REST_API_KEY")))
+        return self._commute
 
     def _start(self):
         with self._lock:
@@ -242,8 +279,28 @@ class _Runner:
         from sqlalchemy.ext.asyncio import AsyncSession
         _engine_modules()
         from property_recommendation.repository import SqlPropertyRepository
+        from property_recommendation.public_data import SqlPublicDataRepository
         async with AsyncSession(self._db()) as session:
-            return await recommend_async(card, SqlPropertyRepository(session))
+            provider = self._provider()
+            return await recommend_async(card, SqlPropertyRepository(session), provider,
+                                         SqlPublicDataRepository(session) if provider else None)
+
+    async def _realtors(self, address, limit, max_distance_m):
+        from sqlalchemy.ext.asyncio import AsyncSession
+        pr = _engine_modules()
+        from property_recommendation.public_data import SqlPublicDataRepository
+        provider = self._provider()
+        if provider is None:
+            raise RuntimeError("KAKAO_REST_API_KEY 가 없어 중개사무소를 찾을 수 없어요")
+        async with AsyncSession(self._db()) as session:
+            service = pr.DatabaseRealtorService(SqlPublicDataRepository(session), provider)
+            criteria = pr.RealtorSearchInput(property_address=address, limit=limit, max_distance_m=max_distance_m)
+            out = await service.find_nearest(criteria)
+            return out.model_dump(mode="json")
+
+    def realtors(self, address, limit, max_distance_m, timeout=TIMEOUT_S):
+        fut = asyncio.run_coroutine_threadsafe(self._realtors(address, limit, max_distance_m), self._start())
+        return fut.result(timeout=timeout)
 
     async def _warm(self):
         from sqlalchemy import text
@@ -273,6 +330,20 @@ def search(card):
         msg = str(e).replace(_env("SALGU_DB_PASSWORD") or "\0", "***")[:200]
         return {"ok": False, "mock": False, "source": "추천 엔진(실거래 DB)", "error": f"{type(e).__name__}: {msg}",
                 "count": 0, "candidates": [], "notes": [], "seconds": round(time.time() - started, 3)}
+
+
+def realtors(address, limit=3, max_distance_m=None):
+    """확정 매물 주소 → 가까운 공인중개사(카카오 AG2 거리순 + 중개업소 DB 대조, 폐업·휴업 제외).
+    → {"ok", "count", "offices", "error", "seconds"}"""
+    started = time.time()
+    try:
+        res = _runner.realtors(address, limit, max_distance_m)
+        return {"ok": True, "error": None, "count": res["count"], "offices": res["offices"],
+                "seconds": round(time.time() - started, 3)}
+    except Exception as e:
+        msg = str(e).replace(_env("SALGU_DB_PASSWORD") or "\0", "***")[:200]
+        return {"ok": False, "error": f"{type(e).__name__}: {msg}", "count": 0, "offices": [],
+                "seconds": round(time.time() - started, 3)}
 
 
 def warm():
