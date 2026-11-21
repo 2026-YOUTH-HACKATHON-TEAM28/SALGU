@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import re
 import json
 from datetime import date, datetime, timedelta
 from typing import Iterable, Optional
@@ -76,10 +77,22 @@ def next_open(now: datetime, settings: Optional[Settings] = None) -> datetime:
 # ------------------------------------------------------------------ 검사
 
 
+MOBILE = re.compile(r"01[016789]\d{7,8}")
+
+
 def check_mode(settings: Settings) -> None:
-    """demo 모드인데 시연 번호가 없으면 요청 전체를 거절한다."""
-    if settings.mode == "demo" and not settings.demo_numbers:
+    """demo 모드인데 걸 번호(시연 번호 또는 요청 번호 허용)가 없으면 요청 전체를 거절한다."""
+    if settings.mode == "demo" and not settings.demo_numbers and not settings.dial_requested:
         raise PolicyError("not_allowed")
+
+
+def check_dial_target(settings: Settings, phone: str) -> None:
+    """요청 번호로 거는 demo(PHONE_AGENT_DIAL_REQUESTED=1)는 휴대폰 번호만 받는다.
+    중개사무소 대표번호(02·070 등)로 잘못 걸리지 않게 하려는 안전장치다."""
+    if settings.mode != "demo" or not settings.dial_requested:
+        return
+    if not MOBILE.fullmatch(re.sub(r"\D", "", phone or "")):
+        raise PolicyError("phone_not_allowed", {"reason": "demo 는 사용자가 입력한 휴대폰 번호로만 겁니다"})
 
 
 def deadline_passed(request: CallRequest, call_at: datetime) -> bool:

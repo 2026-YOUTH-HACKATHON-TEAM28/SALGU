@@ -50,6 +50,8 @@ class Settings:
     kat_agent_id: str = ""
     kat_from_number: str = ""
     demo_to: str = ""
+    # demo 에서 요청에 담긴 번호로 건다(화면이 사용자가 입력한 본인 번호를 담아 보냄). 휴대폰 번호만 허용
+    dial_requested: bool = False
     daily_limit: int = 10
     confirm_limit: int = 2
     retry_minutes: int = 30
@@ -106,6 +108,7 @@ class Settings:
             kat_agent_id=get("KAT_AGENT_ID"),
             kat_from_number=get("KAT_FROM_NUMBER"),
             demo_to=get("PHONE_AGENT_DEMO_TO"),
+            dial_requested=_flag("PHONE_AGENT_DIAL_REQUESTED"),
             daily_limit=_int("PHONE_AGENT_DAILY_LIMIT", 10),
             confirm_limit=_int("PHONE_AGENT_CONFIRM_LIMIT", 2),
             retry_minutes=_int("PHONE_AGENT_RETRY_MINUTES", 30),
