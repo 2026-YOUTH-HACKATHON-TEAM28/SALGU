@@ -69,6 +69,7 @@ HTTP로도 읽을 수 있습니다: `GET /api/sessions/{session_id}/keywords`, `
 | `missing` | 아직 모르는 최소 조건: `area`, `deposit`, `monthly_rent` |
 | `keywords` | **추천 계산용 키워드.** 조건 카드의 각 칸을 `{칸: 값}`으로 편 것. 회사 위치(`workplace`)는 이름. 칸 이름과 값의 뜻은 `condition_card.md`와 같습니다. |
 | `card` | 조건 카드 전체. 근거(`evidence`), 직접 말함/추론(`source`)이 필요할 때 봅니다. |
+| `pending_action` | 사용자가 "이 집 보고 싶어"라고 해서 만든 전화 요청 초안(승인 전). BE가 승인 화면을 만들 때 읽습니다. 형식: `call_request.md` |
 | `last_search` | 마지막 검색 요청과 받은 결과. `mock: true`면 로컬 예시 응답(실제 매물 아님). |
 | `history` | 턴별 기록. `user`는 개인정보를 가린 사용자 말, `messages`는 챗봇이 한 말풍선들(`reply`, `backend_request`, `backend_response`, `answer`), `changed`는 그 턴에 바뀐 칸 |
 

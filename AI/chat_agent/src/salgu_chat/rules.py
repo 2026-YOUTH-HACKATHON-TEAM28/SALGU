@@ -206,6 +206,10 @@ _CONTROL = [
                        r"[\s!.~ㅎㅋ^]*", re.I)),
     ("more", re.compile(r".{0,6}(?:다른\s*(?:거|것|곳|데|집|매물)|더\s*(?:보여|있어|없어|찾아|추천)|또\s*(?:있어|없어|보여)|"
                         r"다음\s*(?:거|꺼|곳)).{0,10}")),
+    # 중개사무소에 물어봐 달라는 말: "전화해 줘", "2번 집 보고 싶어", "이 집 문의해 줘" (번호가 없으면 1순위)
+    ("call", re.compile(r".{0,8}?(?:(\d|첫|두|세|네|다섯)\s*(?:번째|번|째)\s*(?:거|꺼|곳|집|매물|방)?\s*(?:은|는|을|를|이|가)?\s*)?"
+                        r".{0,6}?(?:보러\s*가|보고\s*싶|보러|방문|예약|문의|연락|전화|물어)"
+                        r"(?:해|하고|할래|좀|드려|부탁|걸어|싶|봐|가고|갈래|갈게|가볼래|가요|가자|하고\s*싶|해\s*줘|해줘|주세요|줘|요|어|봐\s*줘|\s)*[!.~?ㅎㅋ]*")),
     ("pick", re.compile(r".{0,4}?(\d|첫|두|세|네|다섯)\s*(?:번째|번|째)\s*(?:거|꺼|곳|집|매물)?.{0,12}")),
 ]
 _ORDINAL = {"첫": 1, "두": 2, "세": 3, "네": 4, "다섯": 5}
@@ -219,8 +223,10 @@ def control(text):
     for kind, pat in _CONTROL:
         m = pat.fullmatch(t)
         if m:
-            if kind == "pick":
+            if kind in ("pick", "call"):
                 g = m.group(1)
+                if g is None:
+                    return kind, None
                 return kind, int(g) if g.isdigit() else _ORDINAL[g]
             return kind, None
     return None, None
@@ -242,13 +248,13 @@ def parse(text):
         conds["monthly_rent_manwon"] = _cond(money(m.group(2)), m.group(0), **approx)
     m = re.search(rf"보증금\s*(?:은|는|이|가|이고)??\s*{_MONEY}", t)
     if m:
-        conds["deposit_manwon"] = _cond(money(m.group(1)), m.group(0))
+        conds["deposit_manwon"] = _cond(money(m.group(1)), m.group(0), **approx)
     m = re.search(rf"(?<!반)전세(?:금|보증금)?\s*(?:은|는|이|가|로)??\s*{_MONEY}", t)
     if m:
         conds["deposit_manwon"] = _cond(money(m.group(1)), m.group(0))
     m = re.search(rf"(?<![\d일이삼사오육칠팔구십])월(?:세)?\s*(?:는|은|가|이)??\s*{_RENT}(?:\s*만\s*원?)?{_NOT_MONEY_UNIT}", t)
     if m:
-        conds["monthly_rent_manwon"] = _cond(money(m.group(1)), m.group(0))
+        conds["monthly_rent_manwon"] = _cond(money(m.group(1)), m.group(0), **approx)
     # "월세 좀만 더 올려도 돼 60까지"처럼 사이에 말이 끼어 있어도 끝에 '까지·이하·정도' 등이 붙으면 읽는다
     _until = r"\s*(?:만\s*원?)?\s*(?:까지|이하|정도|쯤|로|면|선|안쪽|가능)"
     if "monthly_rent_manwon" not in conds:

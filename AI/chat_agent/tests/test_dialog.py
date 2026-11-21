@@ -7,7 +7,7 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from salgu_chat import config, dialog, llm  # noqa: E402
+from salgu_chat import config, dialog, llm, recommender  # noqa: E402
 
 
 class DialogTest(unittest.TestCase):
@@ -18,6 +18,9 @@ class DialogTest(unittest.TestCase):
         self.saved_url = config.BACKEND_SEARCH_URL
         config.BACKEND_SEARCH_URL = ""
         self.addCleanup(setattr, config, "BACKEND_SEARCH_URL", self.saved_url)
+        p = mock.patch.object(recommender, "configured", return_value=False)  # .env에 DB가 있어도 시험은 네트워크 없이
+        p.start()
+        self.addCleanup(p.stop)
 
     def kinds(self, r):
         return [m["kind"] for m in r["messages"]]

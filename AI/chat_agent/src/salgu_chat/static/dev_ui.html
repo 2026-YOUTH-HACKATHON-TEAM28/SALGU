@@ -79,6 +79,16 @@ function bubble(text, who, meta) {
   d.innerHTML = esc(text) + (meta ? `<div class="meta">${esc(meta)}</div>` : "");
   $("log").appendChild(d); $("log").scrollTop = 1e9;
 }
+// 전화 요청 초안: 챗봇은 전화를 걸지 않는다. 실제 화면에서는 방문 시간·공개 항목을 고르고 승인하면 BE가 전화 서버에 보낸다.
+function actionCard(a) {
+  const d = document.createElement("div");
+  d.className = "msg bot";
+  const brokers = (a.request.brokers || []).map(b => `· ${esc(b.name)} (${esc(b.phone)})`).join("<br>");
+  d.innerHTML = `<b>📞 전화 요청 초안</b> — ${a.status === "needs_approval" ? "승인 필요" : "사무소 없음"}<br>`
+    + `매물: ${esc(a.listing.name || "")} · ${esc(a.request.search.dong)}<br>${brokers}`
+    + `<div class="meta">시험 화면에서는 전화하지 않아요. 실제 화면: 방문 시간 고르기 → [전화 요청] 승인 → BE가 전화 서버로 보냄</div>`;
+  $("log").appendChild(d); $("log").scrollTop = 1e9;
+}
 function renderCard(card, changed) {
   if (!card) return;
   const c = card.conditions || {};
@@ -111,6 +121,7 @@ async function send(text) {
     bubble(m.text, "bot " + m.kind, meta);
   }
   if (j.card && j.card.clarifications && j.card.clarifications.length) chips(j.card.clarifications);
+  if (j.action && j.action.type === "broker_call_request") actionCard(j.action);
 }
 $("f").onsubmit = e => { e.preventDefault(); const t = $("m").value.trim(); if (t) { $("m").value = ""; send(t); } };
 $("reset").onclick = async () => {

@@ -1,8 +1,9 @@
 """BE 집 검색 요청. 챗봇은 계산하지 않는다: ready인 조건 카드를 BE에 보내고 받은 결과를 그대로 전한다.
 
-- config.BACKEND_SEARCH_URL이 있으면: POST {"session_id", "keywords", "card"} → BE 응답(아래 형식)
-  BE의 추천 계산 메서드는 세션 캐시(session_cache, contracts/session_cache.md)를 session_id로 읽어도 된다.
-- 비어 있으면(로컬 시험): 로컬 예시 응답을 만든다. mock=true로 표시하며 실제 매물이 아니다.
+어디에 요청하나 (위에서부터 먼저 있는 것)
+1. config.BACKEND_SEARCH_URL이 있으면: POST {"session_id", "keywords", "card"} → BE 응답(아래 형식)
+2. DB 접속 정보(SALGU_DB_*)가 있으면: 추천 엔진(AI/property_recommendation)을 직접 부른다 (recommender.py)
+3. 둘 다 없으면(로컬 시험): 로컬 예시 응답. mock=true로 표시하며 실제 매물이 아니다.
 
 BE 응답 형식 (초안, BE와 합의 필요). 후보는 BE가 추천 순서대로 정렬해 준다.
 {"count": 3, "candidates": [{"name": "...", "address": "...", "housing_type": "officetel",
@@ -14,15 +15,18 @@ import json
 import time
 import urllib.request
 
-from . import config
+from . import config, recommender
 
 
 def search(card, session_id=None):
-    """→ {"ok", "mock", "count", "candidates", "error", "seconds"}"""
+    """→ {"ok", "mock", "source", "count", "candidates", "notes", "error", "seconds"}"""
     started = time.time()
+    if not config.BACKEND_SEARCH_URL and recommender.configured():
+        return recommender.search(card)
     if not config.BACKEND_SEARCH_URL:
         res = mock_search(card)
-        return {"ok": True, "mock": True, "error": None, **res, "seconds": round(time.time() - started, 3)}
+        return {"ok": True, "mock": True, "source": "로컬 예시 응답", "error": None, "notes": [], **res,
+                "seconds": round(time.time() - started, 3)}
     req = urllib.request.Request(
         config.BACKEND_SEARCH_URL,
         data=json.dumps({"session_id": session_id, "keywords": _keywords(card), "card": card},
@@ -32,11 +36,12 @@ def search(card, session_id=None):
         with urllib.request.urlopen(req, timeout=config.BACKEND_TIMEOUT_S) as r:
             data = json.loads(r.read().decode("utf-8"))
         cands = data.get("candidates") or []
-        return {"ok": True, "mock": False, "error": None, "count": int(data.get("count", len(cands))),
-                "candidates": cands, "seconds": round(time.time() - started, 3)}
-    except Exception as e:
-        return {"ok": False, "mock": False, "error": f"{type(e).__name__}: {e}", "count": 0, "candidates": [],
+        return {"ok": True, "mock": False, "source": "BE 검색 API", "error": None,
+                "count": int(data.get("count", len(cands))), "candidates": cands, "notes": data.get("notes") or [],
                 "seconds": round(time.time() - started, 3)}
+    except Exception as e:
+        return {"ok": False, "mock": False, "source": "BE 검색 API", "error": f"{type(e).__name__}: {e}", "count": 0,
+                "candidates": [], "notes": [], "seconds": round(time.time() - started, 3)}
 
 
 def _keywords(card):

@@ -50,7 +50,7 @@ def new(session_id):
             "updated_at": t.isoformat(timespec="seconds"),
             "expires_at": (t + timedelta(hours=TTL_HOURS)).isoformat(timespec="seconds"),
             "ready": False, "missing": ["area", "deposit", "monthly_rent"], "keywords": {}, "card": None,
-            "last_search": None, "turn_count": 0, "history": []}
+            "last_search": None, "pending_action": None, "turn_count": 0, "history": []}
 
 
 def _expired(cache):
@@ -100,14 +100,18 @@ def add_turn(cache, user_text, result):
         "changed": result.get("changed", []), "fixes": result.get("fixes", []),
         "messages": result.get("messages", [{"kind": "reply", "text": result["reply"]}]),
         "searched": bool(res), "control": result.get("control"),
+        "action": (result.get("action") or {}).get("type"),
     })
     if result.get("reset"):  # "처음부터 다시": 조건과 검색 결과를 비운다 (대화 기록은 남김)
-        cache.update(card=None, keywords={}, ready=False, missing=["area", "deposit", "monthly_rent"], last_search=None)
+        cache.update(card=None, keywords={}, ready=False, missing=["area", "deposit", "monthly_rent"], last_search=None,
+                     pending_action=None)
     if card:
         cache["card"] = card
         cache["keywords"] = flat(card)
         cache["ready"] = bool(card.get("ready"))
         cache["missing"] = card.get("missing", [])
+    if result.get("action"):
+        cache["pending_action"] = result["action"]  # BE가 승인 화면을 만들 때 읽는다
     if res:
         cache["last_search"] = {"at": t.isoformat(timespec="seconds"), "mock": res["mock"], "ok": res["ok"],
                                 "count": res["count"], "error": res["error"], "candidates": res["candidates"]}

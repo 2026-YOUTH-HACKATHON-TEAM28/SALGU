@@ -64,6 +64,19 @@ class IntakeTest(unittest.TestCase):
         self.assertTrue(r2["card"]["ready"])
         self.assertEqual(r2["card"]["conditions"]["monthly_rent_manwon"]["value"], 50)
 
+    def test_school_hint_survives_gemini_path(self):
+        # Gemini 카드에는 '학교를 물어봐야 함' 표시가 없다 → 규칙에서 이어 받아 "학교는 어디예요?"를 묻는다
+        fake = {"intent": "search", "card": {"conditions": {
+            "housing_types": {"value": ["officetel", "villa"], "source": "inferred", "evidence": "원룸"}}}}
+        self.gemini.side_effect = None
+        self.gemini.return_value = (fake, 0.5)
+        r = intake.intake("학교 근처 원룸 구해요")
+        self.assertEqual(r["card"].get("workplace_hint"), "학교")
+        self.assertIn("학교는 어디예요?", r["reply"])
+        self.gemini.side_effect = llm.LLMError("시험")
+        r2 = intake.intake("연세대", r["card"])
+        self.assertEqual(r2["card"]["conditions"]["workplace"]["label"], "연세대")
+
     def test_greeting_asks_minimum(self):
         r = intake.intake("안녕하세요!")
         self.assertEqual(r["guard"], "greeting")
