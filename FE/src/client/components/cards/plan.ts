@@ -71,9 +71,7 @@ export function planCard(_card: Extract<Card, { kind: 'plan' }>): TemplateResult
             </div>
             ${listingCard(
               l,
-              html`<p class="note">
-                  ${brokerOf(l)?.name ?? ''} · 실거래 대비 ${PRICE_LABEL[l.priceVerdict].text}
-                </p>
+              html`<p class="note">${brokerOf(l)?.name ?? ''}</p>
                 ${v.brokerSaid ? html`<p class="said">중개사: "${v.brokerSaid}"</p>` : nothing}
                 ${
                   v.status === 'proposed' && v.proposedAt

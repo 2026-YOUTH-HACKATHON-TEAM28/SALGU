@@ -6,8 +6,7 @@ import { chatView, closeFloating } from './chat.js';
 import { loginView } from './login.js';
 import { sideView, tabsView } from './side.js';
 import { scheduleView } from './schedule.js';
-
-const mapPlaceholder = () => html`<p class="muted pad">지도를 준비하고 있어요.</p>`;
+import { mapView } from '../map/mapView.js';
 
 function toastView() {
   const t = state.ui.toast;
@@ -41,8 +40,8 @@ export function appView() {
   return html`<div class="shell tab-${tab} ${state.ui.panel ? 'with-side' : ''}" @click=${closeFloating}>
     ${headerView()}
     <div class="main">
-      ${chatView()} ${sideView({ map: mapPlaceholder, sched: scheduleView })}
-      <section class="m-pane m-map" aria-label="지도">${tab === 'map' ? mapPlaceholder() : nothing}</section>
+      ${chatView()} ${sideView({ map: mapView, sched: scheduleView })}
+      <section class="m-pane m-map" aria-label="지도">${tab === 'map' ? mapView() : nothing}</section>
       <section class="m-pane m-sched" aria-label="일정">
         ${tab === 'sched' ? scheduleView() : nothing}
       </section>
