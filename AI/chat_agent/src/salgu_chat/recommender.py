@@ -3,8 +3,11 @@
 추천 계산은 추천 엔진(수정 담당)이 한다. 이 모듈은 둘 사이의 차이만 맞춘다.
 - 동네 이름: 엔진은 DB 주소(region_address)에서 글자로 찾는다. "홍대"·"강남역"은 주소에 없으므로
   동 이름(서교동·역삼동)으로 바꿔 찾고, 결과가 없으면 그 구 전체로 넓힌다.
-- 회사·학교: 엔진은 통근 계산기(CommuteProvider) 없이 workplace가 오면 오류를 낸다. 교통 데이터가
+- 회사·학교: 엔진은 통근 계산기(CommuteProvider) 없이 workplace가 오면 오류를 낸다. 통근 시간 계산이
   연결되기 전까지는 통근 조건을 빼고 알린다. 살 곳을 말하지 않았으면 회사·학교가 있는 구에서 찾는다.
+- 버스 배차·역까지 도보: 엔진은 workplace 없이 이 조건이 오면 오류를 내고, 배차는 아예 계산하지 않는다.
+  그래서 엔진에는 넘기지 않고, 엔진 결과에 DB 공공데이터로 계산한 교통 지표(transit.py)를 붙여 거른다.
+  매물 좌표는 geocode.py(주소 → 좌표, 로컬 캐시)로 얻는다. 좌표를 모르는 매물은 거르지 않고 알린다.
 - 결과: 엔진 출력(RecommendationOutput)을 챗봇 후보 형식으로 바꾼다. 숫자는 엔진 값 그대로.
 
 DB 접속 정보(.env): SALGU_DB_HOST, SALGU_DB_USER, SALGU_DB_PASSWORD, SALGU_DB_PORT(5432), SALGU_DB_NAME(postgres)
@@ -18,11 +21,12 @@ import sys
 import threading
 import time
 
-from . import config
+from . import config, transit
 
 ENGINE_SRC = config.ROOT.parent / "property_recommendation" / "src"
 TIMEOUT_S = config._int("RECOMMEND_TIMEOUT_S", 20)
 LIMIT = 5
+TRANSIT_POOL = 20  # 엔진 최대 limit
 
 # 라벨 → (동 이름들, 구). 라벨에 '역'·'입구'가 붙어도 찾는다. 서울 밖·모르는 곳은 없음.
 AREA_MAP = {
@@ -120,12 +124,16 @@ def plan(card):
     work = (conds.get("workplace") or {}).get("label")
     way = "통학" if (conds.get("workplace") or {}).get("kind") == "school" else "통근"
 
+    # 배차·역 도보는 엔진 대신 이 모듈이 거른다(transit_limits) → 엔진 카드에서 뺀다
+    for key in TRANSIT_KEYS:
+        conds.pop(key, None)
+    base["priorities"] = [p for p in base.get("priorities") or [] if p != "bus_headway"]
     # 통근 계산기가 아직 없다: 통근 조건을 빼고 알린다
     if work:
-        for key in ("workplace", "max_commute_min", "max_transfers", "max_bus_headway_min"):
+        for key in ("workplace", "max_commute_min", "max_transfers"):
             conds.pop(key, None)
-        base["priorities"] = [p for p in base.get("priorities") or [] if p not in ("commute", "bus_headway")]
-        notes.append(f"{work}까지 {way} 시간·환승은 아직 계산하지 못해요(교통 데이터 연결 전).")
+        base["priorities"] = [p for p in base["priorities"] if p != "commute"]
+        notes.append(f"{work}까지 {way} 시간·환승은 아직 계산하지 못해요(통근 경로 연결 전).")
 
     pref = (conds.get("preferred_areas") or {}).get("value") or []
     avoid = (conds.get("avoid_areas") or {}).get("value") or []
@@ -157,6 +165,62 @@ def plan(card):
     return stages, notes
 
 
+TRANSIT_KEYS = ("max_bus_headway_min", "max_walk_to_station_min")
+
+
+def transit_limits(card):
+    """조건 카드 → {"max_bus_headway_min": int|None, "max_walk_to_station_min": int|None}"""
+    conds = card.get("conditions") or {}
+    return {k: (conds.get(k) or {}).get("value") for k in TRANSIT_KEYS}
+
+
+def _limit_text(limits):
+    parts = []
+    if limits.get("max_bus_headway_min"):
+        parts.append(f"버스 배차 {limits['max_bus_headway_min']}분 이하")
+    if limits.get("max_walk_to_station_min"):
+        parts.append(f"역까지 걸어서 {limits['max_walk_to_station_min']}분 이내")
+    return "·".join(parts)
+
+
+def _headway_key(c):
+    bus = (c.get("transit") or {}).get("bus")
+    return bus["headway_min"] if bus else 999
+
+
+async def apply_transit(cands, measurer, limits, by_headway=False):
+    """후보마다 교통 지표를 붙이고 배차·역 도보 조건으로 거른다. → (후보들, 알릴 말들)
+
+    measurer.measure(addresses) → [지표 또는 None]. 지표 형식: transit.TransitIndex.near"""
+    notes = []
+    metrics = await measurer.measure([c["address"] for c in cands])
+    for c, m in zip(cands, metrics):
+        c["transit"] = m
+        c["transit_text"] = transit.describe(m)
+        st = (m or {}).get("station")
+        if st and c.get("station") is None:
+            c["station"], c["walk_to_station_min"] = st["name"], st["walk_min"]
+    want = _limit_text(limits)
+    if not want:
+        if by_headway:
+            cands.sort(key=_headway_key)
+        return cands, notes
+    ok = [c for c in cands if transit.passes(c["transit"], **limits) is True]
+    unknown = [c for c in cands if c["transit"] is None]
+    failed = [c for c in cands if transit.passes(c["transit"], **limits) is False]
+    if by_headway:
+        ok.sort(key=_headway_key)
+    if ok or unknown:
+        if failed:
+            notes.append(f"{want} 조건에 맞지 않는 {len(failed)}곳은 뺐어요.")
+        if unknown:
+            notes.append(f"{len(unknown)}곳은 매물 위치 정보가 아직 없어 {want} 조건을 확인하지 못했어요.")
+        return ok + unknown, notes
+    failed.sort(key=lambda c: (_headway_key(c), ((c["transit"] or {}).get("station") or {}).get("walk_min", 999)))
+    notes.append(f"{want}인 곳은 찾지 못해, 그중 교통이 나은 곳을 보여 드려요.")
+    return failed, notes
+
+
 def to_candidate(item):
     """엔진 후보(PropertyRecommendation) → 챗봇 후보 dict."""
     d = item.model_dump(mode="json")
@@ -178,22 +242,53 @@ def to_candidate(item):
     }
 
 
-async def recommend_async(card, repository):
-    """엔진을 단계별로 부른다(좁게 → 결과 없으면 넓게). repository는 엔진의 PropertyRepository."""
+async def recommend_async(card, repository, measurer=None):
+    """엔진을 단계별로 부른다(좁게 → 결과 없으면 넓게). repository는 엔진의 PropertyRepository.
+    measurer가 있으면 교통 지표를 붙이고 배차·역 도보 조건으로 거른다(apply_transit)."""
     pr = _engine_modules()
     stages, notes = plan(card)
+    limits = transit_limits(card)
+    by_headway = "bus_headway" in (card.get("priorities") or [])
+    # 교통 조건으로 거를 때는 엔진에서 넉넉히 받아 거른 뒤 LIMIT개만 남긴다
+    pool = TRANSIT_POOL if measurer and (any(limits.values()) or by_headway) else LIMIT
     out, used_note = None, None
     for stage_card, note in stages:
-        criteria = pr.RecommendationInput.from_condition_card(stage_card, limit=LIMIT)
+        criteria = pr.RecommendationInput.from_condition_card(stage_card, limit=pool)
         out = await pr.PropertyRecommendationService(repository).recommend(criteria)
         used_note = note
         if out.count:
             break
     caps = [t.split(" 상한")[0] for t in out.applied_tolerances]  # ["보증금 상한 +10%", "월세 상한 +10%"]
     tolerance = [f"예산을 '정도'로 말씀하셔서 {'·'.join(caps)} 상한을 10% 넉넉히 봤어요."] if caps else []
-    notes = ([used_note] if used_note else []) + notes + list(out.unapplied_conditions) + tolerance
-    return {"count": out.count, "candidates": [to_candidate(c) for c in out.candidates], "notes": notes,
+    cands = [to_candidate(c) for c in out.candidates]
+    transit_notes = []
+    if measurer and cands:
+        cands, transit_notes = await apply_transit(cands, measurer, limits, by_headway)
+    elif not measurer and any(limits.values()):
+        transit_notes = [f"{_limit_text(limits)} 조건은 교통 데이터를 읽지 못해 확인하지 못했어요."]
+    cands = cands[:LIMIT]
+    notes = ([used_note] if used_note else []) + notes + transit_notes + list(out.unapplied_conditions) + tolerance
+    status = {"available": measurer is not None, "limits": limits,
+              "located": sum(1 for c in cands if c.get("transit") is not None),
+              "reason": getattr(measurer, "reason", None) if measurer else "교통 색인 없음"}
+    return {"count": len(cands), "candidates": cands, "notes": notes, "transit": status,
             "query": out.query.model_dump(mode="json")}
+
+
+class Measurer:
+    """주소들 → 교통 지표들. 좌표는 Geocoder(캐시 → 지오코딩 API), 지표는 TransitIndex(DB 공공데이터)."""
+
+    def __init__(self, index, geocoder):
+        self.index, self.geocoder = index, geocoder
+
+    @property
+    def reason(self):
+        return self.geocoder.disabled
+
+    async def measure(self, addresses):
+        coords = await asyncio.gather(*(asyncio.to_thread(self.geocoder.locate, a) for a in addresses))
+        await asyncio.to_thread(self.geocoder.save)
+        return [self.index.near(*xy) if xy else None for xy in coords]
 
 
 class _Runner:
@@ -203,6 +298,8 @@ class _Runner:
         self._loop = None
         self._engine = None
         self._lock = threading.Lock()
+        self._measurer = None
+        self._index_task = None
 
     def _start(self):
         with self._lock:
@@ -232,17 +329,39 @@ class _Runner:
                                                pool_recycle=300, pool_timeout=10)
         return self._engine
 
+    async def _load_index(self):
+        from sqlalchemy.ext.asyncio import AsyncSession
+        from . import geocode
+        geocoder = geocode.Geocoder()
+        async with AsyncSession(self._db()) as session:
+            index = await transit.load_index(session, geocoder.station_coords())
+        self._measurer = Measurer(index, geocoder)
+        return self._measurer
+
+    async def _transit(self):
+        """교통 색인(처음 한 번 수 초). 실패하면 None → 교통 지표 없이 추천한다."""
+        if self._measurer is not None:
+            return self._measurer
+        if self._index_task is None or (self._index_task.done() and self._index_task.exception()):
+            self._index_task = asyncio.ensure_future(self._load_index())
+        try:
+            return await asyncio.shield(self._index_task)
+        except Exception:
+            return None
+
     async def _run(self, card):
         from sqlalchemy.ext.asyncio import AsyncSession
         _engine_modules()
         from property_recommendation.repository import SqlPropertyRepository
+        measurer = await self._transit()
         async with AsyncSession(self._db()) as session:
-            return await recommend_async(card, SqlPropertyRepository(session))
+            return await recommend_async(card, SqlPropertyRepository(session), measurer)
 
     async def _warm(self):
         from sqlalchemy import text
         async with self._db().connect() as conn:
             await conn.execute(text("SELECT 1"))
+        await self._transit()
 
     def run(self, card, timeout=TIMEOUT_S):
         fut = asyncio.run_coroutine_threadsafe(self._run(card), self._start())

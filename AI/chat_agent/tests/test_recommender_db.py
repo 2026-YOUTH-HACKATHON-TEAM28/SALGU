@@ -56,6 +56,21 @@ class RealDatabaseTest(unittest.TestCase):
         self.assertGreater(res["count"], 0)
         self.assertTrue(any("통학 시간" in n for n in res["notes"]))
 
+    def test_transit_index_near_sinchon(self):
+        import asyncio
+        m = asyncio.run_coroutine_threadsafe(recommender._runner._transit(), recommender._runner._start()).result(60)
+        self.assertIsNotNone(m, "교통 색인을 읽지 못함")
+        near = m.index.near(126.9368, 37.5552)  # 신촌역 2번 출구 근처
+        self.assertEqual(near["station"]["name"], "신촌역")
+        self.assertLessEqual(near["bus"]["headway_min"], 10)
+        self.assertGreater(near["bus"]["routes_nearby"], 5)
+
+    def test_transit_limit_does_not_break_search(self):
+        # 엔진은 workplace 없이 역 도보 조건이 오면 오류 → 연결 모듈이 빼고 거른다
+        res = self.search("신촌 1000/50 역에서 걸어서 10분 이내 버스 배차 10분 이하")
+        self.assertGreater(res["count"], 0)
+        self.assertIn("transit", res)
+
 
 if __name__ == "__main__":
     unittest.main()
