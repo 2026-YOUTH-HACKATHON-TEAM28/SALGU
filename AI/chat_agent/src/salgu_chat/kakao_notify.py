@@ -46,7 +46,9 @@ class KakaoError(RuntimeError):
 
 
 def rest_key():
-    return config.ENV.get("KAKAO_REST_API_KEY", "")
+    """알림용 REST 키. 새 콘솔은 리다이렉트 URI를 REST 키마다 따로 등록하므로, 알림 주소를 등록한 키를
+    KAKAO_REST_API_KEY_NOTIFY에 둔다(배포 스크립트가 KAKAO_REST_API_KEY*를 서버로 옮긴다). 없으면 기본 키."""
+    return config.ENV.get("KAKAO_REST_API_KEY_NOTIFY") or config.ENV.get("KAKAO_REST_API_KEY", "")
 
 
 def redirect_uri(base=None):
