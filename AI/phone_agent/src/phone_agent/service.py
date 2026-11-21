@@ -481,8 +481,11 @@ class CallService:
             result["rooms"] = [dict(room, visit_status=self.room_status(rec, None)) for room in result["rooms"]]
         sms_draft = result.pop("sms_draft", None)
         body.update(result)
+        if rec["kind"] == "confirm":  # io.md 2절 형식: 확정 통화에는 등기부·정정 기록 없음
+            body.pop("corrections", None)
+        else:
+            body["registry_docs"] = list(rec["registry_docs"])
         body.update(
-            registry_docs=list(rec["registry_docs"]),
             sms_draft=sms_draft,
             attempts=rec["attempts"], scheduled_at=rec["scheduled_at"], retry_at=rec["retry_at"],
             ended_at=rec["ended_at"], error=rec["error"],

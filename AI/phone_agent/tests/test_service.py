@@ -392,6 +392,7 @@ def test_confirm_flow_is_requesting_then_confirmed(service, provider, clock):
     assert room["unit"] == "302호" and room["still_available"] is True
     assert call["visit"] == room["visit"] and call["unit"] == "302호"  # 방 하나면 바깥에도
     assert call["evidence"]["visit.at"] == 5
+    assert "corrections" not in call and "registry_docs" not in call  # io.md 2절 형식
 
     instruction = list(provider.calls.values())[-1]["instruction"]
     assert "[이번 통화: 방문 확정]" in instruction and "보러 갈 방: 해든빌라 3층" in instruction
