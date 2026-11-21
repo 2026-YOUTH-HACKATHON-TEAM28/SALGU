@@ -65,3 +65,8 @@ result = await recommend_properties(
 `CommuteProvider`는 `measure_regions()`와 `measure_properties()`를 구현한다. 지역 통근값으로
 후보 지역을 먼저 좁히므로, 최신 거래 200건에 먼저 제한하던 편향이 없다.
 
+## 평가
+
+실제 DB 평가 스크립트는 `scripts/evaluate.py`다. 대표 조건별 제약 준수, 점수 정렬,
+중복, 커버리지와 응답 시간을 확인한다. 최신 결과는 `evaluation/`에서 확인한다.
+
