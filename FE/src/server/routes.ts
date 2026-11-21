@@ -9,6 +9,7 @@ import {
   aiContext,
   applyAgentTurn,
   applyAiAnswer,
+  userSays,
   handleAction,
   handleText,
   newChat,
@@ -17,7 +18,10 @@ import {
 import { intentOf } from './mock/nlu.js';
 import { maskPersonal } from '../shared/format.js';
 import { Ai } from './ai.js';
-import { ChatAgent, mapAgentCard } from './chatAgent.js';
+import { ChatAgent, mapAgentCard, mapRecs } from './chatAgent.js';
+import { PhoneAgent, acceptRealProposal, planRealVisits, startRealCalls, syncReal } from './phoneAgent.js';
+import type { ChatRecord } from './store.js';
+import { BeAuth } from './beAuth.js';
 import { DONGS, STATIONS, WORKPLACES, dongById } from './mock/data.js';
 import { VISIT_SLOTS } from './mock/sim.js';
 
@@ -51,6 +55,31 @@ export async function registerRoutes(app: FastifyInstance, config: Config, store
     dailyCap: config.aiDailyCap,
   });
   const agent = new ChatAgent(config.chatAgentUrl);
+  const be = new BeAuth(config.beUrl);
+  be.register(app);
+  const phone = new PhoneAgent(config.phoneAgentUrl, {
+    mockScenario: config.phoneMockScenario,
+    brokersPerDong: config.phoneBrokersPerDong,
+    uniqueReg: config.phoneUniqueReg,
+  });
+  let phoneCheckedAt = 0;
+  const phoneMode = async () => {
+    if (!phone.enabled) return null;
+    if (Date.now() - phoneCheckedAt > 30000) {
+      phoneCheckedAt = Date.now();
+      await phone.health();
+    }
+    return phone.lastMode;
+  };
+  // 실제 통화 결과는 대화를 읽을 때 전화 에이전트에서 가져와요(같은 대화는 1초에 한 번까지).
+  const lastSync = new Map<string, number>();
+  const sync = async (rec: ChatRecord) => {
+    if (!rec.internal.real || !phone.enabled) return;
+    const t = Date.now();
+    if (t - (lastSync.get(rec.state.id) ?? 0) < 1000) return;
+    lastSync.set(rec.state.id, t);
+    if (await syncReal(rec.state, rec.internal, phone, new Date())) store.markDirty();
+  };
   // 에이전트가 맡는 말: 규칙이 흐름 명령으로 알아듣지 못한 자유로운 말
   const AGENT_INTENTS = new Set(['other', 'question', 'greeting', 'oneByOne']);
   app.decorateRequest('user', null);
@@ -99,14 +128,28 @@ export async function registerRoutes(app: FastifyInstance, config: Config, store
     enabled: ai.enabled,
     model: ai.enabled ? ai.model : null,
     chatAgent: agent.enabled,
+    phone: phone.enabled ? (phone.lastMode ?? 'unreachable') : null,
   }));
 
-  app.get('/api/session', async (req): Promise<SessionInfo> => ({
-    user: req.user ? publicUser(req.user) : null,
-    version: APP_VERSION,
-    kakaoMapKey: config.kakaoMapKey,
-    kakaoTalk: req.user?.kakaoTalk ?? false,
-  }));
+  app.get('/api/session', async (req, reply): Promise<SessionInfo> => {
+    // BE 카카오 로그인을 마치고 돌아오면(JSESSIONID) 그 사용자를 화면 계정과 이어요.
+    if (be.enabled && BeAuth.beCookie(req) && req.user?.kind !== 'kakao') {
+      const u = await be.me(req);
+      if (u) {
+        const user = store.userByKakao(u.id, u.nickname ?? '');
+        setSession(reply, req, user.id);
+        req.user = user;
+      }
+    }
+    return {
+      user: req.user ? publicUser(req.user) : null,
+      version: APP_VERSION,
+      kakaoMapKey: config.kakaoMapKey,
+      kakaoTalk: req.user?.kakaoTalk ?? false,
+      phoneMode: await phoneMode(),
+      kakaoLogin: be.enabled,
+    };
+  });
 
   // 카카오 로그인은 서버에 카카오 키가 생기면 /oauth2/authorization/kakao 로 바꿔요. 지금은 예시 계정.
   app.post('/api/auth/mock-login', async (req, reply) => {
@@ -125,6 +168,10 @@ export async function registerRoutes(app: FastifyInstance, config: Config, store
     const sid = req.cookies[COOKIE];
     if (sid) store.deleteSession(sid);
     reply.clearCookie(COOKIE, { path: '/' });
+    if (be.enabled) {
+      await be.logout(req);
+      reply.clearCookie('JSESSIONID', { path: '/' });
+    }
     return { ok: true };
   });
 
@@ -158,6 +205,7 @@ export async function registerRoutes(app: FastifyInstance, config: Config, store
     async (req, reply) => {
       const rec = store.chat(req.params.id, req.user!.id);
       if (!rec) return reply.code(404).send({ error: 'not_found', message: '대화를 찾지 못했어요.' });
+      await sync(rec);
       if (advance(rec.state, rec.internal, new Date())) store.markDirty();
       if (req.query.rev && Number(req.query.rev) === rec.state.rev) return reply.code(204).send();
       return rec.state;
@@ -191,10 +239,23 @@ export async function registerRoutes(app: FastifyInstance, config: Config, store
     async (req, reply) => {
       const rec = store.chat(req.params.id, req.user!.id);
       if (!rec) return reply.code(404).send({ error: 'not_found', message: '대화를 찾지 못했어요.' });
+      await sync(rec);
       advance(rec.state, rec.internal, new Date());
       const text = maskPersonal(req.body.text.trim());
       // 1) AI 폴더의 대화 에이전트가 있으면 자유로운 말은 에이전트가 이해해요.
       const intent = intentOf(text).kind;
+      // 실제 통화 중인 대화에서 "미팅 잡아줘"는 전화 에이전트로 확정 통화를 걸어요.
+      if (intent === 'plan' && rec.internal.real && phone.enabled) {
+        try {
+          userSays(rec.state, text, new Date());
+          await planRealVisits(rec.state, rec.internal, phone, null, new Date());
+        } catch (err) {
+          rec.state.messages.pop();
+          return sendDialogError(reply, err);
+        }
+        store.putChat(rec);
+        return rec.state;
+      }
       if (agent.enabled && AGENT_INTENTS.has(intent)) {
         const turn = await agent.turn(rec.state.id, text);
         const askingMore = turn?.intent === 'control' && /다른|더\s*보여|자세히|번째/.test(text);
@@ -202,12 +263,20 @@ export async function registerRoutes(app: FastifyInstance, config: Config, store
         if (turn && !askingMore && !(generic && ai.enabled)) {
           // 에이전트의 자체 검색 말풍선(예시 응답)은 빼고 첫 답(reply)만 써요. 동네 찾기는 이 서버가 해요.
           const reply = turn.messages?.find((m) => m.kind === 'reply')?.text ?? turn.reply;
+          const items = mapRecs(turn.backend);
           applyAgentTurn(
             rec.state,
             text,
             { ...turn, reply },
             mapAgentCard(turn.card, WORKPLACES),
             new Date(),
+            items.length
+              ? {
+                  items,
+                  notes: turn.backend?.notes ?? [],
+                  source: turn.backend?.source ?? '추천 엔진(실거래 DB)',
+                }
+              : null,
           );
           store.putChat(rec);
           return rec.state;
@@ -245,9 +314,40 @@ export async function registerRoutes(app: FastifyInstance, config: Config, store
     async (req, reply) => {
       const rec = store.chat(req.params.id, req.user!.id);
       if (!rec) return reply.code(404).send({ error: 'not_found', message: '대화를 찾지 못했어요.' });
+      await sync(rec);
       advance(rec.state, rec.internal, new Date());
+      const a = req.body;
       try {
-        handleAction(rec.state, rec.internal, req.body, ctxFor(req.user!));
+        // 전화 에이전트가 있으면 문의·확정 통화는 실제 에이전트로(없으면 시뮬레이션)
+        if (phone.enabled && a.type === 'startCalls') {
+          userSays(rec.state, '이대로 전화하기', new Date());
+          await phoneMode();
+          try {
+            await startRealCalls(rec.state, rec.internal, phone, {
+              now: new Date(),
+              useCalls: ctxFor(req.user!).useCalls,
+            });
+          } catch (err) {
+            rec.state.messages.pop();
+            throw err;
+          }
+        } else if (phone.enabled && rec.internal.real && a.type === 'planVisits') {
+          userSays(rec.state, '고른 방으로 미팅 잡아줘', new Date());
+          try {
+            await planRealVisits(rec.state, rec.internal, phone, a.listingIds ?? null, new Date());
+          } catch (err) {
+            rec.state.messages.pop();
+            throw err;
+          }
+        } else if (
+          phone.enabled &&
+          rec.internal.real?.visitRefs[(a as { visitId?: string }).visitId ?? ''] &&
+          a.type === 'acceptProposal'
+        ) {
+          await acceptRealProposal(rec.state, rec.internal, phone, a.visitId, new Date());
+        } else {
+          handleAction(rec.state, rec.internal, a, ctxFor(req.user!));
+        }
       } catch (err) {
         return sendDialogError(reply, err);
       }
@@ -261,6 +361,7 @@ export async function registerRoutes(app: FastifyInstance, config: Config, store
   app.get('/api/schedule', { preHandler: needUser }, async (req) => {
     const items: ScheduleItem[] = [];
     for (const rec of store.chatsOf(req.user!.id)) {
+      await sync(rec);
       if (advance(rec.state, rec.internal, new Date())) store.markDirty();
       const c = rec.state;
       for (const v of c.visits) {

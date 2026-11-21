@@ -46,6 +46,17 @@ export interface SimInternal {
   callsAnnounced: boolean;
   visitsAnnounced: boolean;
   test?: TestCallPlan | null;
+  /** 실제 전화 에이전트로 건 통화(있으면 시뮬레이션 대신 이 묶음을 따라가요) */
+  real?: RealCalls | null;
+}
+
+export interface RealCalls {
+  batches: { id: string; dongId: string; done: boolean }[];
+  confirmIds: string[];
+  /** 화면 매물 id -> 전화 에이전트 (문의 call_id, listing 순서) */
+  refs: Record<string, { callId: string; index: number }>;
+  /** 화면 방문 id -> 같은 방 */
+  visitRefs: Record<string, { callId: string; index: number }>;
 }
 
 export const emptyInternal = (): SimInternal => ({

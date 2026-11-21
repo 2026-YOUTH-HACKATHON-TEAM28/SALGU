@@ -13,6 +13,11 @@ export function dongName(id: string): string {
   return state.meta?.dongs.find((d) => d.id === id)?.name ?? '';
 }
 
+/** 통화에서 확인하지 못한 값인지 */
+export function miss(l: Listing, key: string): boolean {
+  return Boolean(l.unverified?.includes(key));
+}
+
 export function typeName(t: Listing['type']): string {
   return t === 'officetel' ? '오피스텔' : '원룸·빌라';
 }
@@ -34,13 +39,18 @@ export function listingCard(
       <span class="lno">${l.no}</span>
       <div class="listing-title">
         <strong>${l.building}</strong>
-        <span class="muted">${dongName(l.dongId)} · ${typeName(l.type)} ${l.area}㎡ · ${l.floor}층</span>
+        <span class="muted"
+          >${dongName(l.dongId)} · ${typeName(l.type)}
+          ${miss(l, 'area') ? '면적 확인 필요' : `${l.area}㎡`}${
+            miss(l, 'floor') ? '' : ` · ${l.floor}층`
+          }</span
+        >
       </div>
       ${badge(contact, { live: l.contact === 'contacting', testid: 'contact-status' })}
     </div>
     <p class="listing-price">
-      <span class="money">${depRent(l.deposit, l.rent)}</span>
-      <span class="muted">보증금/월세(만 원) · 관리비 ${l.fee}만</span>
+      <span class="money">${miss(l, 'price') ? '가격 확인 필요' : depRent(l.deposit, l.rent)}</span>
+      <span class="muted">보증금/월세(만 원) · 관리비 ${miss(l, 'fee') ? '확인 필요' : `${l.fee}만`}</span>
     </p>
     <div class="listing-check">
       ${badge(PRICE_LABEL[l.priceVerdict], { testid: 'price-status' })}

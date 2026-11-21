@@ -189,6 +189,8 @@ export interface Listing {
   slots: string[];
   priceVerdict: PriceVerdict;
   contact: ContactStatus;
+  /** 통화에서 확인하지 못한 값(화면에 '확인 필요'): area, floor, price, fee, moveIn */
+  unverified?: string[];
 }
 
 export type VisitStatus = 'requesting' | 'confirmed' | 'proposed' | 'failed' | 'cancelled';
@@ -235,7 +237,27 @@ export type Card =
   | { kind: 'rooms'; id: string }
   | { kind: 'plan'; id: string }
   | { kind: 'final'; id: string; ranking: { listingId: string; burden: number }[] }
-  | { kind: 'concept'; id: string; title: string; body: string[] };
+  | { kind: 'concept'; id: string; title: string; body: string[] }
+  | { kind: 'recs'; id: string; source: string; notes: string[]; items: RecItem[] };
+
+/** 대화 에이전트가 추천 엔진(실거래 DB)에서 받아 온 후보(과거 계약, 지금 나온 방이 아님) */
+export interface RecItem {
+  name: string;
+  address: string | null;
+  housingType: string | null;
+  rentType: string | null;
+  deposit: number | null;
+  rent: number | null;
+  area: number | null;
+  floor: number | null;
+  built: number | null;
+  contractDate: string | null;
+  deals: number | null;
+  score: number | null;
+  reasons: string[];
+  station: string | null;
+  walkMin: number | null;
+}
 
 export interface Message {
   id: string;
@@ -307,6 +329,10 @@ export interface SessionInfo {
   version: number;
   kakaoMapKey: string;
   kakaoTalk: boolean;
+  /** 전화: null 시뮬레이션(전화 에이전트 없음), mock 에이전트가 걸지 않음, demo 시연 번호로 실제 발신 */
+  phoneMode: 'mock' | 'demo' | 'live' | null;
+  /** BE 카카오 로그인을 쓸 수 있는지(아니면 예시 계정) */
+  kakaoLogin: boolean;
 }
 
 export interface ScheduleItem {

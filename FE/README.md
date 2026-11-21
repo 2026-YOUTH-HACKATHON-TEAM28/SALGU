@@ -65,6 +65,16 @@ cd ../AI/chat_agent && python -m venv .venv && .venv/Scripts/python -m pip insta
 .venv/Scripts/python run_server.py 8095     # FE/.env 에 CHAT_AGENT_URL=http://127.0.0.1:8095
 ```
 
+전화 에이전트(`AI/phone_agent`)는 `PHONE_AGENT_MODE=mock` 으로 띄우면 실제로 전화하지 않아요.
+
+```bash
+cd ../AI/phone_agent && python -m venv .venv && .venv/Scripts/python -m pip install -r requirements.txt
+PHONE_AGENT_MODE=mock .venv/Scripts/python -m uvicorn phone_agent.app:app --app-dir src --port 8090
+# FE/.env 에 PHONE_AGENT_URL=http://127.0.0.1:8090
+```
+
+카카오 로그인은 BE(`BE/`, Java 21)를 띄우고 `BE_URL` 을 넣으면 연결돼요. 화면 서버가 `/oauth2/authorization/kakao`, `/login/oauth2/code/kakao` 를 BE 로 넘기고, 돌아온 `JSESSIONID` 로 BE `/api/me` 를 물어 화면 계정과 이어요. BE 의 `app.frontend-url` 은 이 사이트 주소로, 카카오 개발자 콘솔의 Redirect URI 는 `<사이트 주소>/login/oauth2/code/kakao` 로 맞춰 주세요.
+
 환경 변수는 [.env.example](./.env.example) 를 보세요. `MOCK_TIME_SCALE` 을 키우면 mock 통화가 빨리 끝나요.
 
 ## 시험

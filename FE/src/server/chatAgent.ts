@@ -2,7 +2,7 @@
  * 사용자의 말을 에이전트에 보내 '조건 카드'(contracts/condition_card.md, v0.2)와 답 문장을 받고,
  * 화면이 쓰는 조건(Conditions)으로 바꿔요. 동네 찾기·전화·미팅과 숫자는 이 서버(계산 엔진)가 맡아요.
  * 주소가 없거나 실패하면 null 을 돌려주고, 부르는 쪽은 규칙(+OpenAI)으로 답해요. */
-import type { CondKey, CondSource, HouseType, Priority, Workplace } from '../shared/types.js';
+import type { CondKey, CondSource, HouseType, Priority, RecItem, Workplace } from '../shared/types.js';
 import { findWorkplace } from './mock/nlu.js';
 
 export interface AgentCondItem<T = unknown> {
@@ -36,6 +36,42 @@ export interface AgentTurn {
   ready: boolean;
   missing: string[];
   changed: string[];
+  backend?: AgentBackend | null;
+}
+
+export interface AgentBackend {
+  ok: boolean;
+  mock: boolean;
+  source?: string;
+  count?: number;
+  notes?: string[];
+  candidates?: Record<string, unknown>[];
+}
+
+/** 추천 엔진 후보 -> 화면 카드(실거래 DB 결과일 때만, 예시 응답은 버려요) */
+export function mapRecs(b: AgentBackend | null | undefined): RecItem[] {
+  if (!b || !b.ok || b.mock) return [];
+  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+  const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v : null);
+  return (b.candidates ?? []).slice(0, 5).map((c) => ({
+    name: str(c.name) ?? '이름 없음',
+    address: str(c.address),
+    housingType: str(c.housing_type),
+    rentType: str(c.rent_type),
+    deposit: num(c.deposit_manwon),
+    rent: num(c.monthly_rent_manwon),
+    area: num(c.area_m2),
+    floor: num(c.floor),
+    built: num(c.construction_year),
+    contractDate: str(c.contract_date),
+    deals: num(c.transaction_count),
+    score: num(c.score),
+    reasons: Array.isArray(c.reasons)
+      ? (c.reasons as unknown[]).filter((r): r is string => typeof r === 'string')
+      : [],
+    station: str(c.station),
+    walkMin: num(c.walk_to_station_min),
+  }));
 }
 
 /** 에이전트 조건 하나를 화면 조건으로 바꾼 값 */

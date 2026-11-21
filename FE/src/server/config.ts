@@ -22,6 +22,16 @@ export const config = {
   aiDailyCap: num('AI_DAILY_CAP', 400),
   /** AI 폴더 대화 에이전트(AI/chat_agent) 주소. 비우면 이 서버 규칙(+OpenAI)으로만 답해요 */
   chatAgentUrl: process.env.CHAT_AGENT_URL || '',
+  /** AI 폴더 전화 에이전트(AI/phone_agent) 주소. 비우면 통화는 이 서버 시뮬레이션 */
+  phoneAgentUrl: process.env.PHONE_AGENT_URL || '',
+  /** BE(Spring Boot) 주소. 있으면 카카오 로그인을 BE 로 넘겨요(예: http://127.0.0.1:8081) */
+  beUrl: process.env.BE_URL || '',
+  /** (로컬 시험용) 전화 에이전트 mock 모드에 보낼 결과 시나리오. 예: listing,two_rooms */
+  phoneMockScenario: process.env.PHONE_AGENT_MOCK_SCENARIO || '',
+  /** 실제 전화일 때 동네마다 걸 사무소 수(시연 번호로 가니 기본 1곳) */
+  phoneBrokersPerDong: num('PHONE_BROKERS_PER_DONG', 1),
+  /** 시연에서 같은 사무소 하루 1번 규칙에 막히지 않게 등록번호에 시각을 붙일지 */
+  phoneUniqueReg: process.env.PHONE_UNIQUE_REG !== '0',
   timeScale: num('MOCK_TIME_SCALE', 1),
   clientDir: resolve(process.env.CLIENT_DIR || 'dist/client'),
   isProd: process.env.NODE_ENV === 'production',

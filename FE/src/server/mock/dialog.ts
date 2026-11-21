@@ -21,6 +21,7 @@ import { DEFAULTS, searchDongs, tighten, valuesOf, convRent } from './engine.js'
 import { extractConds, intentOf } from './nlu.js';
 import { CONCEPTS, conceptOf } from './wiki.js';
 import type { MappedCard } from '../chatAgent.js';
+import type { RecItem } from '../../shared/types.js';
 import {
   VISIT_SLOTS,
   emptyInternal,
@@ -60,9 +61,9 @@ export class DialogError extends Error {
 }
 
 let seq = 0;
-const mid = (p: string) => `${p}${Date.now().toString(36)}${(seq++).toString(36)}`;
+export const mid = (p: string) => `${p}${Date.now().toString(36)}${(seq++).toString(36)}`;
 
-const SRC = {
+export const SRC = {
   deals: { label: '서울시 부동산 전월세가 정보(최근 12개월 계약)', kind: 'example' },
   transit: { label: '카카오맵 대중교통 경로', kind: 'example' },
   bus: { label: '서울시 버스운행노선', kind: 'example' },
@@ -102,7 +103,7 @@ export function newChat(now: Date): { state: ChatState; internal: SimInternal } 
 
 /* ---------- 도움 함수 ---------- */
 
-function say(
+export function say(
   chat: ChatState,
   text: string,
   opts: { cards?: Card[]; chips?: string[]; sources?: SourceTag[] } = {},
@@ -121,7 +122,7 @@ function say(
   return m;
 }
 
-function userSays(chat: ChatState, text: string, now: Date): void {
+export function userSays(chat: ChatState, text: string, now: Date): void {
   chat.messages.push({
     id: mid('m'),
     role: 'user',
@@ -135,7 +136,7 @@ function userSays(chat: ChatState, text: string, now: Date): void {
 }
 
 const STAGE_ORDER: Stage[] = ['cond', 'dong', 'call', 'pick', 'meet'];
-function advanceStage(chat: ChatState, stage: Stage): void {
+export function advanceStage(chat: ChatState, stage: Stage): void {
   if (STAGE_ORDER.indexOf(stage) > STAGE_ORDER.indexOf(chat.stage)) chat.stage = stage;
 }
 
@@ -353,6 +354,24 @@ function startCalls(chat: ChatState, internal: SimInternal, ctx: Ctx): void {
 /* ---------- 미팅 ---------- */
 
 function planVisits(chat: ChatState, internal: SimInternal, listingIds: string[] | null, ctx: Ctx): void {
+  const visits = preparePlan(chat, listingIds, ctx.now);
+  internal.visits = planConfirmations(
+    visits.map((v) => ({ visit: v, listing: chat.listings.find((l) => l.id === v.listingId) as Listing })),
+    ctx.now.getTime(),
+    ctx.scale,
+    mid('s'),
+  );
+  internal.visitsAnnounced = false;
+}
+
+/** 고른 방으로 방문 계획(동선 순서·시각)을 만들고 '요청 중'으로 둬요. 확정 통화는 부르는 쪽(시뮬레이션·전화 에이전트)이 해요.
+ *  timeOf 를 주면 방마다 요청할 시각을 바꿀 수 있어요(예: 중개사가 된다고 한 시각). */
+export function preparePlan(
+  chat: ChatState,
+  listingIds: string[] | null,
+  now: Date,
+  timeOf?: (l: Listing, planned: Date) => Date,
+): Visit[] {
   if (!chat.listings.length)
     throw new DialogError(
       'no_listing',
@@ -363,12 +382,12 @@ function planVisits(chat: ChatState, internal: SimInternal, listingIds: string[]
   const ids = listingIds ?? chat.selectedListingIds;
   const ok = chat.listings.filter((l) => ids.includes(l.id) && l.contact !== 'failed');
   if (!ok.length) throw new DialogError('no_pick', '미팅 잡을 방을 하나 이상 골라 주세요.');
-  const start = slotStart(chat.prep?.visitSlot ?? 'sat-pm', ctx.now);
+  const start = slotStart(chat.prep?.visitSlot ?? 'sat-pm', now);
   const route = planRoute(ok, start);
   const visits: Visit[] = route.map((r, i) => ({
     id: mid('v'),
     listingId: r.listing.id,
-    at: localIso(r.at),
+    at: localIso(timeOf ? timeOf(r.listing, r.at) : r.at),
     status: 'requesting',
     proposedAt: null,
     order: i + 1,
@@ -394,13 +413,6 @@ function planVisits(chat: ChatState, internal: SimInternal, listingIds: string[]
     end: localIso(new Date((last?.at ?? start).getTime() + 30 * 60000)),
     visitIds: visits.map((v) => v.id),
   };
-  internal.visits = planConfirmations(
-    visits.map((v) => ({ visit: v, listing: chat.listings.find((l) => l.id === v.listingId) as Listing })),
-    ctx.now.getTime(),
-    ctx.scale,
-    mid('s'),
-  );
-  internal.visitsAnnounced = false;
   advanceStage(chat, 'meet');
   say(
     chat,
@@ -408,9 +420,10 @@ function planVisits(chat: ChatState, internal: SimInternal, listingIds: string[]
 - ${dateOnly(chat.plan.start)} ${hm(chat.plan.start)}부터 ${visits.length}곳 방문
 - 확정된 방문만 일정 탭에 넣어요`,
     { cards: [{ kind: 'plan', id: mid('k') }], sources: [SRC.calls, SRC.transit] },
-    ctx.now,
+    now,
   );
   chat.live = true;
+  return visits;
 }
 
 function showFinal(chat: ChatState, now: Date): void {
@@ -441,7 +454,7 @@ function showFinal(chat: ChatState, now: Date): void {
 export function advance(chat: ChatState, internal: SimInternal, now: Date): boolean {
   let changed = false;
   const t = now.getTime();
-  if (chat.batch && !chat.batch.doneAt) {
+  if (chat.batch && !chat.batch.doneAt && !internal.real) {
     let allDone = true;
     chat.batch.calls = chat.batch.calls.map((call) => {
       const plan = internal.calls.find((p) => p.callId === call.id);
@@ -513,7 +526,7 @@ export function advance(chat: ChatState, internal: SimInternal, now: Date): bool
   return changed;
 }
 
-function announceCalls(chat: ChatState, now: Date): void {
+export function announceCalls(chat: ChatState, now: Date): void {
   const calls = chat.batch?.calls ?? [];
   const mine = chat.listings.filter((l) => calls.some((c) => c.id === l.callId));
   for (const c of calls) {
@@ -549,7 +562,7 @@ function announceCalls(chat: ChatState, now: Date): void {
   );
 }
 
-function announceVisits(chat: ChatState, now: Date): void {
+export function announceVisits(chat: ChatState, now: Date): void {
   const ids = chat.plan?.visitIds ?? [];
   const vs = chat.visits.filter((v) => ids.includes(v.id));
   const ok = vs.filter((v) => v.status === 'confirmed').length;
@@ -563,7 +576,7 @@ function announceVisits(chat: ChatState, now: Date): void {
   );
 }
 
-function touch(chat: ChatState, now: Date): void {
+export function touch(chat: ChatState, now: Date): void {
   chat.rev += 1;
   chat.updatedAt = now.toISOString();
 }
@@ -723,6 +736,7 @@ export function applyAgentTurn(
   agent: { reply: string; intent: string; via: string },
   mapped: MappedCard,
   now: Date,
+  recs: { items: RecItem[]; notes: string[]; source: string } | null = null,
 ): void {
   const text = maskPersonal(raw.trim()).slice(0, 500);
   userSays(chat, text, now);
@@ -748,6 +762,12 @@ export function applyAgentTurn(
     const m = condCard(chat, mapped.ask);
     m.text = [agent.reply, ...notes].filter(Boolean).join('\n');
     m.sources = src;
+    if (recs?.items.length) {
+      // 추천 엔진(실거래 DB) 후보: 조건 카드 아래에 함께 보여 줘요.
+      m.text += `\n과거 실거래 기준 후보 ${recs.items.length}곳도 찾았어요. 지금 나온 방인지는 중개사무소 전화로 확인해요.`;
+      m.cards.push({ kind: 'recs', id: mid('k'), source: recs.source, notes: recs.notes, items: recs.items });
+      m.sources = [...src, { label: recs.source || '추천 엔진(실거래 DB)', kind: 'real' }];
+    }
   } else {
     say(chat, agent.reply, { chips: chat.search ? [] : ['조건 골라서 찾기'], sources: src }, now);
   }

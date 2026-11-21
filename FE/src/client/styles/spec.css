@@ -1000,3 +1000,39 @@ button.pin-wrap {
     flex: 1;
   }
 }
+
+/* 실거래 기준 추천(추천 엔진) */
+.rec-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.rec {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 10px 12px;
+  display: grid;
+  gap: 4px;
+}
+.rec-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.rec-title {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+}
+.rec-title .muted,
+.rec-price .muted {
+  font-size: 12.5px;
+}
+.rec-price {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+}

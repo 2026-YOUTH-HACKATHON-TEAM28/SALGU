@@ -166,6 +166,12 @@ export async function boot(): Promise<void> {
     update((s) => {
       s.boot = 'ready';
     });
+    // BE 카카오 로그인에서 돌아온 결과(?loginError=true)를 알려 주고 주소는 깨끗이 해요.
+    const q = new URLSearchParams(location.search);
+    if (q.has('loginError')) {
+      toast('카카오 로그인을 마치지 못했어요. 다시 시도해 주세요.', 'error');
+      history.replaceState(null, '', location.pathname);
+    }
   } catch (err) {
     update((s) => {
       s.boot = 'error';
@@ -175,6 +181,11 @@ export async function boot(): Promise<void> {
 }
 
 export async function login(kind: 'mock' | 'guest'): Promise<void> {
+  if (kind === 'mock' && state.session?.kakaoLogin) {
+    // BE 가 연결돼 있으면 진짜 카카오 로그인으로 보내요(돌아오면 /api/session 이 계정을 이어요).
+    location.assign('/oauth2/authorization/kakao');
+    return;
+  }
   try {
     const { user } = kind === 'mock' ? await api.mockLogin() : await api.guest();
     const session = await api.session();
@@ -523,6 +534,7 @@ export function cardStage(kind: string): Stage | null {
       return 'cond';
     case 'dongs':
     case 'noMatch':
+    case 'recs':
       return 'dong';
     case 'callPrep':
     case 'calls':
