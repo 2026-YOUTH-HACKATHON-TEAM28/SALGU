@@ -137,7 +137,7 @@
 | `broker_slots[]` | 중개사가 방을 보여 줄 수 있다고 한 시각(시·분과 날짜를 대화에서 확인한 것만). `end`는 말했을 때만. `in_user_window`는 사용자가 고른 시간대 안인지 |
 | `availability_note` | 구체적 시각 없이 말한 가능 시간("평일 오후는 언제든") |
 | `pet_allowed` | 반려동물 가능 여부(`true`/`false`). 중개사가 말했고 근거 줄이 있을 때만, 아니면 `null`(살구는 `prep.pet`이 `true`일 때 물어봅니다) |
-| `registry_reply` | 등기부 요청에 대한 답: `will_send`, `at_visit`, `refused`, `null` |
+| `registry_reply` | 등기부 요청에 대한 답: `will_send`, `at_visit`, `refused`, `null`. 11-21 구현은 등기부를 묻지 않으므로 중개사가 먼저 말했을 때만 값이 있고 보통 `null` |
 | `registry_docs[]` | 등기부. 살구 번호로 들어온 문자·MMS(`source: "sms"`)와 사용자가 올린 PDF(`source: "upload"`, `type: "upload"`)가 함께 들어옵니다. 첨부는 `media` 주소로 받습니다. `listing_index`는 업로드할 때 방을 지정했으면 그 방(문자는 `null`). 문자 본문의 주민등록번호는 가립니다. |
 | `unverified` | 확인되지 않아 비운 값의 이름. 화면에는 '확인 필요'로 |
 | `corrections[]` | 중개사가 말을 고친 흔적 `{field, value 또는 dropped, reason, line}`. `corrected_value`(고친 뒤 값을 받음, `value`), `corrected`(고치기 전 값이라 버림, `dropped`), `echoed`(AI가 말한 조건을 되풀이한 값이라 버림), `hedged`(중개사도 확실하지 않아 버림). 화면에 "통화 중 바뀐 값"으로 보여 줄 수 있습니다. 전사 보정도 여기에 남습니다: `name_matched`(전사된 건물 이름을 참고 건물 이름에 맞춤, `heard`에 들린 값), `read_back`(AI가 되읽고 중개사가 "네"라고 한 입주 시기로 받음, `heard`에 들린 값). |

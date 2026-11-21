@@ -18,7 +18,6 @@ DOC_INQUIRY = '''[첫마디]
 - 면적: 전용 25㎡ 안팎 (상대가 물을 때만 말할 것)
 - 방이 있으면: 건물 이름과 층(호수를 알려 주시면 호수도), 보증금·월세·관리비·입주 가능일을 확인
 - 입주 가능일: 들으면 들은 표현 그대로 한 번만 짧게 되물을 것(예: "다음 달 초부터요?"). 다른 조건은 되풀이하지 않음
-- 등기부: 방이 있으면 등기부등본을 방문 전에 미리 받아 볼 수 있는지 물을 것. 된다고 하면 "지금 전화드린 이 번호로 문자 주시면 돼요"라고 안내
 - 방문 가능 시간: 손님이 가능한 시간은 2026년 11월 21일 토요일 오후 2시부터 오후 4시까지. 이 중 방을 보여 주실 수 있는 시간을 여쭤볼 것 (약속은 잡지 않음)
 - 마무리: "손님께 여쭤보고 보러 갈 시간 정해서 다시 연락드릴게요. 감사합니다."
 
@@ -86,10 +85,11 @@ def test_confirm_matches_documented_example():
     assert build_instruction(confirm(), now=NOW) == DOC_CONFIRM
 
 
-def test_registry_number_is_never_read_out():
+def test_registry_is_not_asked_and_number_never_read_out():
+    # 등기부 문자 수신(C6)을 만들지 않아 문자로 보내 달라고 하지 않음(11-21 팀 결정)
     text = build_instruction(inquiry(), now=NOW, registry_number="07012345678")
     assert "07012345678" not in text and "0701" not in text
-    assert "지금 전화드린 이 번호로 문자 주시면 돼요" in text
+    assert "등기부" not in text and "문자" not in text
 
 
 def test_unchecked_share_lines_are_left_out():
