@@ -178,7 +178,7 @@ function condCard(chat: ChatState, ask?: Extract<Card, { kind: 'cond' }>['ask'])
     : '알려 주신 조건을 정리했어요. 맞으면 [이대로 찾기]를 눌러 주세요.';
   return say(chat, text, {
     cards: [{ kind: 'cond', id: mid('k'), ...(ask ? { ask } : {}) }],
-    chips: missing.length ? [] : ['이대로 찾아줘', '출퇴근이 제일 중요해'],
+    chips: missing.length ? [] : ['출퇴근이 제일 중요해'],
   });
 }
 

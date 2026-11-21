@@ -112,8 +112,15 @@ function progressView(): TemplateResult | typeof nothing {
 
 let lastCount = 0;
 let lastChatId = '';
+let wasNearBottom = true;
 
-/** 새 말이 생기면 맨 아래로(사용자가 위를 보고 있으면 그대로) */
+/** 다시 그리기 전에: 사용자가 맨 아래 근처를 보고 있었는지 */
+export function beforeChatRender(): void {
+  const log = document.querySelector<HTMLElement>('.log');
+  wasNearBottom = !log || log.scrollHeight - log.scrollTop - log.clientHeight < 160;
+}
+
+/** 새 말이 생기면 새 답변의 처음이 보이게(사용자가 위를 보고 있었으면 그대로) */
 export function afterChatRender(): void {
   const log = document.querySelector<HTMLElement>('.log');
   const chat = state.chat;
@@ -125,12 +132,21 @@ export function afterChatRender(): void {
     log.scrollTop = log.scrollHeight;
     return;
   }
-  if (count !== lastCount) {
-    const nearBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 400;
-    lastCount = count;
-    if (nearBottom || chat.messages.at(-1)?.role === 'user')
-      log.scrollTo({ top: log.scrollHeight, behavior: 'smooth' });
+  if (count === lastCount) return;
+  const grew = count > lastCount;
+  lastCount = count;
+  const last = chat.messages.at(-1);
+  if (!grew || (!wasNearBottom && last?.role !== 'user')) return;
+  if (state.pending || last?.role === 'user') {
+    log.scrollTo({ top: log.scrollHeight, behavior: 'smooth' });
+    return;
   }
+  // 살구 답변: 첫 새 답변의 머리가 보이게
+  const rows = log.querySelectorAll<HTMLElement>('[data-testid="msg-bot"]');
+  const target = rows[rows.length - 1];
+  if (!target) return;
+  const top = target.offsetTop - log.offsetTop - 12;
+  log.scrollTo({ top, behavior: 'smooth' });
 }
 
 function composer() {

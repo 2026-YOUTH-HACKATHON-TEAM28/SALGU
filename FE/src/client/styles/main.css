@@ -1022,3 +1022,295 @@ p {
     bottom: 80px;
   }
 }
+
+/* ---------- 조건 카드 ---------- */
+.cond section {
+  display: grid;
+  gap: 6px;
+}
+.cond .guessed {
+  border-top: 1px dashed var(--line);
+  padding-top: 10px;
+}
+.cond-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+}
+.cond-row {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  gap: 10px;
+  align-items: start;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line-2);
+}
+.cond-row:last-child {
+  border-bottom: 0;
+}
+.cond-k {
+  color: var(--ink-3);
+  font-size: 14px;
+  padding-top: 3px;
+}
+.cond-v {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  min-width: 0;
+}
+.cond-row.guess .cond-v > span:first-child,
+.cond-row.guess .value-btn {
+  border-bottom: 1px dashed var(--ink-3);
+}
+.why {
+  flex-basis: 100%;
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+.need {
+  color: var(--bad);
+  font-weight: 700;
+}
+.value-btn {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--ink-3);
+  padding: 2px 0;
+}
+.edit-hint {
+  font-size: 12px;
+  color: var(--apricot-dark);
+  font-weight: 600;
+}
+.inline-edit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.inline-edit input {
+  width: 96px;
+  min-height: 34px;
+  border: 1px solid var(--apricot);
+  border-radius: 8px;
+  padding: 0 8px;
+}
+.inline-edit .step {
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  font-weight: 700;
+}
+.unit {
+  font-size: 13px;
+  color: var(--ink-3);
+}
+.more {
+  justify-self: start;
+}
+.ask {
+  background: var(--apricot-soft);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  display: grid;
+  gap: 8px;
+}
+
+/* ---------- 작은 지도 ---------- */
+.minimap {
+  display: grid;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+}
+.minimap svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+.minimap-cap {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+.mm-bg {
+  fill: #f4efe9;
+}
+.mm-grid {
+  stroke: #e9e1d8;
+  stroke-width: 1;
+}
+.minimap text {
+  font-size: 10.5px;
+  text-anchor: middle;
+  fill: var(--ink-2);
+  font-weight: 600;
+}
+.mm-area {
+  fill: rgba(240, 138, 75, 0.15);
+}
+.mm-dong .mm-pin {
+  fill: var(--apricot);
+}
+.minimap .mm-no {
+  fill: #fff;
+  font-size: 10px;
+}
+.mm-company rect {
+  fill: var(--ink);
+}
+.mm-company path {
+  stroke: #fff;
+  stroke-width: 1.4;
+}
+.mm-listing .mm-pin {
+  fill: currentColor;
+}
+.mm-listing.tone-ok {
+  color: var(--ok);
+}
+.mm-listing.tone-warn {
+  color: var(--warn);
+}
+.mm-listing.tone-bad {
+  color: var(--bad);
+}
+.mm-listing.tone-muted {
+  color: var(--muted);
+}
+.mm-listing.tone-info {
+  color: var(--info);
+}
+.mm-listing,
+.mm-listing.tone-ok,
+.mm-listing.tone-warn,
+.mm-listing.tone-bad,
+.mm-listing.tone-muted,
+.mm-listing.tone-info {
+  background: none;
+}
+.mm-route {
+  fill: none;
+  stroke: var(--apricot-dark);
+  stroke-width: 2;
+  stroke-dasharray: 5 4;
+}
+
+/* ---------- 동네 카드 ---------- */
+.dong-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.dong-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 10px;
+}
+.dong-check {
+  width: 20px;
+  height: 20px;
+  margin-top: 2px;
+  accent-color: var(--apricot);
+  flex: none;
+}
+.dong-main {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  background: none;
+  border: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.dong-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 8px;
+}
+.rank {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--apricot);
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+.score {
+  margin-left: auto;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--apricot-dark);
+}
+.facts {
+  margin: 0;
+  display: grid;
+  gap: 3px;
+  font-size: 13.5px;
+}
+.facts > div {
+  display: grid;
+  grid-template-columns: 64px 1fr;
+  gap: 8px;
+}
+.facts dt {
+  color: var(--ink-3);
+}
+.facts dd {
+  margin: 0;
+  min-width: 0;
+}
+.table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 13px;
+}
+th,
+td {
+  padding: 7px 9px;
+  border-bottom: 1px solid var(--line-2);
+  text-align: left;
+  white-space: nowrap;
+}
+th {
+  background: var(--bg);
+  color: var(--ink-2);
+  font-weight: 600;
+}
+.plain {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.loss li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}

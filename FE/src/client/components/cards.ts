@@ -1,5 +1,7 @@
 import { html, type TemplateResult } from 'lit-html';
 import type { Card, Message } from '../../shared/types.js';
+import { condCard, condFormCard } from './cards/cond.js';
+import { dongDetailCard, dongsCard, noMatchCard } from './cards/dongs.js';
 
 function conceptCard(c: Extract<Card, { kind: 'concept' }>) {
   return html`<article class="card concept">
@@ -11,6 +13,16 @@ function conceptCard(c: Extract<Card, { kind: 'concept' }>) {
 /** 카드 종류별로 그려요. 지난 카드는 접거나 읽기 전용으로 보여요. */
 export function renderCard(card: Card, _msg: Message): TemplateResult {
   switch (card.kind) {
+    case 'cond':
+      return condCard(card);
+    case 'condForm':
+      return condFormCard(card);
+    case 'dongs':
+      return dongsCard(card);
+    case 'dongDetail':
+      return dongDetailCard(card);
+    case 'noMatch':
+      return noMatchCard(card);
     case 'concept':
       return conceptCard(card);
     default:
