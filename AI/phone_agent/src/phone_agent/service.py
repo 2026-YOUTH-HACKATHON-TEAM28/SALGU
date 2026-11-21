@@ -12,7 +12,9 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable, Optional
 
+from . import policy
 from .config import KST, Settings
+from .policy import PolicyError
 from .provider import ProviderError
 from .schemas import VERSION, BatchRequest, CallRequest
 
@@ -20,6 +22,7 @@ ON_LINE = ("queued", "ringing", "in_progress")
 PENDING = ("waiting", "scheduled")
 ACTIVE = PENDING + ON_LINE + ("retry_wait", "analyzing")
 FINAL = ("done", "failed", "rejected")
+MAX_ATTEMPTS = 2  # 안 받으면 1번만 다시
 
 LISTING_FIELDS = (
     "location", "building", "floor", "unit", "area_m2", "deposit_manwon", "monthly_rent_manwon",
@@ -87,14 +90,30 @@ class CallService:
             if existing:
                 self._advance()
                 return existing, False
+            policy.check_mode(self.settings)
             now = self.now()
             batch = self._new_batch("inquiry", request.approval_id, now)
             for i, call_request in enumerate(request.calls()):
                 scenario = scenarios[i] if scenarios and i < len(scenarios) else None
-                rec = self._new_rec(call_request, batch, scenario, now)
-                batch["call_ids"].append(rec["call_id"])
+                self._admit(call_request, batch, scenario, now)
             self._advance()
             return batch, True
+
+    def _admit(self, request: CallRequest, batch: dict, scenario: Optional[str], now: datetime,
+               parent_call_id: Optional[str] = None) -> dict:
+        """사무소별 검사 뒤 통화 기록을 만든다. 걸 수 없는 통화는 rejected로 남긴다."""
+        try:
+            scheduled = policy.check(request, now, list(self.store.calls.values()), self.settings)
+            error = None
+        except PolicyError as exc:
+            scheduled, error = None, exc
+        rec = self._new_rec(request, batch, scenario, now, parent_call_id)
+        batch["call_ids"].append(rec["call_id"])
+        if error:
+            rec.update(status="rejected", error=error.code, message=error.message)
+        elif scheduled:
+            rec.update(status="scheduled", scheduled_at=iso(scheduled))
+        return rec
 
     def _find_batch(self, kind: str, approval_id: str) -> Optional[dict]:
         for batch in self.store.batches.values():
@@ -127,7 +146,7 @@ class CallService:
             "provider_call_id": None, "dialed_to": None, "attempts": 0,
             "created_at": iso(now), "started_at": None, "ended_at": None,
             "analyzing_since": None, "polled_at": None, "transcript_requested": False,
-            "result": None, "registry_docs": [], "error": None,
+            "result": None, "registry_docs": [], "error": None, "message": None,
         }
         self.store.calls[call_id] = rec
         return rec
@@ -163,13 +182,51 @@ class CallService:
     def _line_busy(self) -> bool:
         return any(r["status"] in ON_LINE for r in self.store.calls.values())
 
+    @staticmethod
+    def _due(rec: dict, now: datetime) -> bool:
+        status = rec["status"]
+        if status == "waiting":
+            return True
+        if status == "scheduled":
+            return parse(rec["scheduled_at"]) <= now
+        if status == "retry_wait":
+            return parse(rec["retry_at"]) <= now
+        return False
+
+    def _line_free_at(self) -> Optional[datetime]:
+        """앞 통화가 끊긴 시각 + 통화 사이 쉬는 시간."""
+        ends = [parse(r["ended_at"]) for r in self.store.calls.values() if r["attempts"] and r["ended_at"]]
+        if not ends or not self.settings.call_gap_sec:
+            return None
+        return max(ends) + timedelta(seconds=self.settings.call_gap_sec)
+
     def _dispatch(self, now: datetime) -> None:
-        """회선이 비어 있으면 다음 통화를 건다(한 번에 한 통, 접수 순서대로)."""
+        """회선이 비어 있으면 다음 통화를 건다.
+
+        한 번에 한 통. 다시 걸 차례가 된 통화 먼저, 그다음 접수 순서.
+        앞 통화가 끊기면 바로 건다(결과 추출을 기다리지 않음).
+        """
         while not self._line_busy():
-            waiting = [r for r in self.store.calls.values() if r["status"] == "waiting"]
-            if not waiting:
+            due = [r for r in self.store.calls.values() if self._due(r, now)]
+            if not due:
                 return
-            self._dial(min(waiting, key=lambda r: r["order"]), now)
+            free_at = self._line_free_at()
+            if free_at and now < free_at:
+                return
+            if not policy.is_open(now, self.settings):
+                at = iso(policy.next_open(now, self.settings))
+                for rec in due:
+                    if rec["status"] == "retry_wait":
+                        rec["retry_at"] = at
+                    else:
+                        rec.update(status="scheduled", scheduled_at=at)
+                return
+            rec = min(due, key=lambda r: (r["status"] != "retry_wait", r["order"]))
+            if policy.deadline_passed(self._request_of(rec), now):
+                rec.update(status="failed", error="window_passed",
+                           message=policy.MESSAGES["window_passed"], ended_at=iso(now))
+                continue
+            self._dial(rec, now)
 
     def _request_of(self, rec: dict) -> CallRequest:
         return CallRequest.model_validate(rec["request"])
@@ -178,9 +235,27 @@ class CallService:
         """통화별 지시문. C3에서 instruction.build_instruction으로 만든다."""
         return ""
 
+    def _sms_draft(self, request: CallRequest) -> str:
+        """두 번 걸어도 안 받았을 때의 문자 초안(보내지 않음). C3에서 instruction.build_sms_draft로 만든다."""
+        return (f"안녕하세요, {request.broker.name}이죠? 집을 구하는 분의 요청으로 연락드린 AI 비서 살구입니다. "
+                f"{request.search.dong}에 볼 수 있는 방이 있는지 여쭤보려고 전화드렸어요.")
+
+    def _dial_to(self, rec: dict, request: CallRequest) -> str:
+        """mock은 요청 번호, demo는 시연 번호로만(사무소 순서대로 돌아가며, 재발신·확정은 처음 번호)."""
+        if self.settings.mode != "demo":
+            return request.broker.phone
+        numbers = self.settings.demo_numbers
+        if rec["dialed_to"]:
+            return rec["dialed_to"]
+        if rec["kind"] == "confirm":
+            parent = self.store.calls.get(rec["parent_call_id"] or "")
+            return parent["dialed_to"] if parent and parent["dialed_to"] else numbers[0]
+        position = self.store.batches[rec["batch_id"]]["call_ids"].index(rec["call_id"])
+        return numbers[position % len(numbers)]
+
     def _dial(self, rec: dict, now: datetime) -> None:
         request = self._request_of(rec)
-        to = request.broker.phone
+        to = self._dial_to(rec, request)
         try:
             provider_call_id = self.provider.create_call(
                 to, self._instruction(request), request=request, scenario=rec["scenario"])
@@ -193,6 +268,9 @@ class CallService:
         rec["started_at"] = rec["started_at"] or iso(now)
 
     def _poll(self, rec: dict, now: datetime) -> None:
+        polled = parse(rec["polled_at"])
+        if polled and now - polled < timedelta(seconds=self.settings.poll_interval_sec):
+            return  # 화면이 1초마다 조회해도 공급사에는 poll_interval_sec마다
         try:
             info = self.provider.get_call(rec["provider_call_id"])
         except ProviderError:
@@ -210,7 +288,16 @@ class CallService:
             rec.update(status="analyzing", analyzing_since=iso(now))
             self._request_transcript(rec)
         else:
-            self._finish(rec, outcome="no_answer", result=self._empty_result(rec))
+            self._no_answer(rec, now, self._empty_result(rec))
+
+    def _no_answer(self, rec: dict, now: datetime, result: dict) -> None:
+        """안 받음·자동응답: retry_minutes 뒤 1번만 다시, 그래도 안 되면 문자 초안만 만든다."""
+        if rec["attempts"] < MAX_ATTEMPTS:
+            rec.update(status="retry_wait", retry_at=iso(now + timedelta(minutes=self.settings.retry_minutes)),
+                       analyzing_since=None, transcript_requested=False)
+            return
+        result = dict(result, sms_draft=self._sms_draft(self._request_of(rec)))
+        self._finish(rec, outcome="no_answer", result=result)
 
     def _request_transcript(self, rec: dict) -> None:
         try:
@@ -232,6 +319,9 @@ class CallService:
         request = self._request_of(rec)
         raw = self._extract(rec, request, segments)
         outcome, result = self._build_result(request, raw, segments)
+        if outcome == "no_answer":  # 자동응답
+            self._no_answer(rec, now, result)
+            return
         self._finish(rec, outcome=outcome, result=result)
 
     def _extract(self, rec: dict, request: CallRequest, segments: list[dict]) -> Optional[dict]:

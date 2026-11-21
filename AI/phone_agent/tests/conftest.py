@@ -53,27 +53,33 @@ def example_request() -> dict:
     return json.loads((FIXTURES / "request.example.json").read_text(encoding="utf-8"))
 
 
-def make_batch(n: int = 2, approval_id: str = "ap-test", windows=None, **overrides) -> BatchRequest:
-    """사무소 n곳짜리 문의 묶음. 시간대 기본값은 2026-11-23 오후 2~5시."""
+def make_batch(n: int = 2, approval_id: str = "ap-test", windows=None, regs=None, **overrides) -> BatchRequest:
+    """사무소 n곳짜리 문의 묶음. 시간대 기본값은 2026-11-23 오후 2~5시. regs는 사무소 번호(1부터)."""
     data = example_request()
     data["approval_id"] = approval_id
     if windows is None:
         windows = [{"start": "2026-11-23T14:00:00+09:00", "end": "2026-11-23T17:00:00+09:00"}]
+    numbers = regs or list(range(1, n + 1))
     data["brokers"] = [
         {"reg": f"11620-2026-{i:05d}", "name": f"테스트{i}공인중개사", "phone": f"02-555-{i:04d}",
          "visit_windows": windows}
-        for i in range(1, n + 1)
+        for i in numbers
     ]
     data.update(overrides)
     return BatchRequest.model_validate(data)
 
 
-def run_until_done(service: CallService, batch: dict, clock: Clock | None = None, limit: int = 100) -> dict:
-    """묶음이 끝날 때까지 조회를 반복한다."""
+def run_until_done(service: CallService, batch: dict, clock: Clock | None = None, limit: int = 100,
+                   step: float = 5) -> dict:
+    """묶음이 끝날 때까지 조회를 반복한다(조회마다 시계를 step초 넘김)."""
     for _ in range(limit):
         result = service.batch_result(service.get_batch(batch["batch_id"]))
         if result["status"] == "done":
             return result
         if clock:
-            clock.advance(seconds=5)
+            clock.advance(seconds=step)
     raise AssertionError(f"묶음이 끝나지 않음: {result}")
+
+
+def statuses(service: CallService, batch: dict) -> list[str]:
+    return [service.store.calls[c]["status"] for c in batch["call_ids"]]

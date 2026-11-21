@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ValidationError
 
 from .config import Settings
+from .policy import PolicyError
 from .provider import MockProvider
 from .schemas import BatchRequest
 from .service import CallService, Store
@@ -103,7 +104,10 @@ def create_app(service: Optional[CallService] = None, background: bool = True, w
         body, error = await _parse(request, BatchRequest)
         if error:
             return error
-        batch, created = await asyncio.to_thread(service.create_batch, body, _scenarios(request, settings))
+        try:
+            batch, created = await asyncio.to_thread(service.create_batch, body, _scenarios(request, settings))
+        except PolicyError as exc:
+            return JSONResponse(exc.body(), status_code=409)
         return JSONResponse(service.accepted(batch), status_code=201 if created else 200)
 
     @app.get("/api/broker-call-batches/{batch_id}")

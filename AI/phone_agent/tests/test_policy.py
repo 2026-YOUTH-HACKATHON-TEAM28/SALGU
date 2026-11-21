@@ -80,3 +80,92 @@ def test_confirm_request_shape():
     ):
         with pytest.raises(ValidationError):
             ConfirmRequest.model_validate({"approval_id": "vs-1", "visits": visits})
+
+
+# ---------------------------------------------------------------- C2 발신 규칙
+from datetime import datetime  # noqa: E402
+
+from phone_agent import policy  # noqa: E402
+from phone_agent.config import Settings  # noqa: E402
+from phone_agent.policy import PolicyError  # noqa: E402
+
+
+def at(text: str) -> datetime:
+    return datetime.fromisoformat(text).replace(tzinfo=KST)
+
+
+def test_business_hours():
+    assert policy.is_open(at("2026-11-23T09:00"))          # 월 9시
+    assert policy.is_open(at("2026-11-23T18:59"))
+    assert not policy.is_open(at("2026-11-23T08:59"))
+    assert not policy.is_open(at("2026-11-23T19:00"))
+    assert policy.is_open(at("2026-11-21T10:00"))          # 토요일
+    assert not policy.is_open(at("2026-11-22T10:00"))      # 일요일
+    assert not policy.is_open(at("2026-12-25T10:00"))      # 공휴일(messages.json)
+    assert not policy.is_open(at("2026-11-24T10:00"), Settings(holidays=("2026-11-24",)))
+    assert policy.is_open(at("2026-11-22T23:00"), Settings(ignore_hours=True))
+
+
+def test_next_open():
+    assert policy.next_open(at("2026-11-23T10:00")) == at("2026-11-23T10:00")
+    assert policy.next_open(at("2026-11-23T07:00")) == at("2026-11-23T09:00")
+    assert policy.next_open(at("2026-11-21T20:00")) == at("2026-11-23T09:00")   # 토 밤 → 월
+    assert policy.next_open(at("2026-12-24T19:30")) == at("2026-12-26T09:00")   # 성탄절 건너뜀
+    assert policy.next_open(at("2026-12-31T19:00")) == at("2027-01-02T09:00")   # 1월 1일 건너뜀
+
+
+def _req(reg="r1", windows=None):
+    data = example_request()
+    data["brokers"] = [{"reg": reg, "name": "사무소", "visit_windows": windows or []}]
+    return BatchRequest.model_validate(data).calls()[0]
+
+
+def _rec(reg, status="done", attempts=1, started_at=None, scheduled_at=None, created_at="2026-11-23T09:30:00+09:00"):
+    return {"kind": "inquiry", "status": status, "attempts": attempts, "started_at": started_at,
+            "scheduled_at": scheduled_at, "created_at": created_at, "request": {"broker": {"reg": reg}}}
+
+
+def test_check_counts_the_day_calls_go_out():
+    s = Settings(daily_limit=3)
+    now = at("2026-11-23T10:00")
+    assert policy.check(_req("r1"), now, [], s) is None
+    today = _rec("r1", started_at="2026-11-23T09:40:00+09:00")
+    with pytest.raises(PolicyError) as exc:
+        policy.check(_req("r1"), now, [today], s)
+    assert exc.value.code == "already_called_today"
+    # 거절·한 번도 못 건 통화는 세지 않고, 기다리는 통화는 셈
+    assert policy.check(_req("r1"), now, [_rec("r1", status="rejected", attempts=0),
+                                          _rec("r1", status="failed", attempts=0)], s) is None
+    with pytest.raises(PolicyError):
+        policy.check(_req("r1"), now, [_rec("r1", status="waiting", attempts=0)], s)
+    # 어제 건 통화, 내일 나갈 통화는 오늘 수에 안 들어감
+    assert policy.check(_req("r1"), now, [_rec("r1", started_at="2026-11-21T10:00:00+09:00"),
+                                          _rec("r1", status="scheduled", attempts=0,
+                                               scheduled_at="2026-11-24T09:00:00+09:00")], s) is None
+    # 하루 수
+    full = [_rec(f"x{i}", started_at="2026-11-23T09:3%d:00+09:00" % i) for i in range(3)]
+    with pytest.raises(PolicyError) as exc:
+        policy.check(_req("r9"), now, full, s)
+    assert exc.value.code == "daily_limit"
+    # 밤에 접수하면 다음 영업일 수로 셈 → 오늘 꽉 차도 예약됨
+    night = at("2026-11-23T20:00")
+    assert policy.check(_req("r9"), night, full, s) == at("2026-11-24T09:00")
+
+
+def test_window_passed_counts_when_the_call_can_go_out():
+    morning = [{"start": "2026-11-23T08:00:00+09:00", "end": "2026-11-23T08:30:00+09:00"}]
+    with pytest.raises(PolicyError) as exc:
+        policy.check(_req("r1", morning), at("2026-11-22T10:00"), [], Settings())  # 일요일 → 월 9시엔 이미 지남
+    assert exc.value.code == "window_passed"
+    assert policy.deadline_passed(_req("r1", morning), at("2026-11-23T08:30"))
+    assert not policy.deadline_passed(_req("r1", morning), at("2026-11-23T08:29"))
+    assert not policy.deadline_passed(_req("r1"), at("2030-01-01T10:00"))  # 시간대 없으면 막지 않음
+
+
+def test_check_mode_and_error_body():
+    policy.check_mode(Settings(mode="mock"))
+    policy.check_mode(Settings(mode="demo", demo_to="01000000000"))
+    with pytest.raises(PolicyError) as exc:
+        policy.check_mode(Settings(mode="demo"))
+    assert exc.value.body() == {"error": "not_allowed", "message": policy.MESSAGES["not_allowed"]}
+    assert PolicyError("outside_broker_slots", {"x": 1}).body()["detail"] == {"x": 1}

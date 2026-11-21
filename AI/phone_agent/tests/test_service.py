@@ -1,6 +1,6 @@
 from fastapi.testclient import TestClient
 
-from conftest import example_request, make_batch, run_until_done
+from conftest import Clock, example_request, make_batch, run_until_done, statuses
 from phone_agent.app import create_app
 from phone_agent.service import CallService
 
@@ -35,7 +35,7 @@ def test_inquiry_flow(service, clock):
     assert second["outcome"] == "no_listing" and second["listings"] == []
 
 
-def test_one_call_on_the_line_in_order(service, clock):
+def test_one_call_at_a_time_in_order(service, clock):
     batch, _ = service.create_batch(make_batch(3), scenarios=["listing", "listing", "listing"])
     seen_on_line = []
     for _ in range(50):
@@ -80,11 +80,10 @@ def test_keep_transcript_and_unknown_scenario(service, clock):
     assert "테스트1공인중개사이죠?" in call["transcript"][0]["text"]
 
 
-def test_no_answer_voicemail_declined_outcomes(service, clock):
-    batch, _ = service.create_batch(make_batch(3, approval_id="ap-out"),
-                                    scenarios=["no_answer", "voicemail", "declined"])
-    calls = run_until_done(service, batch, clock)["calls"]
-    assert [c["outcome"] for c in calls] == ["no_answer", "no_answer", "declined"]
+def test_declined_outcome(service, clock):
+    batch, _ = service.create_batch(make_batch(1, approval_id="ap-out"), scenarios=["declined"])
+    call = run_until_done(service, batch, clock)["calls"][0]
+    assert call["outcome"] == "declined" and call["attempts"] == 1 and call["sms_draft"] is None
 
 
 def test_http_api(settings, provider, clock):
@@ -148,3 +147,210 @@ def test_store_saves_to_file(settings, provider, clock, tmp_path):
     reloaded = Store(path)
     assert batch["batch_id"] in reloaded.batches
     assert reloaded.calls[batch["call_ids"][0]]["outcome"] == "listing"
+
+
+# ---------------------------------------------------------------- C2 발신 규칙
+from datetime import datetime, timedelta  # noqa: E402
+
+import pytest  # noqa: E402
+
+from phone_agent.config import KST, Settings  # noqa: E402
+from phone_agent.policy import PolicyError  # noqa: E402
+from phone_agent.provider import MockProvider, ProviderError  # noqa: E402
+from phone_agent.service import ON_LINE  # noqa: E402
+
+
+def test_next_call_does_not_wait_for_analysis(settings, clock):
+    class SlowTranscript(MockProvider):
+        def get_transcript(self, call_id):
+            return {"status": "in_progress", "segments": []}
+
+    service = CallService(settings, SlowTranscript(), now=clock)
+    batch, _ = service.create_batch(make_batch(2, approval_id="ap-slow"), scenarios=["listing", "listing"])
+    for _ in range(5):
+        service.get_batch(batch["batch_id"])
+        clock.advance(seconds=5)
+    first, second = statuses(service, batch)
+    assert first == "analyzing" and second in ON_LINE
+    clock.advance(seconds=settings.analyze_timeout_sec + 1)
+    result = run_until_done(service, batch, clock)
+    assert [c["status"] for c in result["calls"]] == ["done", "done"]
+
+
+def test_rejections_are_per_broker(clock, provider):
+    service = CallService(Settings(mode="mock", poll_interval_sec=0, daily_limit=3), provider, now=clock)
+    first, _ = service.create_batch(make_batch(regs=[1, 2], approval_id="ap-r1"), scenarios=["listing"] * 2)
+    run_until_done(service, first, clock)
+
+    second, created = service.create_batch(make_batch(regs=[1, 3, 4, 5], approval_id="ap-r2"))
+    assert created
+    calls = service.accepted(second)["calls"]
+    assert [c["status"] for c in calls] == ["rejected", "queued", "rejected", "rejected"]
+    assert [c.get("error") for c in calls] == ["already_called_today", None, "daily_limit", "daily_limit"]
+    assert calls[0]["message"] == "같은 중개사무소에는 하루 1번만 문의 전화를 해요."
+    result = run_until_done(service, second, clock)
+    assert [c["status"] for c in result["calls"]] == ["rejected", "done", "rejected", "rejected"]
+    assert result["calls"][0]["outcome"] is None
+
+    past = [{"start": "2026-11-23T08:00:00+09:00", "end": "2026-11-23T09:00:00+09:00"}]
+    third, _ = service.create_batch(make_batch(regs=[9], approval_id="ap-r3", windows=past))
+    assert service.accepted(third)["calls"][0]["error"] == "window_passed"
+
+
+def test_window_passed_while_waiting_fails(service, clock):
+    soon = [{"start": "2026-11-23T10:00:00+09:00", "end": "2026-11-23T10:00:30+09:00"}]
+    batch, _ = service.create_batch(make_batch(2, approval_id="ap-wp", windows=soon), scenarios=["listing"] * 2)
+    result = run_until_done(service, batch, clock, step=10)
+    first, second = result["calls"]
+    assert first["status"] == "done"
+    assert second["status"] == "failed" and second["error"] == "window_passed" and second["attempts"] == 0
+
+
+def test_no_answer_or_voicemail_retries_once_then_drafts_sms(service, provider, clock):
+    batch, _ = service.create_batch(make_batch(3, approval_id="ap-na"),
+                                    scenarios=["no_answer", "voicemail", "listing"])
+    for _ in range(30):  # 다시 걸 통화는 줄을 막지 않음
+        service.get_batch(batch["batch_id"])
+        if statuses(service, batch) == ["retry_wait", "retry_wait", "done"]:
+            break
+        clock.advance(seconds=5)
+    assert statuses(service, batch) == ["retry_wait", "retry_wait", "done"]
+    rec = service.store.calls[batch["call_ids"][0]]
+    assert datetime.fromisoformat(rec["retry_at"]) - datetime.fromisoformat(rec["ended_at"]) == timedelta(minutes=30)
+    assert len(provider.calls) == 3
+
+    clock.advance(minutes=31)
+    result = run_until_done(service, batch, clock)
+    for call in result["calls"][:2]:
+        assert call["outcome"] == "no_answer" and call["attempts"] == 2
+        assert call["sms_draft"] and "AI 비서 살구" in call["sms_draft"]
+    assert result["calls"][2]["attempts"] == 1
+    assert len(provider.calls) == 5  # 1번만 다시
+
+
+def test_retry_goes_before_waiting_calls(clock, provider):
+    service = CallService(Settings(mode="mock", poll_interval_sec=0, retry_minutes=0), provider, now=clock)
+    batch, _ = service.create_batch(make_batch(2, approval_id="ap-order"), scenarios=["no_answer", "listing"])
+    run_until_done(service, batch, clock)
+    dialed = [call["request"].broker.reg for call in provider.calls.values()]
+    assert dialed == ["11620-2026-00001", "11620-2026-00001", "11620-2026-00002"]
+
+
+def test_outside_hours_is_scheduled_then_dialed(provider):
+    clock = Clock(datetime(2026, 11, 21, 20, 0, tzinfo=KST))  # 토요일 밤 → 월요일 9시
+    service = CallService(Settings(mode="mock", poll_interval_sec=0), provider, now=clock)
+    batch, _ = service.create_batch(make_batch(2, approval_id="ap-night"), scenarios=["listing"] * 2)
+    calls = service.accepted(batch)["calls"]
+    assert [c["status"] for c in calls] == ["scheduled", "scheduled"]
+    assert calls[0]["scheduled_at"] == "2026-11-23T09:00:00+09:00"
+    clock.advance(hours=12)  # 일요일 오전: 아직
+    service.get_batch(batch["batch_id"])
+    assert provider.calls == {}
+
+    clock.now = datetime(2026, 11, 23, 9, 0, tzinfo=KST)
+    result = run_until_done(service, batch, clock)
+    assert [c["outcome"] for c in result["calls"]] == ["listing", "listing"]
+
+
+def test_waiting_call_is_rescheduled_when_hours_end(provider):
+    clock = Clock(datetime(2026, 11, 23, 18, 59, 50, tzinfo=KST))
+    windows = [{"start": "2026-11-24T14:00:00+09:00", "end": "2026-11-24T17:00:00+09:00"}]
+    service = CallService(Settings(mode="mock", poll_interval_sec=0), provider, now=clock)
+    batch, _ = service.create_batch(make_batch(2, approval_id="ap-late", windows=windows), scenarios=["listing"] * 2)
+    for _ in range(10):
+        service.get_batch(batch["batch_id"])
+        clock.advance(seconds=10)
+    assert statuses(service, batch) == ["done", "scheduled"]
+    assert service.store.calls[batch["call_ids"][1]]["scheduled_at"] == "2026-11-24T09:00:00+09:00"
+
+
+def test_ignore_hours_dials_at_night(provider):
+    clock = Clock(datetime(2026, 11, 22, 23, 0, tzinfo=KST))  # 일요일 밤
+    service = CallService(Settings(mode="mock", poll_interval_sec=0, ignore_hours=True), provider, now=clock)
+    batch, _ = service.create_batch(make_batch(1, approval_id="ap-ignore"), scenarios=["listing"])
+    assert statuses(service, batch) == ["queued"]
+
+
+def test_provider_failure_moves_on_and_does_not_use_up_the_day(settings, clock):
+    class FailOnce(MockProvider):
+        failed = False
+
+        def create_call(self, to, instruction, request=None, scenario=None):
+            if not self.failed:
+                self.failed = True
+                raise ProviderError("boom")
+            return super().create_call(to, instruction, request, scenario)
+
+    service = CallService(settings, FailOnce(), now=clock)
+    batch, _ = service.create_batch(make_batch(2, approval_id="ap-fail"), scenarios=["listing"] * 2)
+    result = run_until_done(service, batch, clock)
+    assert result["calls"][0]["status"] == "failed" and result["calls"][0]["error"] == "provider_error"
+    assert result["calls"][1]["outcome"] == "listing"
+
+    again, _ = service.create_batch(make_batch(regs=[1], approval_id="ap-fail-2"), scenarios=["listing"])
+    assert statuses(service, again) == ["queued"]  # 한 번도 못 건 통화는 하루 1번에 세지 않음
+
+
+def test_polling_is_throttled(clock):
+    class Counting(MockProvider):
+        polls = 0
+
+        def get_call(self, call_id):
+            self.polls += 1
+            return super().get_call(call_id)
+
+    provider = Counting()
+    service = CallService(Settings(mode="mock", poll_interval_sec=3), provider, now=clock)
+    batch, _ = service.create_batch(make_batch(1, approval_id="ap-poll"), scenarios=["listing"])
+    call_id = batch["call_ids"][0]
+    for _ in range(10):
+        service.get(call_id)
+    assert provider.polls == 1
+    clock.advance(seconds=2)
+    service.get(call_id)
+    assert provider.polls == 1
+    clock.advance(seconds=1)
+    service.get(call_id)
+    assert provider.polls == 2
+
+
+def test_call_gap_between_calls(clock, provider):
+    service = CallService(Settings(mode="mock", poll_interval_sec=0, call_gap_sec=15), provider, now=clock)
+    batch, _ = service.create_batch(make_batch(2, approval_id="ap-gap"), scenarios=["listing"] * 2)
+    for _ in range(5):
+        service.get_batch(batch["batch_id"])
+    assert statuses(service, batch) == ["done", "waiting"]
+    clock.advance(seconds=14)
+    service.get_batch(batch["batch_id"])
+    assert statuses(service, batch)[1] == "waiting"
+    clock.advance(seconds=1)
+    service.get_batch(batch["batch_id"])
+    assert statuses(service, batch)[1] == "queued"
+
+
+def test_demo_dials_only_demo_numbers_in_turn(clock, provider):
+    settings = Settings(mode="demo", demo_to="01011112222, 01033334444", poll_interval_sec=0, retry_minutes=1)
+    service = CallService(settings, provider, now=clock)
+    batch, _ = service.create_batch(make_batch(3, approval_id="ap-demo"),
+                                    scenarios=["no_answer", "listing", "listing"])
+    clock_step = 5
+    for _ in range(40):
+        service.get_batch(batch["batch_id"])
+        clock.advance(seconds=clock_step)
+    run_until_done(service, batch, clock)
+    dialed = [(call["request"].broker.reg[-1], call["to"]) for call in provider.calls.values()]
+    assert dialed == [("1", "01011112222"), ("2", "01033334444"), ("3", "01011112222"),
+                      ("1", "01011112222")]  # 재발신은 처음 번호
+
+
+def test_demo_without_number_is_not_allowed(clock, provider):
+    service = CallService(Settings(mode="demo", poll_interval_sec=0), provider, now=clock)
+    with pytest.raises(PolicyError) as exc:
+        service.create_batch(make_batch(1, approval_id="ap-nonum"))
+    assert exc.value.code == "not_allowed"
+    assert service.store.calls == {} and service.store.batches == {}
+
+    client = TestClient(create_app(service, background=False, with_mcp=False))
+    res = client.post("/api/broker-call-batches", json=example_request())
+    assert res.status_code == 409
+    assert res.json() == {"error": "not_allowed", "message": "시연 모드에서 전화를 받을 번호가 설정되지 않았어요."}
