@@ -229,10 +229,17 @@ function composer() {
   </div>`;
 }
 
+/** 대화 칸 바깥 여백에서 굴린 휠도 대화를 스크롤해요(대화 칸을 메시지 너비로 줄였기 때문) */
+function forwardWheel(e: WheelEvent): void {
+  const t = e.target as HTMLElement;
+  if (t.closest('.log, textarea, .prefs-form, .drawer, .menu')) return;
+  document.querySelector<HTMLElement>('.log')?.scrollBy({ top: e.deltaY });
+}
+
 export function chatView() {
   const chat = state.chat;
   const msgs = chat?.messages ?? [];
-  return html`<section class="chat" aria-label="집 찾기 대화">
+  return html`<section class="chat" aria-label="집 찾기 대화" @wheel=${forwardWheel}>
     ${progressView()}
     <div class="log" role="log" aria-live="polite" data-testid="chat-log">
       ${msgs.length ? nothing : homeView()}
