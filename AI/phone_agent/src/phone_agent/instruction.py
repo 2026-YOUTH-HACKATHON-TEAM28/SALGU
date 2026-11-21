@@ -170,10 +170,11 @@ def confirm_first(request: CallRequest, now: datetime) -> str:
 
 
 def _room_check(rooms: list[TargetRoom]) -> str:
-    """방 확인은 "그 방 아직 있죠?" 한 마디(호수를 모르면 호수까지)."""
+    """방 확인은 "그 방 아직 있죠?" 한 마디(호수를 모르면 호수까지). 이미 들은 호수는 다시 묻지 않는다(11-21 C5 통화)."""
     unknown_unit = any(not room.listing.unit for room in rooms)
     if unknown_unit:
-        ask = f'"{ROOM_CHECK}", "{UNIT_ASK}" 두 가지만 여쭤볼 것'
+        ask = (f'"{ROOM_CHECK}"를 여쭤보고, 호수를 아직 말씀하지 않으셨으면 "{UNIT_ASK}"도 여쭤볼 것'
+               "(이미 말씀하셨으면 다시 묻지 않음)")
     else:
         ask = f'"{ROOM_CHECK}" 한 가지만 여쭤볼 것'
     return f"방 확인: {ask}. 건물·층·가격을 하나하나 다시 확인하지 않음. 나갔으면 확인만 하고 감사 인사로 마무리"
