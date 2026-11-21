@@ -187,6 +187,7 @@
 | `conditions.monthly_rent_manwon` | int | 월세(만원). `approx: true`면 "정도" |
 | `conditions.price_band` | `"median_or_below"` | 같은 조건 실거래 대비 가격 구간 |
 | `conditions.workplace` | `"place"` | 출근지(회사·학교). `label`에 사용자가 말한 회사·학교·역 이름을 그대로 둡니다. 챗봇은 위치를 찾지 않습니다. 실제 위치는 계산하는 쪽(BE)이 찾습니다. (기존 `gangnam`·`yeouido`·`jongno` 값도 읽을 수 있습니다) |
+| `conditions.workplace.kind` | `"work"` \| `"school"` | 회사인지 학교인지 (학교면 '통학'으로 말함) |
 | `conditions.max_commute_min` | int | 출근 시간대 통근 상한(분) |
 | `conditions.max_transfers` | int | 환승 상한 |
 | `conditions.max_bus_headway_min` | int | 이용 버스 배차 상한(분) |
@@ -199,6 +200,7 @@
 | `priorities` | string 배열 | 사용자가 말한 우선순위. `price`, `commute`, `bus_headway`, `building_age` 중에서 순서대로 |
 | `unverifiable` | `{phrase, message}` 배열 | 데이터로 판단할 수 없는 바람 |
 | `clarifications` | `{id, question, options}` 배열 | 빠진 최소 조건 버튼 되묻기. `id`: `area`, `budget`, `deposit`, `monthly_rent` |
+| `workplace_hint` | `"학교"` \| `"회사"` \| `"학원"` | 학교·회사를 말했는데 이름이 없을 때("학교 근처 원룸"). 지역 대신 "학교는 어디예요?"라고 묻고, 다음 답을 `workplace`로 받습니다. |
 | `missing` | string 배열 | 아직 모르는 최소 조건: `area`, `deposit`, `monthly_rent` |
 | `ready` | bool | 최소 조건이 다 모였는지. `true`면 검색 가능 |
 
@@ -226,6 +228,7 @@
 | "투룸" / "쓰리룸" | `min_area_m2` = 33 / 50 (inferred, 실거래에 방 수가 없어 면적으로 해석) |
 | "반지하 싫어" / "1층은 싫어" / "3층 이상" | `min_floor` = 1 / 2 / 3 |
 | "역에서 5분" / "역세권" | `max_walk_to_station_min` = 5 (stated) / 10 (inferred) |
+| "부산 해운대", "분당 쪽" (서울 밖) | 살 곳으로 받지 않고 `unverifiable`에 "서울 밖은 아직 찾아 드리지 못해요(서울만)". 회사 위치로는 괜찮음 |
 | "조용한 곳", 반려동물, 주차, 엘리베이터, 옵션 등 판단할 데이터가 없는 바람 | `unverifiable` |
 
 ## 합의할 점
