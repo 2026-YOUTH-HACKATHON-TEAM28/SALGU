@@ -212,7 +212,10 @@ def _numbered(value: str, unit: str, text: str) -> bool:
     n = int(m.group(1))
     if re.search(rf"(?<!\d){n}\s*{unit}", text):
         return True
-    return any(re.search(rf"{w}\s*{unit}", text) for w in _korean_digits(n))
+    if any(re.search(rf"{w}\s*{unit}", text) for w in _korean_digits(n)):
+        return True
+    # 실시간 전사는 숫자를 한글로 적는다: '삼백일호' = 301호, '십이층' = 12층 (11-21)
+    return any(parse_korean(k.group(1)) == n for k in re.finditer(rf"([{_KCHARS}]+)\s*{unit}", text))
 
 
 def text_in_line(field: str, value: str, text: str) -> bool:
@@ -1010,7 +1013,10 @@ _DISCLOSURE = re.compile(r"(AI\s*비서|에이아이\s*비서|인공지능|살�
 def call_warnings(lines: list[dict]) -> list[str]:
     """반드시 지킬 것을 어긴 통화 표시. ai_disclosure_missing: 첫 AI 말에 'AI 비서 살구' 고지가 없음
     (11-21 리허설에서 살구가 엉뚱한 이야기로 통화를 시작함)."""
-    first_ai = next((line for line in lines if line.get("speaker") == "ai"), None)
+    # 실시간 전사가 받는 쪽의 첫마디('네, 한빛입니다.')를 agent로 붙일 때가 있어 그런 줄은 건너뜀(11-21)
+    first_ai = next((line for line in lines if line.get("speaker") == "ai"
+                     and not (PICKUP.search(line.get("text") or "") and len(line.get("text") or "") <= 20
+                              and not _DISCLOSURE.search(line.get("text") or ""))), None)
     if first_ai is None or _DISCLOSURE.search(first_ai.get("text") or ""):
         return []
     return ["ai_disclosure_missing"]
