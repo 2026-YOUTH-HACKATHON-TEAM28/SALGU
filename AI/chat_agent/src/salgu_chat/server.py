@@ -57,7 +57,7 @@ def chat(body: ChatIn):
     # 동기 함수라 FastAPI가 스레드에서 돌린다 (Gemini를 기다리는 동안 다른 요청을 막지 않음)
     session_id = body.session_id or uuid.uuid4().hex[:12]
     cache = session_cache.get_or_new(session_id)
-    result = dialog.turn(body.message, cache["card"], session_id=session_id)
+    result = dialog.turn(body.message, cache["card"], session_id=session_id, last_search=cache["last_search"])
     session_cache.add_turn(cache, guards.mask_pii(body.message or "").strip(), result)
     return {
         "session_id": session_id,

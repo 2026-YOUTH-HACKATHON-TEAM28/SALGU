@@ -99,8 +99,10 @@ def add_turn(cache, user_text, result):
         "intent": result["intent"], "via": result["via"], "guard": result.get("guard"),
         "changed": result.get("changed", []), "fixes": result.get("fixes", []),
         "messages": result.get("messages", [{"kind": "reply", "text": result["reply"]}]),
-        "searched": bool(res),
+        "searched": bool(res), "control": result.get("control"),
     })
+    if result.get("reset"):  # "처음부터 다시": 조건과 검색 결과를 비운다 (대화 기록은 남김)
+        cache.update(card=None, keywords={}, ready=False, missing=["area", "deposit", "monthly_rent"], last_search=None)
     if card:
         cache["card"] = card
         cache["keywords"] = flat(card)
