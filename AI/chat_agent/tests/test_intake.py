@@ -48,6 +48,22 @@ class IntakeTest(unittest.TestCase):
         card = intake.intake("마포 쪽 전세 2억")["card"]
         self.assertTrue(card["ready"])
 
+    def test_jeonse_and_rent_conflict_asks(self):
+        fake = {"intent": "search", "card": {"conditions": {
+            "deposit_manwon": {"value": 1000, "source": "stated", "evidence": "1000/50"},
+            "monthly_rent_manwon": {"value": 50, "source": "stated", "evidence": "1000/50"},
+            "lease_types": {"value": ["jeonse"], "source": "stated", "evidence": "전세로"},
+            "preferred_areas": {"value": ["신촌", "서울"], "source": "stated", "evidence": "신촌"}}}}
+        self.gemini.side_effect = None
+        self.gemini.return_value = (fake, 0.5)
+        r = intake.intake("신촌 1000/50인데 전세로")
+        self.assertEqual(r["card"]["missing"], ["lease"])
+        self.assertIn("전세로 찾을까요", r["reply"])
+        self.assertEqual(r["card"]["conditions"]["preferred_areas"]["value"], ["신촌"])  # '서울' 전체는 뺌
+        r2 = intake.intake("월세로", r["card"])
+        self.assertTrue(r2["card"]["ready"])
+        self.assertEqual(r2["card"]["conditions"]["monthly_rent_manwon"]["value"], 50)
+
     def test_greeting_asks_minimum(self):
         r = intake.intake("안녕하세요!")
         self.assertEqual(r["guard"], "greeting")
