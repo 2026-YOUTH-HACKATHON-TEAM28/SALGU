@@ -2,7 +2,11 @@ from datetime import date
 
 import pytest
 
-from property_recommendation.models import PropertyCandidate, RecommendationInput
+from property_recommendation.models import (
+    CommuteMetric,
+    PropertyCandidate,
+    RecommendationInput,
+)
 from property_recommendation.scoring import score_candidate
 
 
@@ -68,4 +72,30 @@ def test_exact_budget_keeps_half_price_score() -> None:
 
     assert result.breakdown.price == 0.5
     assert sum(result.weights.values()) == pytest.approx(1, abs=0.001)
+
+
+def test_longer_commute_has_lower_soft_score_without_limit() -> None:
+    end_date = date(2026, 11, 21)
+    criteria = RecommendationInput(
+        deposit_manwon=1000,
+        monthly_rent_manwon=50,
+        as_of_date=end_date,
+    )
+    property_candidate = candidate(rent=50, contract_date=end_date, count=3)
+
+    near = score_candidate(
+        property_candidate,
+        criteria,
+        CommuteMetric(minutes=30, transfers=0),
+        end_date,
+    )
+    far = score_candidate(
+        property_candidate,
+        criteria,
+        CommuteMetric(minutes=90, transfers=2),
+        end_date,
+    )
+
+    assert near.breakdown.commute > far.breakdown.commute
+    assert near.total > far.total
 

@@ -14,19 +14,13 @@ import httpx
 from .models import (
     CommuteMetric,
     PropertyCandidate,
-    RealtorOffice,
-    RealtorSearchInput,
-    RealtorSearchOutput,
+    RealtorLocationCandidate,
     TransitLeg,
 )
 
 
 class KakaoCommuteError(RuntimeError):
     """카카오 위치·길찾기 요청을 완료하지 못한 경우 발생한다."""
-
-
-class UnsupportedCommuteConditionError(ValueError):
-    """카카오 API가 제공하지 않는 통근 조건에 사용한다."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -156,7 +150,6 @@ class KakaoCommuteProvider:
         max_walk_to_station_min: int | None = None,
         max_bus_headway_min: int | None = None,
     ) -> Mapping[str, CommuteMetric]:
-        self._validate_conditions(max_bus_headway_min)
         radius_km = self.region_radius_km(search_depth)
         destination = await self._geocode(workplace, prefer_keyword=True)
         if destination is None:
@@ -213,7 +206,6 @@ class KakaoCommuteProvider:
         max_walk_to_station_min: int | None = None,
         max_bus_headway_min: int | None = None,
     ) -> Mapping[str, CommuteMetric]:
-        self._validate_conditions(max_bus_headway_min)
         destination = await self._geocode(workplace, prefer_keyword=True)
         if destination is None:
             raise KakaoCommuteError(f"근무지 위치를 찾을 수 없습니다: {workplace}")
@@ -263,43 +255,48 @@ class KakaoCommuteProvider:
                 )
         return result
 
-    async def find_nearest_realtors(
-        self, criteria: RealtorSearchInput
-    ) -> RealtorSearchOutput:
-        coordinate = await self._geocode(criteria.property_address)
+    async def locate(self, query: str) -> tuple[float, float] | None:
+        """주소를 (경도, 위도)로 변환한다."""
+        coordinate = await self._geocode(query)
         if coordinate is None:
-            raise KakaoCommuteError(
-                f"건물 위치를 찾을 수 없습니다: {criteria.property_address}"
+            return None
+        return coordinate.longitude, coordinate.latitude
+
+    async def search_realtors(
+        self,
+        property_address: str,
+        *,
+        limit: int,
+        max_distance_m: int | None,
+    ) -> list[RealtorLocationCandidate]:
+        """매물 주변 중개업소를 카카오 거리순으로 찾는다."""
+        coordinate = await self._geocode(property_address)
+        if coordinate is None:
+            return []
+
+        requested = min(max(limit, 1), 45)
+        offices: list[RealtorLocationCandidate] = []
+        for page in range(1, math.ceil(requested / 15) + 1):
+            params: dict[str, Any] = {
+                "category_group_code": "AG2",
+                "x": coordinate.longitude,
+                "y": coordinate.latitude,
+                "sort": "distance",
+                "size": min(15, requested - len(offices)),
+                "page": page,
+            }
+            if max_distance_m is not None:
+                params["radius"] = max_distance_m
+            data = await self._request("/v2/local/search/category.json", params)
+            offices.extend(
+                _to_realtor_location(document, coordinate)
+                for document in data.get("documents") or []
             )
+            if (data.get("meta") or {}).get("is_end", True):
+                break
 
-        params: dict[str, Any] = {
-            "category_group_code": "AG2",
-            "x": coordinate.longitude,
-            "y": coordinate.latitude,
-            "sort": "distance",
-            "size": criteria.limit,
-        }
-        if criteria.max_distance_m is not None:
-            params["radius"] = criteria.max_distance_m
-        data = await self._request("/v2/local/search/category.json", params)
-
-        offices = [
-            _to_realtor_office(document, coordinate)
-            for document in data.get("documents") or []
-        ]
-        offices.sort(key=lambda office: office.distance_m)
-        return RealtorSearchOutput(
-            property_address=criteria.property_address,
-            count=len(offices),
-            offices=offices,
-        )
-
-    @staticmethod
-    def _validate_conditions(max_bus_headway_min: int | None) -> None:
-        if max_bus_headway_min is not None:
-            raise UnsupportedCommuteConditionError(
-                "카카오 대중교통 API는 버스 배차간격을 제공하지 않습니다"
-            )
+        offices.sort(key=lambda office: (office.distance_m, office.name))
+        return offices[:requested]
 
     async def _geocode(
         self, query: str, *, prefer_keyword: bool = False
@@ -364,7 +361,14 @@ class KakaoCommuteProvider:
         for route in data.get("routes") or []:
             metric = _to_commute_metric(route, landing_url)
             if metric is not None:
-                candidates.append(metric)
+                candidates.append(
+                    metric.model_copy(
+                        update={
+                            "origin_longitude": origin.longitude,
+                            "origin_latitude": origin.latitude,
+                        }
+                    )
+                )
         if not candidates:
             return None
 
@@ -505,9 +509,9 @@ def _to_commute_metric(
     )
 
 
-def _to_realtor_office(
+def _to_realtor_location(
     document: Mapping[str, Any], origin: Coordinate
-) -> RealtorOffice:
+) -> RealtorLocationCandidate:
     longitude = float(document["x"])
     latitude = float(document["y"])
     raw_distance = document.get("distance")
@@ -522,7 +526,7 @@ def _to_realtor_office(
             * 1000
         )
     )
-    return RealtorOffice(
+    return RealtorLocationCandidate(
         place_id=str(document["id"]),
         name=str(document["place_name"]),
         phone=str(document["phone"]) if document.get("phone") else None,

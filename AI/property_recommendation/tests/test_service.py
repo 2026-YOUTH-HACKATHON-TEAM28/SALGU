@@ -4,6 +4,7 @@ import pytest
 
 from property_recommendation.models import (
     CommuteMetric,
+    NearbyBusStop,
     PropertyCandidate,
     RecommendationInput,
     TransitLeg,
@@ -139,6 +140,34 @@ class ExpansionCommuteProvider(FakeCommuteProvider):
         )
 
 
+class FakePublicDataRepository:
+    async def enrich_commutes(self, metrics, *, include_nearby_stops):
+        return {
+            key: metric.model_copy(
+                update={
+                    "public_data_applied": True,
+                    "public_data_tables": [
+                        "bus_stops",
+                        "bus_route_stops",
+                    ],
+                    "nearby_bus_stops": (
+                        [
+                            NearbyBusStop(
+                                name="공덕역",
+                                ars_id="14001",
+                                distance_m=200,
+                                route_names=["7016"],
+                            )
+                        ]
+                        if include_nearby_stops
+                        else []
+                    ),
+                }
+            )
+            for key, metric in metrics.items()
+        }
+
+
 @pytest.mark.asyncio
 async def test_service_returns_ranked_property() -> None:
     criteria = RecommendationInput(
@@ -248,3 +277,22 @@ async def test_walk_to_first_transit_limit_is_applied() -> None:
     ).recommend(criteria)
 
     assert result.count == 0
+
+
+@pytest.mark.asyncio
+async def test_public_data_is_included_in_recommendation_output() -> None:
+    criteria = RecommendationInput(
+        deposit_manwon=1000,
+        monthly_rent_manwon=50,
+        workplace="강남역",
+        as_of_date=date(2026, 11, 21),
+    )
+
+    result = await PropertyRecommendationService(
+        FakeRepository(),
+        FakeCommuteProvider(),
+        FakePublicDataRepository(),
+    ).recommend(criteria)
+
+    assert result.candidates[0].nearby_bus_stops[0].name == "공덕역"
+    assert "bus_stops" in result.query.source_tables

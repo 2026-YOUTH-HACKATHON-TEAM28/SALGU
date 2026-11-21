@@ -6,9 +6,8 @@ import pytest
 from property_recommendation.kakao_commute import (
     KakaoCommuteConfig,
     KakaoCommuteProvider,
-    UnsupportedCommuteConditionError,
 )
-from property_recommendation.models import PropertyCandidate, RealtorSearchInput
+from property_recommendation.models import PropertyCandidate
 
 
 def _candidate(row: int, lot_address: str) -> PropertyCandidate:
@@ -192,20 +191,41 @@ async def test_property_measurement_is_distributed_across_regions() -> None:
 
 
 @pytest.mark.asyncio
-async def test_bus_headway_condition_fails_explicitly() -> None:
+async def test_bus_headway_is_deferred_to_database_enrichment() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        query = request.url.params.get("query")
+        if request.url.path.endswith("keyword.json") and query == "강남역":
+            return httpx.Response(
+                200, json={"documents": [{"x": "127.027", "y": "37.498"}]}
+            )
+        if request.url.path.endswith("address.json"):
+            return httpx.Response(
+                200, json={"documents": [{"x": "126.951", "y": "37.543"}]}
+            )
+        if request.url.path.endswith("publictraffic"):
+            return httpx.Response(
+                200,
+                json={
+                    "routes": [
+                        {"properties": {"totalTime": 1800, "transfers": 0}}
+                    ]
+                },
+            )
+        return httpx.Response(200, json={"documents": []})
+
     client = httpx.AsyncClient(
         base_url="https://dapi.kakao.com",
-        transport=httpx.MockTransport(lambda _: httpx.Response(500)),
+        transport=httpx.MockTransport(handler),
     )
     provider = KakaoCommuteProvider(
         KakaoCommuteConfig(api_key="test-key", retry_count=0), client=client
     )
 
-    with pytest.raises(UnsupportedCommuteConditionError):
-        await provider.measure_regions(
-            "강남역", ["서울특별시 마포구"], max_bus_headway_min=10
-        )
+    result = await provider.measure_regions(
+        "강남역", ["서울특별시 마포구"], max_bus_headway_min=10
+    )
 
+    assert result["서울특별시 마포구"].bus_headway_min is None
     await client.aclose()
 
 
@@ -278,29 +298,42 @@ async def test_route_prefers_fewer_transfers_and_returns_transit_legs() -> None:
 
 
 @pytest.mark.asyncio
-async def test_nearest_realtors_are_returned_by_distance() -> None:
+async def test_location_provider_returns_coordinates() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         query = request.url.params.get("query")
         if request.url.path.endswith("address.json") and query == "서울 마포구 1-1":
             return httpx.Response(200, json={"documents": [{"x": "126.95", "y": "37.54"}]})
+        return httpx.Response(200, json={"documents": []})
+
+    client = httpx.AsyncClient(
+        base_url="https://dapi.kakao.com",
+        transport=httpx.MockTransport(handler),
+    )
+    provider = KakaoCommuteProvider(
+        KakaoCommuteConfig(api_key="test-key", retry_count=0), client=client
+    )
+
+    result = await provider.locate("서울 마포구 1-1")
+
+    assert result == (126.95, 37.54)
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_realtor_locations_are_returned_by_distance() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("address.json"):
+            return httpx.Response(
+                200, json={"documents": [{"x": "126.95", "y": "37.54"}]}
+            )
         if request.url.path.endswith("category.json"):
             assert request.url.params["category_group_code"] == "AG2"
             assert request.url.params["sort"] == "distance"
             return httpx.Response(
                 200,
                 json={
+                    "meta": {"is_end": True},
                     "documents": [
-                        {
-                            "id": "2",
-                            "place_name": "먼중개사",
-                            "phone": "02-222-2222",
-                            "address_name": "서울 마포구 2-2",
-                            "road_address_name": "",
-                            "distance": "420",
-                            "x": "126.954",
-                            "y": "37.544",
-                            "place_url": "https://place.map.kakao.com/2",
-                        },
                         {
                             "id": "1",
                             "place_name": "가까운중개사",
@@ -311,8 +344,8 @@ async def test_nearest_realtors_are_returned_by_distance() -> None:
                             "x": "126.951",
                             "y": "37.541",
                             "place_url": "https://place.map.kakao.com/1",
-                        },
-                    ]
+                        }
+                    ],
                 },
             )
         return httpx.Response(200, json={"documents": []})
@@ -325,14 +358,14 @@ async def test_nearest_realtors_are_returned_by_distance() -> None:
         KakaoCommuteConfig(api_key="test-key", retry_count=0), client=client
     )
 
-    result = await provider.find_nearest_realtors(
-        RealtorSearchInput(property_address="서울 마포구 1-1", limit=2)
+    result = await provider.search_realtors(
+        "서울 마포구 1-1",
+        limit=15,
+        max_distance_m=5000,
     )
 
-    assert result.count == 2
-    assert result.offices[0].name == "가까운중개사"
-    assert result.offices[0].distance_m == 120
-    assert result.offices[0].road_address == "서울 마포구 살구로 1"
+    assert result[0].name == "가까운중개사"
+    assert result[0].distance_m == 120
     await client.aclose()
 
 

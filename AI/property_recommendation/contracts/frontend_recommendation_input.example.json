@@ -1,0 +1,23 @@
+{
+  "deposit_manwon": 1000,
+  "monthly_rent_manwon": 50,
+  "deposit_approx": false,
+  "monthly_rent_approx": false,
+  "price_band": null,
+  "housing_types": ["officetel", "villa"],
+  "lease_types": ["monthly"],
+  "preferred_areas": ["마포구", "서대문구"],
+  "avoid_areas": ["신림동"],
+  "min_area_m2": 20.0,
+  "min_floor": 1,
+  "max_building_age_years": 10,
+  "workplace": "강남역",
+  "max_commute_min": 40,
+  "max_transfers": 1,
+  "max_bus_headway_min": 15,
+  "max_walk_to_station_min": 10,
+  "priorities": ["commute", "price"],
+  "limit": 5,
+  "history_months": 12,
+  "as_of_date": null
+}

@@ -20,6 +20,7 @@
 | `workplace` | X | 회사·학교·역 이름 |
 | `max_commute_min` | X | 최대 통근시간 |
 | `max_transfers` | X | 최대 환승 횟수 |
+| `max_bus_headway_min` | X | 최대 버스 배차간격 |
 | `max_walk_to_station_min` | X | 첫 버스·지하철 승차지점까지 최대 도보시간 |
 | `priorities` | X | `price`, `commute`, `building_age` 등 우선순위 |
 | `limit` | X | 반환 개수, 기본 5개 |
@@ -30,13 +31,19 @@
 
 - `officetel_rentals`: 오피스텔 과거 전월세 실거래
 - `multifamily_rentals`: 연립·다세대 과거 전월세 실거래
+- `bus_routes`: 버스 배차간격·첫차·막차
+- `bus_stops`, `bus_route_stops`: 매물 주변 정류장·통과 노선
+- `subway_stations`: 지하철역·호선
+- `subway_first_last`: 지하철 첫차·막차
+- `subway_timetables`: 지하철 운행 횟수·배차간격
+- `real_estate_agencies`: 공인중개업소
 - 기본 조회 기간: 기준일 이전 12개월
 - 매물 식별: 주택 유형 + 지역 + 지번 + 건물명 + 5㎡ 면적 구간
 - 같은 건물·면적대 거래는 최신 한 건으로 합치고 중앙값·표본 수를 함께 계산
 
-현재 DB에는 건물·지하철역 좌표가 없으므로 통근시간은 `KakaoCommuteProvider`가
-카카오 위치 검색과 대중교통 길찾기로 계산한다. 직장 조건이 있으면 가까운 지역을 먼저
-거르고, 이후 개별 매물 주소의 통근시간을 계산한다.
+통근시간과 환승 경로는 `KakaoCommuteProvider`가 계산한다. 경로의 노선·정류장·역을
+서울시 교통 DB와 결합해 배차간격, 첫차·막차, 운행 횟수와 매물 주변 정류장을 확인한다.
+직장 조건이 있으면 가까운 지역을 먼저 거르고, 이후 개별 매물 주소를 계산한다.
 직장 조건이 있는데 제공자가 없으면 잘못된 결과를 반환하지 않고 오류를 발생시킨다.
 
 ## 출력
@@ -46,7 +53,8 @@
 - 건물명, 주소, 주택·계약 유형
 - 대표 보증금·월세, 면적, 층, 건축연도
 - 통근시간·경로거리·환승 횟수·요금
-- 버스·지하철 노선, 승하차 지점, 도보 구간
+- 버스·지하철 노선, 배차간격, 첫차·막차, 승하차 지점, 도보 구간
+- 매물 반경 800m 내 버스 정류장과 통과 노선
 - 총점과 항목별 점수
 - 실제 적용 가중치
 - 추천 이유
@@ -82,8 +90,7 @@ HTTP 연결과 좌표·경로 캐시를 재사용한다.
 호출하지 않는다. 개별 매물은 최대 30건을 주소 단위로 측정하며, 확인된 후보만 사용한다.
 경로는 시간·환승·도보 제한을 먼저 만족시킨 뒤 환승 횟수, 소요시간 순으로 선택한다.
 
-카카오 응답에 없는 버스 배차간격 조건은 추정하지 않고
-`UnsupportedCommuteConditionError`를 발생시킨다.
+버스 배차간격 조건은 카카오 응답이 아니라 `bus_routes` DB 값으로 검증한다.
 
 연동 확인:
 
@@ -94,8 +101,10 @@ python scripts/check_kakao_commute.py 강남역 "서울특별시 마포구 공�
 
 ## 건물 확정 후 공인중개사 검색
 
-추천 결과에서 사용자가 건물을 선택한 뒤 별도 메소드를 호출한다. 카카오 장소 카테고리
-`AG2`를 사용하고 선택 건물 좌표와의 거리순으로 반환한다.
+추천 결과에서 사용자가 건물을 선택한 뒤 별도 메소드를 호출한다.
+카카오 `AG2` 카테고리에서 매물 주변 업소를 거리순으로 찾은 뒤,
+`real_estate_agencies`의 이름·전화번호·주소와 대조한다. DB에서 영업 중으로 확인되는
+업소만 등록번호·영업상태와 함께 반환한다.
 
 - `recommend_properties()`: 매물 추천만 수행
 - `find_nearest_realtors()`: 확정된 매물의 공인중개사 검색만 수행
@@ -108,15 +117,16 @@ realtors = await find_nearest_realtors(
         property_address=selected_property.address,
         limit=5,
     ),
-    provider=commute_provider,
+    session=db_session,
+    location_provider=commute_provider,
 )
 ```
 
 `max_distance_m`을 넣으면 최대 20km 안에서만 검색하고, 생략하면 가장 가까운 중개업소를
-거리순으로 조회한다. 이름·전화번호·주소·거리·카카오맵 링크를 반환한다.
+거리순으로 조회한다. 이름·전화번호·주소·등록번호·영업상태·거리·카카오맵 링크를 반환한다.
 
 사용 API: [카카오 대중교통 경로 조회](https://developers.kakao.com/docs/ko/kakaomap/rest-api),
-[카카오 카테고리 장소 검색](https://developers.kakao.com/docs/ko/local/dev-guide)
+[카카오 주소·카테고리 검색](https://developers.kakao.com/docs/ko/local/dev-guide)
 
 ## 평가
 
