@@ -1,0 +1,7 @@
+target/
+application-secret.yml
+.idea/
+*.iml
+.classpath
+.project
+.settings/
