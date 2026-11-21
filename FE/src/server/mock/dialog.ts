@@ -27,6 +27,7 @@ import {
   planBatch,
   planConfirmations,
   planRoute,
+  planTestCall,
   slotStart,
   viewCall,
   type SimInternal,
@@ -37,6 +38,8 @@ export interface Ctx {
   scale: number;
   /** 하루 통화 한도 안에서 쓸 수 있는 통화 수를 돌려줘요 */
   useCalls: (n: number) => number;
+  /** 시험 전화(하루 3번)를 하나 쓸 수 있으면 1 */
+  useTestCalls: () => number;
 }
 
 export class DialogError extends Error {
@@ -58,9 +61,6 @@ const SRC = {
   brokers: { label: '서울시 중개업소 정보', kind: 'example' },
   conv: { label: `전월세전환율 ${STANDARD.convRate}%`, kind: 'standard' },
   calls: { label: 'AI 통화', kind: 'simulation' },
-  registry: { label: '등기부(가상 문서)', kind: 'simulation' },
-  building: { label: '건축HUB 건축물대장', kind: 'example' },
-  rule: { label: `판정 규칙 ${STANDARD.ruleVersion}`, kind: 'standard' },
   wiki: { label: '살구 설명 문서', kind: 'standard' },
 } satisfies Record<string, SourceTag>;
 
@@ -81,6 +81,8 @@ export function newChat(now: Date): { state: ChatState; internal: SimInternal } 
       prep: null,
       batch: null,
       listings: [],
+      selectedListingIds: [],
+      testCall: null,
       visits: [],
       plan: null,
       brokers: [],
@@ -124,7 +126,7 @@ function userSays(chat: ChatState, text: string, now: Date): void {
   if (chat.title === '새 대화') chat.title = text.length > 24 ? `${text.slice(0, 24)}…` : text;
 }
 
-const STAGE_ORDER: Stage[] = ['cond', 'dong', 'call', 'check', 'meet'];
+const STAGE_ORDER: Stage[] = ['cond', 'dong', 'call', 'pick', 'meet'];
 function advanceStage(chat: ChatState, stage: Stage): void {
   if (STAGE_ORDER.indexOf(stage) > STAGE_ORDER.indexOf(chat.stage)) chat.stage = stage;
 }
@@ -226,16 +228,30 @@ function runSearch(chat: ChatState, now: Date, exclude: string[] = [], lead?: st
   chat.search = result;
   chat.selectedDongIds = result.dongs.map((d) => d.id);
   const [a, b] = result.dongs;
-  const gap = a && b ? Math.round((a.score - b.score) * 10) / 10 : 0;
-  const why =
-    a && b
-      ? `1순위 ${a.name}은 ${wpName(chat)}까지 ${a.commute.minutes}분, 같은 조건 계약 ${a.dealCount}건의 환산월세 중간값이 ${a.median}만 원이에요. 2순위 ${b.name}보다 점수가 ${gap}점 높아요.`
-      : a
-        ? `${a.name}은 ${wpName(chat)}까지 ${a.commute.minutes}분이에요.`
-        : '';
+  const bullets: string[] = [];
+  if (a) {
+    bullets.push(
+      `1순위는 ${a.name}이에요. 조건 비슷한 계약 ${a.dealCount}건, 환산월세 중간값 ${a.median}만 원, ${wpName(chat)}까지 ${a.commute.minutes}분`,
+    );
+  }
+  if (a && b) {
+    const diff = b.commute.minutes - a.commute.minutes;
+    const cheaper = b.median - a.median;
+    bullets.push(
+      diff > 0
+        ? `2순위 ${b.name}보다 통근이 ${diff}분 짧아요`
+        : cheaper > 0
+          ? `2순위 ${b.name}보다 환산월세 중간값이 ${cheaper}만 원 낮아요`
+          : `2순위 ${b.name}와 점수가 비슷해요(${a.score}점, ${b.score}점)`,
+    );
+  }
   say(
     chat,
-    `${lead ? `${lead} ` : ''}과거 실거래(최근 12개월)를 기준으로 살만한 동네 ${result.dongs.length}곳을 골랐어요. ${why}`,
+    [
+      `${lead ? `${lead} ` : ''}과거 실거래(최근 12개월)와 출퇴근 여건으로 살만한 동네 ${result.dongs.length}곳을 골랐어요.`,
+      ...bullets.map((x) => `- ${x}`),
+      '실거래는 이미 끝난 계약이라 지금 나온 집은 알 수 없어요. 동네를 고르면 동네마다 중개사무소 여러 곳에 AI가 전화해서 비슷한 방이 있는지 물어볼게요.',
+    ].join('\n'),
     {
       cards: [{ kind: 'dongs', id: mid('k'), result, workplace: chat.conditions.workplace?.value ?? '' }],
       chips: [
@@ -323,7 +339,7 @@ function startCalls(chat: ChatState, internal: SimInternal, ctx: Ctx): void {
 
 /* ---------- 미팅 ---------- */
 
-function planVisits(chat: ChatState, internal: SimInternal, includeCaution: boolean, ctx: Ctx): void {
+function planVisits(chat: ChatState, internal: SimInternal, listingIds: string[] | null, ctx: Ctx): void {
   if (!chat.listings.length)
     throw new DialogError(
       'no_listing',
@@ -331,20 +347,9 @@ function planVisits(chat: ChatState, internal: SimInternal, includeCaution: bool
     );
   if (chat.visits.some((v) => v.status === 'requesting'))
     throw new DialogError('confirming', '지금 확정 전화가 진행 중이에요.');
-  const ok = chat.listings.filter(
-    (l) => l.check === 'recommend' || (includeCaution && l.check === 'caution'),
-  );
-  if (!ok.length) {
-    say(
-      chat,
-      includeCaution
-        ? '추천이나 주의 매물이 없어서 미팅을 잡지 않았어요. 등기 대기 매물은 방문 때 등기부를 직접 확인해 주세요.'
-        : '추천 매물이 없어요. 주의 매물까지 넣어서 잡아 볼까요?',
-      { chips: includeCaution ? ['다른 동네도 보여줘'] : ['주의 매물까지 미팅 잡아줘'] },
-      ctx.now,
-    );
-    return;
-  }
+  const ids = listingIds ?? chat.selectedListingIds;
+  const ok = chat.listings.filter((l) => ids.includes(l.id) && l.contact !== 'failed');
+  if (!ok.length) throw new DialogError('no_pick', '미팅 잡을 방을 하나 이상 골라 주세요.');
   const start = slotStart(chat.prep?.visitSlot ?? 'sat-pm', ctx.now);
   const route = planRoute(ok, start);
   const visits: Visit[] = route.map((r, i) => ({
@@ -375,7 +380,6 @@ function planVisits(chat: ChatState, internal: SimInternal, includeCaution: bool
     start: localIso(start),
     end: localIso(new Date((last?.at ?? start).getTime() + 30 * 60000)),
     visitIds: visits.map((v) => v.id),
-    includeCaution,
   };
   internal.visits = planConfirmations(
     visits.map((v) => ({ visit: v, listing: chat.listings.find((l) => l.id === v.listingId) as Listing })),
@@ -387,7 +391,9 @@ function planVisits(chat: ChatState, internal: SimInternal, includeCaution: bool
   advanceStage(chat, 'meet');
   say(
     chat,
-    `${dateOnly(chat.plan.start)} ${hm(chat.plan.start)}부터 가까운 순서로 ${visits.length}곳을 잡았어요. 중개사무소마다 확정 전화를 걸고 있어요.`,
+    `고른 방 ${visits.length}곳을 동선이 짧은 순서로 배치했어요. 중개사무소마다 다시 전화해서 시간을 확정하고 있어요.
+- ${dateOnly(chat.plan.start)} ${hm(chat.plan.start)}부터 ${visits.length}곳 방문
+- 확정된 방문만 일정 탭에 넣어요`,
     { cards: [{ kind: 'plan', id: mid('k') }], sources: [SRC.calls, SRC.transit] },
     ctx.now,
   );
@@ -395,9 +401,8 @@ function planVisits(chat: ChatState, internal: SimInternal, includeCaution: bool
 }
 
 function showFinal(chat: ChatState, now: Date): void {
-  const pool = chat.listings.filter((l) => l.check === 'recommend' || l.check === 'caution');
-  if (!pool.length) {
-    say(chat, '비교할 매물이 아직 없어요. 매물 확인이 끝난 뒤에 보여 드릴게요.', {}, now);
+  if (!finalRanking(chat).length) {
+    say(chat, '비교할 방이 아직 없어요. 중개사무소 통화가 끝난 뒤에 보여 드릴게요.', {}, now);
     return;
   }
   say(
@@ -411,7 +416,7 @@ function showFinal(chat: ChatState, now: Date): void {
           ranking: finalRanking(chat).map((r) => ({ listingId: r.listing.id, burden: r.burden })),
         },
       ],
-      sources: [SRC.calls, SRC.deals, SRC.conv, SRC.rule],
+      sources: [SRC.calls, SRC.deals, SRC.conv],
     },
     now,
   );
@@ -448,6 +453,20 @@ export function advance(chat: ChatState, internal: SimInternal, now: Date): bool
       }
     }
   }
+  if (chat.testCall && !chat.testCall.doneAt && internal.test) {
+    let status = chat.testCall.status;
+    for (const seg of internal.test.segments) if (seg.from <= t) status = seg.status;
+    const lines = internal.test.lines.filter((x) => x.at <= t).map((x) => x.line);
+    if (status !== chat.testCall.status || lines.length !== chat.testCall.lines.length) {
+      chat.testCall = {
+        ...chat.testCall,
+        status,
+        lines,
+        doneAt: status === 'done' ? now.toISOString() : null,
+      };
+      changed = true;
+    }
+  }
   for (const vp of internal.visits) {
     const v = chat.visits.find((x) => x.id === vp.visitId);
     if (!v || v.status !== 'requesting' || vp.resolveAt > t) continue;
@@ -469,7 +488,9 @@ export function advance(chat: ChatState, internal: SimInternal, now: Date): bool
     changed = true;
   }
   const live = Boolean(
-    (chat.batch && !chat.batch.doneAt) || chat.visits.some((v) => v.status === 'requesting'),
+    (chat.batch && !chat.batch.doneAt) ||
+    chat.visits.some((v) => v.status === 'requesting') ||
+    (chat.testCall && !chat.testCall.doneAt),
   );
   if (live !== chat.live) {
     chat.live = live;
@@ -494,18 +515,22 @@ function announceCalls(chat: ChatState, now: Date): void {
       { chips: ['다른 동네도 보여줘', '조건 바꿀래'], sources: [SRC.calls] },
       now,
     );
-    advanceStage(chat, 'check');
+    advanceStage(chat, 'pick');
     return;
   }
-  const count = (s: Listing['check']) => mine.filter((l) => l.check === s).length;
-  const regs = mine.filter((l) => l.registryReply === 'will_send').length;
-  advanceStage(chat, 'check');
+  advanceStage(chat, 'pick');
+  chat.selectedListingIds = mine.filter((l) => l.priceVerdict !== 'high').map((l) => l.id);
+  const fair = mine.filter((l) => l.priceVerdict === 'fair').length;
+  const dongs = new Set(mine.map((l) => l.dongId)).size;
   say(
     chat,
-    `통화가 끝났어요. 방 ${mine.length}개를 찾았고 등기부 ${regs}건을 받았어요. 미팅 추천 ${count('recommend')}곳, 주의 ${count('caution')}곳, 제외 권장 ${count('exclude')}곳, 등기 대기 ${count('registry_wait')}곳이에요.`,
+    `통화가 끝났어요. 동네 ${dongs}곳에서 방 ${mine.length}개를 들었어요.
+- 실거래 대비 적정 ${fair}곳
+- 실거래보다 비싼 방은 처음에 빼 두었어요
+미팅 잡을 방을 고르면 중개사무소마다 다시 전화해 시간을 확정할게요.`,
     {
-      cards: [{ kind: 'checks', id: mid('k') }],
-      sources: [SRC.calls, SRC.registry, SRC.building, SRC.rule, SRC.deals],
+      cards: [{ kind: 'rooms', id: mid('k') }],
+      sources: [SRC.calls, SRC.deals, SRC.conv],
     },
     now,
   );
@@ -633,7 +658,7 @@ export function handleText(chat: ChatState, internal: SimInternal, raw: string, 
       openCondForm(chat, now, '바꿀 조건을 고쳐 주세요. 비워 둔 칸은 상관없는 걸로 볼게요.');
       break;
     case 'plan':
-      planVisits(chat, internal, intent.includeCaution, ctx);
+      planVisits(chat, internal, null, ctx);
       break;
     case 'final':
       showFinal(chat, now);
@@ -686,7 +711,12 @@ function openCondForm(chat: ChatState, now: Date, text?: string): void {
 
 function fallback(chat: ChatState): void {
   say(chat, '그 질문은 지금 답하기 어려워요. 집 찾기 조건이나 아래처럼 물어봐 주세요.', {
-    chips: ['환산월세가 뭐야?', '근저당이 뭐야?', '청년 월세 지원 받을 수 있어?', '조건 골라서 찾기'],
+    chips: [
+      '환산월세가 뭐야?',
+      '전입신고는 언제까지 해?',
+      '청년 월세 지원 받을 수 있어?',
+      '조건 골라서 찾기',
+    ],
   });
 }
 
@@ -799,8 +829,8 @@ export function handleAction(chat: ChatState, internal: SimInternal, action: Act
       startCalls(chat, internal, ctx);
       break;
     case 'planVisits':
-      userSays(chat, action.includeCaution ? '주의 매물까지 미팅 잡아줘' : '추천 매물로 미팅 잡아줘', now);
-      planVisits(chat, internal, action.includeCaution, ctx);
+      userSays(chat, '고른 방으로 미팅 잡아줘', now);
+      planVisits(chat, internal, action.listingIds ?? null, ctx);
       break;
     case 'showFinal':
       userSays(chat, '최종 추천 보여줘', now);
@@ -818,6 +848,39 @@ export function handleAction(chat: ChatState, internal: SimInternal, action: Act
       v.brokerSaid = `${v.brokerSaid ?? ''} (제안한 시간으로 확정)`.trim();
       const l = chat.listings.find((x) => x.id === v.listingId);
       if (l) l.contact = 'confirmed';
+      break;
+    }
+    case 'toggleListing': {
+      if (!chat.listings.some((l) => l.id === action.listingId)) {
+        throw new DialogError('not_found', '그 방을 찾지 못했어요.');
+      }
+      const picked = new Set(chat.selectedListingIds);
+      if (picked.has(action.listingId)) picked.delete(action.listingId);
+      else picked.add(action.listingId);
+      chat.selectedListingIds = chat.listings.map((l) => l.id).filter((id) => picked.has(id));
+      break;
+    }
+    case 'testCall': {
+      if (!chat.prep) throw new DialogError('no_prep', '전화할 동네를 먼저 골라 주세요.');
+      const digits = String(action.phone ?? '').replace(/\D/g, '');
+      if (!/^01[016789]\d{7,8}$/.test(digits)) {
+        throw new DialogError('invalid_phone', '휴대폰 번호를 010-1234-5678처럼 적어 주세요.');
+      }
+      if (chat.testCall && !chat.testCall.doneAt)
+        throw new DialogError('testing', '지금 시험 전화가 진행 중이에요.');
+      if (ctx.useTestCalls() === 0)
+        throw new DialogError('daily_limit', '시험 전화는 하루 3번까지 걸 수 있어요.');
+      internal.test = planTestCall(chat.prep, valuesOf(chat.conditions), now.getTime(), ctx.scale);
+      // 번호는 가린 값만 남겨요. 실제 전화 서버를 붙이면 번호는 전화 서버로만 보내요.
+      chat.testCall = {
+        id: mid('t'),
+        phone: `${digits.slice(0, 3)}-****-${digits.slice(-4)}`,
+        status: 'queued',
+        lines: [],
+        startedAt: now.toISOString(),
+        doneAt: null,
+      };
+      chat.live = true;
       break;
     }
     case 'cancelVisit': {
@@ -857,7 +920,8 @@ export function widen(chat: ChatState, key: CondKey, value: unknown, now: Date):
 
 /** 최종 추천 순위(실제 부담 낮은 순, 같으면 통근 짧은 순) */
 export function finalRanking(chat: ChatState): { listing: Listing; burden: number }[] {
-  const pool = chat.listings.filter((l) => l.check === 'recommend' || l.check === 'caution');
+  const visited = new Set(chat.visits.filter((v) => v.status !== 'cancelled').map((v) => v.listingId));
+  const pool = chat.listings.filter((l) => visited.has(l.id) || chat.selectedListingIds.includes(l.id));
   return pool
     .map((l) => ({ listing: l, burden: Math.round(convRent(l.deposit, l.rent) + l.fee) }))
     .sort((a, b) => a.burden - b.burden);

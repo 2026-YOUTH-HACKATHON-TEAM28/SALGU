@@ -12,80 +12,117 @@ const EXAMPLES = [
   '여의도역으로 출근해요. 월세 60만 원 이하, 보증금 1000만 원이면 좋겠어요',
   '강남역 다니는데 월세 65까지, 번화한 동네가 좋아요',
   '고양이 키우는데 시청역 출근, 월세 60 이하로 찾아줘',
-  '하나씩 물어봐 줘',
+  '집 찾아줘 (하나씩 물어봐 줘)',
 ];
 const MORE_EXAMPLES = [
   '환산월세가 뭐야?',
-  '근저당이 뭐야?',
-  '전세대출 안 되는 집은 어떤 집이야?',
+  '전입신고는 언제까지 해?',
+  '전월세 전환율이 뭐야?',
   '청년 월세 지원 받을 수 있어?',
 ];
 
 /** S-01 첫 화면 */
 function homeView() {
   return html`<section class="home" aria-labelledby="home-title">
-    <div class="bot-row">
-      <div class="avatar" aria-hidden="true">${logo(26)}</div>
-      <div class="bubble bot">
-        <h2 id="home-title">안녕하세요, 살구예요. 어떤 집을 찾고 있어요?</h2>
-        <p>
-          회사(학교)와 월세를 알려 주시면 출퇴근하기 괜찮은 동네를 고르고, 그 동네 중개사무소에 대신 전화하고,
-          등기부를 같이 보고, 집 보러 갈 시간까지 맞춰 드려요.
-        </p>
-        <button
-          class="btn-primary"
-          @click=${() => act({ type: 'openCondForm' })}
-          data-testid="open-cond-form"
-        >
-          조건 골라서 찾기
-        </button>
-        <p class="home-sub">아니면 이렇게 말해도 돼요</p>
-        <div class="examples">
-          ${EXAMPLES.map((e) => html`<button class="example" @click=${() => send(e)}>${e}</button>`)}
-        </div>
-        <details class="more-examples">
-          <summary>다른 질문 예시</summary>
-          <div class="examples">
-            ${MORE_EXAMPLES.map((e) => html`<button class="example" @click=${() => send(e)}>${e}</button>`)}
-          </div>
-        </details>
-      </div>
-    </div>
+    <div class="home-logo">${logo(40)}</div>
+    <h2 id="home-title">안녕하세요, <em>살구</em>예요.<br />어떤 집을 찾고 있어요?</h2>
+    <p class="home-lead">
+      회사가 어디고 월세를 얼마까지 낼 수 있는지 알려 주세요. 출퇴근하기 괜찮은 동네를 고르고, 그 동네
+      중개사무소 몇 곳에 대신 전화해서 비슷한 집이 있는지 물어볼게요. 마음에 드는 방을 고르면 집 보러 갈
+      시간까지 맞춰 드려요.
+    </p>
+    <button class="home-form" @click=${() => act({ type: 'openCondForm' })} data-testid="open-cond-form">
+      <span>
+        <strong>조건 골라서 찾기</strong>
+        <span class="sub">회사, 월세, 출퇴근 시간을 칸에서 골라요</span>
+      </span>
+      <span class="chev" aria-hidden="true">›</span>
+    </button>
+    <p class="home-sub">아니면 이렇게 말해도 돼요</p>
+    <ul class="examples">
+      ${EXAMPLES.map(
+        (e) =>
+          html`<li>
+            <button
+              class="example"
+              @click=${() => send(e.replace(' (하나씩 물어봐 줘)', ', 하나씩 물어봐 줘'))}
+            >
+              ${e}
+            </button>
+          </li>`,
+      )}
+    </ul>
+    <details class="more-examples">
+      <summary>다른 질문 예시</summary>
+      <ul class="examples">
+        ${MORE_EXAMPLES.map((e) => html`<li><button class="example" @click=${() => send(e)}>${e}</button></li>`)}
+      </ul>
+    </details>
   </section>`;
 }
 
 function chipClick(chip: string): void {
-  if (chip === '일정 탭에서 보기') openPanel('sched');
+  if (chip === '일정 탭에서 보기' || chip === '일정 보여줘') openPanel('sched');
   else if (chip === '조건 골라서 찾기') void act({ type: 'openCondForm' });
   else if (chip === '이 조건으로 다시 찾기' || chip === '이대로 찾아줘') void act({ type: 'search' });
   else if (chip === '최종 추천 보여줘') void act({ type: 'showFinal' });
-  else if (chip === '추천 매물로 미팅 잡아줘') void act({ type: 'planVisits', includeCaution: false });
-  else if (chip === '주의 매물까지 미팅 잡아줘') void act({ type: 'planVisits', includeCaution: true });
   else void send(chip);
+}
+
+/** 살구 답변 문구: 줄 앞에 '- '가 있으면 목록으로 */
+function botText(text: string): TemplateResult {
+  const blocks: TemplateResult[] = [];
+  let list: string[] = [];
+  const flush = () => {
+    if (list.length)
+      blocks.push(
+        html`<ul>
+          ${list.map((l) => html`<li>${l}</li>`)}
+        </ul>`,
+      );
+    list = [];
+  };
+  for (const line of text.split('\n')) {
+    if (line.startsWith('- ')) list.push(line.slice(2));
+    else {
+      flush();
+      if (line.trim()) blocks.push(html`<p>${line}</p>`);
+    }
+  }
+  flush();
+  return html`<div class="bot-text">${blocks}</div>`;
 }
 
 function messageView(m: Message, last: boolean): TemplateResult {
   if (m.role === 'user') {
     return html`<div class="user-row" data-testid="msg-user"><div class="bubble user">${m.text}</div></div>`;
   }
-  return html`<div class="bot-row" data-testid="msg-bot">
-    <div class="avatar" aria-hidden="true">${logo(26)}</div>
-    <div class="bot-body">
-      ${m.text ? html`<div class="bubble bot"><p>${m.text}</p></div>` : nothing}
-      ${m.cards.map((c) => html`<div class="card-wrap" data-stage=${cardStage(c.kind) ?? ''} id=${`card-${c.id}`}>${renderCard(c, m)}</div>`)}
-      ${
-        last && m.chips.length
-          ? html`<div class="chips" role="group" aria-label="이어서 할 말">
-              ${m.chips.map((c) => html`<button class="chip" ?disabled=${state.pending} @click=${() => chipClick(c)}>${c}</button>`)}
-            </div>`
-          : nothing
-      }
-      ${sources(m.sources)}
-    </div>
-  </div>`;
+  return html`<article class="bot-msg" data-testid="msg-bot">
+    <header class="bot-name"><span class="avatar" aria-hidden="true">${logo(20)}</span>살구</header>
+    ${m.text ? botText(m.text) : nothing}
+    ${m.cards.map(
+      (c) =>
+        html`<div class="card-wrap" data-stage=${cardStage(c.kind) ?? ''} id=${`card-${c.id}`}>
+          ${renderCard(c, m)}
+        </div>`,
+    )}
+    ${
+      last && m.chips.length
+        ? html`<div class="chips" role="group" aria-label="이어서 할 말">
+            ${m.chips.map(
+              (c) =>
+                html`<button class="chip" ?disabled=${state.pending} @click=${() => chipClick(c)}>
+                  ${c}
+                </button>`,
+            )}
+          </div>`
+        : nothing
+    }
+    ${sources(m.sources)}
+  </article>`;
 }
 
-/** 진행 단계 바 */
+/** 진행 단계 바: 끝난 단계(✓)를 누르면 그 카드로 */
 function progressView(): TemplateResult | typeof nothing {
   const chat = state.chat;
   if (!chat || !chat.messages.length) return nothing;
@@ -94,6 +131,10 @@ function progressView(): TemplateResult | typeof nothing {
     const el = [...document.querySelectorAll<HTMLElement>(`.card-wrap[data-stage="${stage}"]`)].pop();
     el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
+  const next =
+    chat.stage === 'call' && !chat.batch
+      ? '입주 희망일과 계약 기간을 골라 전화를 걸어 주세요'
+      : NEXT_ACTION[chat.stage];
   return html`<nav class="progress" aria-label="진행 단계">
     <ol>
       ${STAGES.map((s, i) => {
@@ -106,7 +147,7 @@ function progressView(): TemplateResult | typeof nothing {
         </li>`;
       })}
     </ol>
-    <p class="next">다음 할 일 · ${NEXT_ACTION[chat.stage]}</p>
+    <p class="next">다음 할 일 · ${next}</p>
   </nav>`;
 }
 
@@ -141,7 +182,7 @@ export function afterChatRender(): void {
     log.scrollTo({ top: log.scrollHeight, behavior: 'smooth' });
     return;
   }
-  // 살구 답변: 첫 새 답변의 머리가 보이게
+  // 살구 답변: 새 답변의 머리가 보이게
   const rows = log.querySelectorAll<HTMLElement>('[data-testid="msg-bot"]');
   const target = rows[rows.length - 1];
   if (!target) return;
@@ -165,21 +206,27 @@ function composer() {
       (e.currentTarget as HTMLTextAreaElement).form?.requestSubmit();
     }
   };
-  return html`<form class="composer" @submit=${onSubmit}>
-    <label class="sr-only" for="msg">살구에게 말하기</label>
-    <textarea
-      id="msg"
-      name="msg"
-      rows="1"
-      maxlength="500"
-      placeholder="예: 여의도역 출근, 월세 60 이하"
-      @keydown=${onKey}
-      data-testid="composer-input"
-    ></textarea>
-    <button class="send" type="submit" aria-label="보내기" data-testid="composer-send">
-      ${icons.send()}
-    </button>
-  </form>`;
+  return html`<div class="composer-wrap">
+    <form class="composer" @submit=${onSubmit}>
+      <label class="sr-only" for="msg">살구에게 말하기</label>
+      <textarea
+        id="msg"
+        name="msg"
+        rows="1"
+        maxlength="500"
+        placeholder="예) 회사가 강남역이고 월세 60 이하, 역 가까운 집 찾아줘"
+        @keydown=${onKey}
+        data-testid="composer-input"
+      ></textarea>
+      <button class="send" type="submit" aria-label="보내기" data-testid="composer-send">
+        ${icons.send()}
+      </button>
+    </form>
+    <p class="composer-note">
+      시험 서비스예요. 매물·중개사무소·통화는 예시이고 실제로 전화하지 않아요. 시세는 서울시 전월세가 정보
+      형식의 예시 표본이에요.
+    </p>
+  </div>`;
 }
 
 export function chatView() {
@@ -196,12 +243,12 @@ export function chatView() {
       )}
       ${
         state.pending
-          ? html`<div class="bot-row typing" aria-label="살구가 답을 정리하는 중">
-              <div class="avatar" aria-hidden="true">${logo(26)}</div>
-              <div class="bubble bot">
-                <span class="dots"><i></i><i></i><i></i></span>살구가 답을 정리하는 중
-              </div>
-            </div>`
+          ? html`<article class="bot-msg typing" aria-label="살구가 답을 정리하는 중">
+              <header class="bot-name"><span class="avatar" aria-hidden="true">${logo(20)}</span>살구</header>
+              <p class="typing-text">
+                <span class="dots"><i></i><i></i><i></i></span>답을 정리하는 중
+              </p>
+            </article>`
           : nothing
       }
       ${
@@ -217,6 +264,7 @@ export function chatView() {
 export function closeFloating(e: Event): void {
   const t = e.target as HTMLElement;
   if (state.ui.accountOpen && !t.closest('.account')) ui({ accountOpen: false });
-  if (state.ui.listOpen && !t.closest('.drawer') && !t.closest('[data-testid="hdr-chats"]'))
+  if (state.ui.listOpen && !t.closest('.drawer') && !t.closest('[data-testid="hdr-chats"]')) {
     ui({ listOpen: false });
+  }
 }

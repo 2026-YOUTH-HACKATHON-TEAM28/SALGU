@@ -1,12 +1,9 @@
 import type {
   CallOutcome,
   CallStatus,
-  CheckStatus,
   CondKey,
   ContactStatus,
   PriceVerdict,
-  RegistryReply,
-  RiskLevel,
   SourceKind,
   Stage,
   VisitStatus,
@@ -30,15 +27,6 @@ export const CONTACT_LABEL: Record<ContactStatus, StatusLabel> = {
   proposed: { text: '시간 제안 받음', tone: 'warn' },
   confirmed: { text: '방문 확정', tone: 'ok' },
   failed: { text: '연락 못 함', tone: 'bad' },
-};
-
-/** 매물 카드 가격 줄 아래: 확인 상태 */
-export const CHECK_LABEL: Record<CheckStatus, StatusLabel> = {
-  unchecked: { text: '확인 전', tone: 'muted' },
-  registry_wait: { text: '등기 대기', tone: 'muted' },
-  recommend: { text: '추천', tone: 'ok' },
-  caution: { text: '주의', tone: 'warn' },
-  exclude: { text: '제외 권장', tone: 'bad' },
 };
 
 /** AI 통화 카드(화면 정의서 S-05 방식) */
@@ -75,23 +63,12 @@ export function isCallActive(status: CallStatus): boolean {
   return status === 'queued' || status === 'ringing' || status === 'in_progress' || status === 'analyzing';
 }
 
-export const REGISTRY_REPLY_LABEL: Record<Exclude<RegistryReply, null>, string> = {
-  will_send: '살구 번호로 보내 줌',
-  at_visit: '방문 때 보여 줌',
-  refused: '못 줌',
-};
-
+/** 매물 카드 가격 줄 바로 아래: 같은 조건 과거 실거래와 비교한 값 */
 export const PRICE_LABEL: Record<PriceVerdict, StatusLabel> = {
   fair: { text: '적정', tone: 'ok' },
   slightly_high: { text: '약간 비쌈', tone: 'warn' },
   high: { text: '비쌈', tone: 'bad' },
   unknown: { text: '비교 못 함', tone: 'muted' },
-};
-
-export const RISK_LABEL: Record<RiskLevel, StatusLabel> = {
-  good: { text: '양호', tone: 'ok' },
-  caution: { text: '주의', tone: 'warn' },
-  danger: { text: '위험', tone: 'bad' },
 };
 
 export const VISIT_LABEL: Record<VisitStatus, StatusLabel> = {
@@ -113,15 +90,15 @@ export const STAGES: { id: Stage; label: string }[] = [
   { id: 'cond', label: '조건' },
   { id: 'dong', label: '동네' },
   { id: 'call', label: '전화' },
-  { id: 'check', label: '확인' },
+  { id: 'pick', label: '방 고르기' },
   { id: 'meet', label: '미팅' },
 ];
 
 export const NEXT_ACTION: Record<Stage, string> = {
   cond: '회사와 월세를 알려 주세요',
   dong: '전화할 동네를 골라 주세요',
-  call: '중개사무소 통화를 기다려요',
-  check: '미팅 잡을 매물을 골라 주세요',
+  call: '전화 준비를 마치고 통화를 기다려요',
+  pick: '미팅 잡을 방을 골라 주세요',
   meet: '방문 일정을 확인해 주세요',
 };
 

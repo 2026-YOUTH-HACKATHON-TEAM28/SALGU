@@ -484,8 +484,8 @@ export function cardStage(kind: string): Stage | null {
     case 'callPrep':
     case 'calls':
       return 'call';
-    case 'checks':
-      return 'check';
+    case 'rooms':
+      return 'pick';
     case 'plan':
     case 'final':
       return 'meet';

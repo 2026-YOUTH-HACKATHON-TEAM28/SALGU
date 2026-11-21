@@ -127,13 +127,12 @@ export interface SearchResult {
   asOf: string;
 }
 
-/* ---------- 전화 · 매물 · 확인 · 방문 ---------- */
+/* ---------- 전화 · 매물 · 방문 ---------- */
 
 /** 전화 에이전트의 status 값(문서 v0.3.1) */
 export type CallStatus =
   'waiting' | 'queued' | 'ringing' | 'in_progress' | 'retry_wait' | 'analyzing' | 'done';
 export type CallOutcome = 'listing' | 'no_listing' | 'no_answer' | 'declined' | 'unclear';
-export type RegistryReply = 'will_send' | 'at_visit' | 'refused' | null;
 
 export interface CallLine {
   who: 'agent' | 'broker' | 'system';
@@ -151,37 +150,23 @@ export interface Call {
   lines: CallLine[];
   listingIds: string[];
   slots: string[];
-  registryReply: RegistryReply;
   smsDraft: string | null;
+}
+
+/** 내 번호로 먼저 받아 보는 시험 전화(번호는 가린 값만 둬요) */
+export interface TestCall {
+  id: string;
+  phone: string;
+  status: CallStatus;
+  lines: CallLine[];
+  startedAt: string;
+  doneAt: string | null;
 }
 
 /** 매물 카드의 연락 상태(모든 화면에서 같은 문구) */
 export type ContactStatus =
   'before' | 'contacting' | 'no_answer' | 'answered' | 'proposed' | 'confirmed' | 'failed';
-/** 매물 카드의 확인 상태(모든 화면에서 같은 문구) */
-export type CheckStatus = 'unchecked' | 'registry_wait' | 'recommend' | 'caution' | 'exclude';
 export type PriceVerdict = 'fair' | 'slightly_high' | 'high' | 'unknown';
-export type RiskLevel = 'good' | 'caution' | 'danger';
-
-export interface CheckDetail {
-  address: string;
-  owner: string;
-  owners: number;
-  mortgage: number;
-  seizure: boolean;
-  trust: boolean;
-  leaseRight: boolean;
-  buildingUse: string;
-  violation: boolean;
-  approvedYear: number;
-  salePrice: number | null;
-  loanOk: boolean;
-  loanReasons: string[];
-  risk: RiskLevel;
-  ratio: number | null;
-  riskReasons: string[];
-  ruleVersion: string;
-}
 
 export interface Listing {
   id: string;
@@ -202,11 +187,8 @@ export interface Listing {
   lat: number;
   lng: number;
   slots: string[];
-  registryReply: RegistryReply;
   priceVerdict: PriceVerdict;
   contact: ContactStatus;
-  check: CheckStatus;
-  detail: CheckDetail | null;
 }
 
 export type VisitStatus = 'requesting' | 'confirmed' | 'proposed' | 'failed' | 'cancelled';
@@ -231,7 +213,7 @@ export interface SourceTag {
   kind: SourceKind;
 }
 
-export type Stage = 'cond' | 'dong' | 'call' | 'check' | 'meet';
+export type Stage = 'cond' | 'dong' | 'call' | 'pick' | 'meet';
 
 export interface CallPrep {
   dongIds: string[];
@@ -250,7 +232,7 @@ export type Card =
   | { kind: 'noMatch'; id: string; losses: FilterLoss[] }
   | { kind: 'callPrep'; id: string; done: boolean }
   | { kind: 'calls'; id: string }
-  | { kind: 'checks'; id: string }
+  | { kind: 'rooms'; id: string }
   | { kind: 'plan'; id: string }
   | { kind: 'final'; id: string; ranking: { listingId: string; burden: number }[] }
   | { kind: 'concept'; id: string; title: string; body: string[] };
@@ -277,7 +259,6 @@ export interface Plan {
   start: string;
   end: string;
   visitIds: string[];
-  includeCaution: boolean;
 }
 
 export interface ChatState {
@@ -294,6 +275,9 @@ export interface ChatState {
   prep: CallPrep | null;
   batch: CallBatch | null;
   listings: Listing[];
+  /** 미팅을 잡으려고 고른 방 */
+  selectedListingIds: string[];
+  testCall: TestCall | null;
   visits: Visit[];
   plan: Plan | null;
   /** 브로커 정보(통화한 곳) */
@@ -347,7 +331,9 @@ export type Action =
   | { type: 'prepCalls'; dongIds: string[] }
   | { type: 'updatePrep'; patch: Partial<CallPrep> }
   | { type: 'startCalls' }
-  | { type: 'planVisits'; includeCaution: boolean }
+  | { type: 'toggleListing'; listingId: string }
+  | { type: 'planVisits'; listingIds?: string[] }
+  | { type: 'testCall'; phone: string }
   | { type: 'showFinal' }
   | { type: 'cancelVisit'; visitId: string }
   | { type: 'requestChange'; visitId: string };

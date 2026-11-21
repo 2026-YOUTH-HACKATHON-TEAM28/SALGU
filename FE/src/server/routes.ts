@@ -62,6 +62,7 @@ export async function registerRoutes(app: FastifyInstance, config: Config, store
     now: new Date(),
     scale: config.timeScale,
     useCalls: (n) => store.useCalls(user.id, n, new Date().toISOString().slice(0, 10)),
+    useTestCalls: () => store.useTestCall(user.id, new Date().toISOString().slice(0, 10)),
   });
 
   const sendDialogError = (reply: FastifyReply, err: unknown) => {

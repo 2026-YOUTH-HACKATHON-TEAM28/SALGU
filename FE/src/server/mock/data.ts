@@ -10,7 +10,6 @@ export const STANDARD = {
     return this.baseRate + this.spread;
   },
   dataAsOf: '2026-10-31',
-  ruleVersion: 'r1-2026-11',
 };
 
 export interface DongSeed {

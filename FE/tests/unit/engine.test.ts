@@ -1,13 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  convRent,
-  judge,
-  median,
-  priceVerdict,
-  searchDongs,
-  valuesOf,
-  type RegistryFacts,
-} from '../../src/server/mock/engine.js';
+import { convRent, median, priceVerdict, searchDongs, valuesOf } from '../../src/server/mock/engine.js';
 import { WORKPLACES, dealsOf } from '../../src/server/mock/data.js';
 import type { Conditions } from '../../src/shared/types.js';
 
@@ -88,51 +80,5 @@ describe('시세 판정', () => {
     const d = dealsOf('bongcheon').find((x) => x.type === 'villa')!;
     expect(priceVerdict('bongcheon', d.area, 'villa', 1000, 200)).toBe('high');
     expect(priceVerdict('bongcheon', d.area, 'villa', 500, 20)).toBe('fair');
-  });
-});
-
-describe('등기·대출 판정 (r1-2026-11)', () => {
-  const base: RegistryFacts = {
-    address: '서울 관악구 봉천동 1-1 101호',
-    owner: '김**',
-    owners: 1,
-    mortgage: 3000,
-    seizure: false,
-    trust: false,
-    leaseRight: false,
-    buildingUse: '다세대주택',
-    violation: false,
-    approvedYear: 2015,
-    area: 24,
-    salePrice: 30000,
-    deposit: 1000,
-  };
-
-  it('대출 가능 + 비율 낮음 = 추천', () => {
-    const j = judge(base);
-    expect(j.status).toBe('recommend');
-    expect(j.ratio).toBeCloseTo(13.3, 1);
-    expect(j.loanOk).toBe(true);
-  });
-  it('비율 70~80% = 주의', () => {
-    expect(judge({ ...base, mortgage: 21000 }).status).toBe('caution');
-  });
-  it('비율 80% 이상 = 제외 권장', () => {
-    const j = judge({ ...base, mortgage: 24000 });
-    expect(j.risk).toBe('danger');
-    expect(j.status).toBe('exclude');
-  });
-  it('근린생활시설·위반건축물·85㎡ 초과는 대출 불가로 제외 권장', () => {
-    expect(judge({ ...base, buildingUse: '제2종 근린생활시설' }).status).toBe('exclude');
-    expect(judge({ ...base, violation: true }).loanOk).toBe(false);
-    expect(judge({ ...base, area: 90 }).loanOk).toBe(false);
-  });
-  it('압류·신탁은 위험', () => {
-    expect(judge({ ...base, seizure: true }).risk).toBe('danger');
-    expect(judge({ ...base, trust: true }).risk).toBe('danger');
-  });
-  it('시세 모름, 소유자 3명 이상은 주의', () => {
-    expect(judge({ ...base, salePrice: null }).status).toBe('caution');
-    expect(judge({ ...base, owners: 3 }).status).toBe('caution');
   });
 });

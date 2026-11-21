@@ -113,7 +113,31 @@ describe('집 찾기 흐름(mock)', () => {
     expect(r.body.error).toBe('prep_required');
   });
 
-  it('통화가 끝나면 매물 확인 카드와 상태', async () => {
+  it('내 번호로 시험 전화: 번호는 가려서 두고 대본대로 진행', async () => {
+    const bad = await call<{ error: string }>('POST', `/api/chats/${chat.id}/actions`, {
+      type: 'testCall',
+      phone: '123',
+    });
+    expect(bad.status).toBe(409);
+    expect(bad.body.error).toBe('invalid_phone');
+    chat = (
+      await call<ChatState>('POST', `/api/chats/${chat.id}/actions`, {
+        type: 'testCall',
+        phone: '010-1234-5678',
+      })
+    ).body;
+    expect(chat.testCall?.phone).toBe('010-****-5678');
+    expect(JSON.stringify(chat)).not.toContain('1234-5678');
+    for (let i = 0; i < 40 && chat.live; i++) {
+      await sleep(50);
+      chat = (await call<ChatState>('GET', `/api/chats/${chat.id}`)).body;
+    }
+    expect(chat.testCall?.status).toBe('done');
+    expect(chat.testCall?.lines[0]?.text).toContain('AI 비서');
+    expect(JSON.stringify(chat.testCall)).not.toContain('등기');
+  });
+
+  it('통화가 끝나면 찾은 방 카드(등기 확인 없이)', async () => {
     await call('POST', `/api/chats/${chat.id}/actions`, {
       type: 'updatePrep',
       patch: { moveIn: '12월 초', term: '2년', visitSlot: 'sat-pm' },
@@ -127,12 +151,14 @@ describe('집 찾기 흐름(mock)', () => {
       chat = (await call<ChatState>('GET', `/api/chats/${chat.id}`)).body;
     }
     expect(chat.batch?.doneAt).toBeTruthy();
-    expect(chat.stage).toBe('check');
+    expect(chat.stage).toBe('pick');
     expect(chat.batch?.calls.every((c) => c.status === 'done' && c.outcome)).toBe(true);
+    expect(JSON.stringify(chat.batch)).not.toContain('등기');
     for (const l of chat.listings) {
-      expect(['registry_wait', 'recommend', 'caution', 'exclude']).toContain(l.check);
-      if (l.registryReply === 'will_send') expect(l.detail?.ruleVersion).toBe('r1-2026-11');
+      expect(l.contact).toMatch(/answered|no_answer/);
+      expect(['fair', 'slightly_high', 'high', 'unknown']).toContain(l.priceVerdict);
     }
+    if (chat.listings.length) expect(chat.messages.at(-1)?.cards[0]?.kind).toBe('rooms');
   });
 
   it('바뀐 게 없으면 204', async () => {
@@ -145,12 +171,14 @@ describe('집 찾기 흐름(mock)', () => {
   });
 
   it('미팅: 확정 전화 뒤 확정된 방문만 일정에', async () => {
+    if (!chat.listings.length) return; // 방을 하나도 못 들은 시나리오
+    const pick = chat.listings.slice(0, 2).map((l) => l.id);
     const r = await call<ChatState>('POST', `/api/chats/${chat.id}/actions`, {
       type: 'planVisits',
-      includeCaution: true,
+      listingIds: pick,
     });
     chat = r.body;
-    if (!chat.visits.length) return; // 추천·주의 매물이 없는 시나리오
+    expect(chat.visits.map((v) => v.listingId).sort()).toEqual([...pick].sort());
     expect(chat.visits.every((v) => v.status === 'requesting')).toBe(true);
     for (let i = 0; i < 40 && chat.live; i++) {
       await sleep(100);

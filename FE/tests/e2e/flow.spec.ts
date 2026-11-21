@@ -43,7 +43,7 @@ test.describe('S-00 로그인', () => {
   });
 });
 
-test('조건에서 일정까지: 조건 카드, 그 자리 수정, 동네, 전화, 확인, 미팅, 일정', async ({ page }) => {
+test('조건에서 일정까지: 조건 카드, 그 자리 수정, 동네, 시험 전화, 통화, 방 고르기, 미팅, 일정', async ({ page }) => {
   await startAsExample(page);
   await noHorizontalScroll(page);
 
@@ -79,36 +79,58 @@ test('조건에서 일정까지: 조건 카드, 그 자리 수정, 동네, 전�
   await prep.getByRole('button', { name: '2년' }).click();
   await prep.getByRole('button', { name: '이번 토요일 오후' }).click();
   await expect(start).toBeEnabled();
+
+  // 내 번호로 먼저 받아 보기(시험 전화, mock)
+  const testBox = prep.getByTestId('test-call');
+  await testBox.getByTestId('test-phone').fill('01012345678');
+  await expect(testBox.getByTestId('test-phone')).toHaveValue('010-1234-5678');
+  await testBox.getByTestId('test-call-start').click();
+  await expect(testBox).toContainText('010-****-5678');
+  await expect(testBox.getByTestId('test-call-status')).toHaveText(/방 있음|통화 중|신호 가는 중/);
+  await expect(testBox).toContainText('시험 전화가 끝났어요', { timeout: 20_000 });
+  await expect(page.getByTestId('chat-log')).not.toContainText('1234-5678');
   await start.click();
 
-  // S-05 AI 통화: 화면 정의서 문구
+  // S-05 AI 통화: 화면 정의서 문구, 등기부 요청 없음
   const calls = page.getByTestId('calls-card');
   await expect(calls.getByTestId('call-row').first()).toBeVisible();
   await expect(calls.getByTestId('call-status').first()).toHaveText(
     /차례를 기다리는 중|신호 가는 중|통화 중|통화 내용 정리 중|방 있음|비슷한 방 없음|안 받음|AI 통화 거절|확인 못 함/,
   );
+  await expect(calls).toContainText('실제로 전화를 걸지 않아요');
 
-  // S-06 매물 확인: 통화가 끝나면 자동으로
-  const checks = page.getByTestId('checks-card');
-  await expect(checks).toBeVisible({ timeout: 60_000 });
-  const listings = checks.getByTestId('listing');
+  // 찾은 방: 통화가 끝나면 자동으로, 등기·건축물대장 확인 없이
+  const rooms = page.getByTestId('rooms-card');
+  const none = page.getByText('조건에 맞는 방을 찾지 못했어요');
+  await expect(rooms.or(none)).toBeVisible({ timeout: 60_000 });
+  if (await none.isVisible()) return;
+  await expect(page.getByTestId('chat-log')).not.toContainText('등기 대기');
+  const listings = rooms.getByTestId('listing');
   const count = await listings.count();
   expect(count).toBeGreaterThan(0);
   for (let i = 0; i < count; i++) {
     const l = listings.nth(i);
-    // 연락 상태는 머리 오른쪽, 확인 상태는 가격 줄 아래(같은 자리, 같은 문구)
+    // 연락 상태는 머리 오른쪽, 실거래 대비는 가격 줄 아래(같은 자리, 같은 문구)
     await expect(l.locator('.listing-head [data-testid="contact-status"]')).toHaveText(/답변 받음|답변 없음/);
-    await expect(l.locator('.listing-check [data-testid="check-status"]')).toHaveText(
-      /추천|주의|제외 권장|등기 대기/,
+    await expect(l.locator('.listing-check [data-testid="price-status"]')).toHaveText(
+      /적정|약간 비쌈|비쌈|비교 못 함/,
     );
   }
 
-  // S-07 미팅: 주의 매물까지
-  await checks.getByTestId('plan-caution').click();
+  // 방 고르기: 하나만 남기고 미팅 잡기
+  const picks = rooms.getByTestId('pick-listing');
+  for (let i = 0; i < count; i++) {
+    const want = i === 0;
+    if ((await picks.nth(i).isChecked()) !== want) {
+      await picks.nth(i).click();
+      await expect(picks.nth(i)).toBeChecked({ checked: want });
+    }
+  }
+  await expect(rooms.getByTestId('plan-picked')).toHaveText('고른 방 1곳 미팅 잡기');
+  await rooms.getByTestId('plan-picked').click();
   const plan = page.getByTestId('plan-card');
-  const noPlan = page.getByText('추천이나 주의 매물이 없어서 미팅을 잡지 않았어요.');
-  await expect(plan.or(noPlan)).toBeVisible();
-  if (await noPlan.isVisible()) return;
+  await expect(plan).toBeVisible();
+  await expect(plan.getByTestId('listing')).toHaveCount(1);
   // 확정 전화가 끝나면 '연락 중'이 사라지고 방문 확정·시간 제안 받음·연락 못 함 중 하나
   await expect(plan.locator('[data-testid="contact-status"]', { hasText: '연락 중' })).toHaveCount(0, {
     timeout: 60_000,

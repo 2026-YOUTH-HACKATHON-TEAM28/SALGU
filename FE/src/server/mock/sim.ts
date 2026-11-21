@@ -1,4 +1,4 @@
-/* 전화·등기·확정 통화 시뮬레이션(mock). 모양은 전화 에이전트 문서(v0.3.1)의 결과와 같아요.
+/* 문의·확정·시험 통화 시뮬레이션(mock). 모양은 전화 에이전트 문서(v0.3.1)의 결과와 같아요.
  * 처음 만들 때 전체 진행표를 정해 두고, 읽을 때마다 지금 시각까지 진행한 모습을 보여 줘요. */
 import type {
   Broker,
@@ -9,11 +9,10 @@ import type {
   CallStatus,
   CondValues,
   Listing,
-  RegistryReply,
   Visit,
 } from '../../shared/types.js';
 import { buildingsOf, dongById, rng } from './data.js';
-import { judge, priceVerdict } from './engine.js';
+import { priceVerdict } from './engine.js';
 
 export interface Segment {
   status: CallStatus;
@@ -29,7 +28,6 @@ export interface CallPlan {
   lines: { at: number; line: CallLine }[];
   listings: Listing[];
   slots: string[];
-  registryReply: RegistryReply;
   smsDraft: string | null;
   doneAt: number;
 }
@@ -47,6 +45,7 @@ export interface SimInternal {
   visits: VisitPlan[];
   callsAnnounced: boolean;
   visitsAnnounced: boolean;
+  test?: TestCallPlan | null;
 }
 
 export const emptyInternal = (): SimInternal => ({
@@ -140,7 +139,6 @@ export function planBatch(input: BatchInput): { calls: Call[]; plans: CallPlan[]
       lines: [],
       listingIds: [],
       slots: [],
-      registryReply: null,
       smsDraft: null,
     });
     plans.push({
@@ -152,7 +150,6 @@ export function planBatch(input: BatchInput): { calls: Call[]; plans: CallPlan[]
       lines: [],
       listings: [],
       slots: [],
-      registryReply: null,
       smsDraft: null,
       doneAt: 0,
     });
@@ -247,8 +244,6 @@ export function planBatch(input: BatchInput): { calls: Call[]; plans: CallPlan[]
       (x) => values.houseType === 'any' || x.type === values.houseType,
     );
     const count = 1 + Math.floor(r() * 3);
-    const regR = r();
-    const registryReply: RegistryReply = regR < 0.6 ? 'will_send' : regR < 0.9 ? 'at_visit' : 'refused';
     const slotHour = slotFrom.getHours() + Math.floor(r() * 3);
     const slotIso = new Date(slotFrom);
     slotIso.setHours(slotHour, r() < 0.5 ? 0 : 30);
@@ -283,11 +278,8 @@ export function planBatch(input: BatchInput): { calls: Call[]; plans: CallPlan[]
         lat: b.lat,
         lng: b.lng,
         slots,
-        registryReply,
         priceVerdict: priceVerdict(item.broker.dongId, area, b.type, deposit, listRent),
         contact: 'answered',
-        check: 'unchecked',
-        detail: null,
       });
     }
     line(talk + d(9), 'broker', `${said.join(', ')} 있어요. 관리비는 방마다 5만 원에서 12만 원이에요.`);
@@ -297,72 +289,16 @@ export function planBatch(input: BatchInput): { calls: Call[]; plans: CallPlan[]
       'broker',
       `${slotIso.getHours()}시${slotIso.getMinutes() ? ' 30분' : ''}쯤이면 보여 드릴 수 있어요.`,
     );
-    line(talk + d(16), 'agent', '등기부를 살구 번호로 미리 보내 주실 수 있을까요?');
-    line(
-      talk + d(18),
-      'broker',
-      registryReply === 'will_send'
-        ? '네, 문자로 보내 드릴게요.'
-        : registryReply === 'at_visit'
-          ? '방문하실 때 보여 드릴게요.'
-          : '등기부는 드리기 어려워요.',
-    );
-    const end = talk + d(20);
-    if (registryReply === 'will_send') line(end + d(3), 'system', '등기부 문자를 받았어요.');
+    line(talk + d(16), 'agent', '감사합니다. 방문 시간이 정해지면 다시 연락드릴게요.');
+    const end = talk + d(18);
     plan.segments.push({ status: 'analyzing', from: end }, { status: 'done', from: end + d(4) });
     plan.outcome = 'listing';
     plan.slots = slots;
-    plan.registryReply = registryReply;
     plan.doneAt = end + d(4);
     cursor = plan.doneAt + d(1);
   }
 
-  // 등기를 받은 매물은 바로 확인(등기 -> 소재지 -> 건축물대장 -> 대출·위험)
-  for (const plan of plans) for (const l of plan.listings) checkListing(l, input.seed);
   return { calls, plans };
-}
-
-/** 등기 사실(예시)과 판정 */
-export function checkListing(l: Listing, seed: string): void {
-  if (l.registryReply !== 'will_send') {
-    l.check = 'registry_wait';
-    l.detail = null;
-    return;
-  }
-  const r = rng(`reg:${seed}:${l.id}`);
-  const dong = dongById(l.dongId);
-  const salePrice =
-    r() < 0.08
-      ? null
-      : Math.round((l.area * (l.type === 'officetel' ? 900 : 1000) + 2000 + r() * 6000) / 100) * 100;
-  const mortgage = r() < 0.35 ? 0 : Math.round(((salePrice ?? 25000) * (0.2 + r() * 0.6)) / 100) * 100;
-  const facts = {
-    address: `서울 ${dong?.gu ?? ''} ${dong?.name ?? ''} ${100 + Math.floor(r() * 900)}-${1 + Math.floor(r() * 40)} ${l.building} ${l.unit}`,
-    owner: `${'김이박최정강조윤장임'[Math.floor(r() * 10)]}**`,
-    owners: r() < 0.85 ? 1 : r() < 0.6 ? 2 : 3,
-    mortgage,
-    seizure: r() < 0.05,
-    trust: r() < 0.04,
-    leaseRight: r() < 0.06,
-    buildingUse:
-      r() < 0.08 ? '제2종 근린생활시설' : l.type === 'officetel' ? '업무시설(오피스텔)' : '다세대주택',
-    violation: r() < 0.06,
-    approvedYear: l.built,
-    area: l.area,
-    salePrice,
-    deposit: l.deposit,
-  };
-  const j = judge(facts);
-  l.check = j.status;
-  l.detail = {
-    ...facts,
-    loanOk: j.loanOk,
-    loanReasons: j.loanReasons,
-    risk: j.risk,
-    ratio: j.ratio,
-    riskReasons: j.riskReasons,
-    ruleVersion: j.ruleVersion,
-  };
 }
 
 /** 지금 시각의 통화 모습 */
@@ -385,11 +321,58 @@ export function viewCall(
       lines: plan.lines.filter((x) => x.at <= now).map((x) => x.line),
       listingIds: done ? plan.listings.map((l) => l.id) : [],
       slots: done ? plan.slots : [],
-      registryReply: done ? plan.registryReply : null,
       smsDraft: done ? plan.smsDraft : null,
     },
     listings: done ? plan.listings : [],
     done,
+  };
+}
+
+/* ---------- 내 번호로 시험 전화 ---------- */
+
+export interface TestCallPlan {
+  segments: Segment[];
+  lines: { at: number; line: CallLine }[];
+  doneAt: number;
+}
+
+/** 중개사무소에 걸기 전에 내 번호로 먼저 받아 보는 통화. 대본은 문의 통화와 같아요. */
+export function planTestCall(prep: CallPrep, values: CondValues, now: number, scale: number): TestCallPlan {
+  const d = (sec: number) => (sec * SEC) / scale;
+  const rent = values.rent ?? 55;
+  const t = now + d(6);
+  const lines: TestCallPlan['lines'] = [
+    {
+      at: t,
+      line: {
+        who: 'agent',
+        text: '안녕하세요, 저는 살구의 AI 비서예요. 집을 구하는 분을 대신해 전화드렸어요. 원하지 않으시면 말씀해 주세요.',
+      },
+    },
+    {
+      at: t + d(4),
+      line: {
+        who: 'agent',
+        text: prep.share.condition
+          ? `근처에 월세 ${rent}만 원 이하, 보증금 ${values.deposit.toLocaleString('ko-KR')}만 원 정도 방이 있을까요?${prep.moveIn ? ` 입주는 ${prep.moveIn}이에요.` : ''}`
+          : '근처에 원룸이 있을까요?',
+      },
+    },
+    { at: t + d(8), line: { who: 'agent', text: '보여 주실 수 있는 시간이 언제일까요?' } },
+    {
+      at: t + d(11),
+      line: { who: 'system', text: '시험 전화가 끝났어요. 중개사무소에는 이 대본으로 걸어요.' },
+    },
+  ];
+  return {
+    segments: [
+      { status: 'queued', from: now },
+      { status: 'ringing', from: now + d(1) },
+      { status: 'in_progress', from: t },
+      { status: 'done', from: t + d(11) },
+    ],
+    lines,
+    doneAt: t + d(11),
   };
 }
 

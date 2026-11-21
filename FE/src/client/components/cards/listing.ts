@@ -1,6 +1,6 @@
 import { html, nothing, type TemplateResult } from 'lit-html';
 import type { Broker, Listing } from '../../../shared/types.js';
-import { CHECK_LABEL, CONTACT_LABEL, PRICE_LABEL } from '../../../shared/labels.js';
+import { CONTACT_LABEL, PRICE_LABEL } from '../../../shared/labels.js';
 import { depRent } from '../../../shared/format.js';
 import { state } from '../../store.js';
 import { badge } from '../common.js';
@@ -17,11 +17,11 @@ export function typeName(t: Listing['type']): string {
   return t === 'officetel' ? '오피스텔' : '원룸·빌라';
 }
 
-/** 매물 카드. 어느 화면에서든 연락 상태는 머리 오른쪽, 확인 상태는 가격 줄 바로 아래에 같은 문구로 */
+/** 매물 카드. 어느 화면에서든 연락 상태는 머리 오른쪽, 실거래 대비는 가격 줄 바로 아래에 같은 문구로 */
 export function listingCard(
   l: Listing,
   body: TemplateResult | typeof nothing = nothing,
-  opts: { compact?: boolean } = {},
+  opts: { compact?: boolean; lead?: TemplateResult } = {},
 ) {
   const contact = CONTACT_LABEL[l.contact];
   return html`<div
@@ -30,20 +30,21 @@ export function listingCard(
     data-listing=${l.id}
   >
     <div class="listing-head">
+      ${opts.lead ?? nothing}
       <span class="lno">${l.no}</span>
       <div class="listing-title">
         <strong>${l.building}</strong>
-        <span class="muted">${dongName(l.dongId)} · ${typeName(l.type)} · ${l.area}㎡ · ${l.floor}층</span>
+        <span class="muted">${dongName(l.dongId)} · ${typeName(l.type)} ${l.area}㎡ · ${l.floor}층</span>
       </div>
       ${badge(contact, { live: l.contact === 'contacting', testid: 'contact-status' })}
     </div>
     <p class="listing-price">
       <span class="money">${depRent(l.deposit, l.rent)}</span>
-      <span class="muted">보증금/월세(만 원) · 관리비 ${l.fee}만 원</span>
+      <span class="muted">보증금/월세(만 원) · 관리비 ${l.fee}만</span>
     </p>
     <div class="listing-check">
-      ${badge(CHECK_LABEL[l.check], { testid: 'check-status' })}
-      <span class="note">실거래 대비 ${PRICE_LABEL[l.priceVerdict].text}</span>
+      ${badge(PRICE_LABEL[l.priceVerdict], { testid: 'price-status' })}
+      <span class="note">같은 조건 과거 실거래 대비</span>
     </div>
     ${body}
   </div>`;

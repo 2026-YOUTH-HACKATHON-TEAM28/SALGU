@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { condValueText, depRent, maskPersonal, won } from '../../src/shared/format.js';
-import { CHECK_LABEL, CONTACT_LABEL, callLabel } from '../../src/shared/labels.js';
+import { CONTACT_LABEL, PRICE_LABEL, callLabel } from '../../src/shared/labels.js';
 import { WORKPLACES } from '../../src/server/mock/data.js';
 
 describe('금액 표시', () => {
@@ -29,11 +29,11 @@ describe('개인정보 가리기', () => {
 });
 
 describe('상태 문구', () => {
-  it('연락 상태와 확인 상태는 서로 다른 문구', () => {
+  it('연락 상태와 가격 비교는 서로 다른 문구', () => {
     const contact = Object.values(CONTACT_LABEL).map((l) => l.text);
-    const check = Object.values(CHECK_LABEL).map((l) => l.text);
+    const price = Object.values(PRICE_LABEL).map((l) => l.text);
     expect(new Set(contact).size).toBe(contact.length);
-    expect(new Set(check).size).toBe(check.length);
+    for (const p of price) expect(contact).not.toContain(p);
     expect(contact).toContain('연락 중');
     expect(contact).toContain('답변 없음');
     expect(contact).toContain('방문 확정');

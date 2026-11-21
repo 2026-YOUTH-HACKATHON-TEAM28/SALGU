@@ -3,7 +3,7 @@ import type { Card, Message } from '../../shared/types.js';
 import { condCard, condFormCard } from './cards/cond.js';
 import { dongDetailCard, dongsCard, noMatchCard } from './cards/dongs.js';
 import { callPrepCard, callsCard } from './cards/calls.js';
-import { checksCard } from './cards/checks.js';
+import { roomsCard } from './cards/rooms.js';
 import { finalCard, planCard } from './cards/plan.js';
 
 function conceptCard(c: Extract<Card, { kind: 'concept' }>) {
@@ -30,13 +30,16 @@ export function renderCard(card: Card, _msg: Message): TemplateResult {
       return callPrepCard(card);
     case 'calls':
       return callsCard(card);
-    case 'checks':
-      return checksCard(card);
+    case 'rooms':
+      return roomsCard(card);
     case 'plan':
       return planCard(card);
     case 'final':
       return finalCard(card);
     case 'concept':
       return conceptCard(card);
+    default:
+      // 예전에 저장된 대화의 카드(지금은 쓰지 않는 종류)
+      return html`<article class="card folded">지금은 보여 드리지 않는 카드예요.</article>`;
   }
 }

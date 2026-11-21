@@ -1,14 +1,15 @@
 import { html, nothing, type TemplateResult } from 'lit-html';
 import type { Card, Listing, Visit } from '../../../shared/types.js';
-import { CHECK_LABEL, CONTACT_LABEL, PRICE_LABEL, VISIT_LABEL } from '../../../shared/labels.js';
+import { CONTACT_LABEL, PRICE_LABEL, VISIT_LABEL } from '../../../shared/labels.js';
 import { dateOnly, dateTime, depRent, hm } from '../../../shared/format.js';
 import { act, openPanel, state, toast } from '../../store.js';
 import { copyText } from '../common.js';
+import { icons } from '../../icons.js';
 import { brokerOf, dongName, listingCard, typeName } from './listing.js';
 import { miniMap } from './minimap.js';
 
 const BRING = [
-  '등기부 원본(소유자·근저당 다시 확인)',
+  '등기부등본은 방문 때 직접 떼어 보기(소유자·근저당)',
   '수압, 곰팡이, 채광, 소음',
   '전입신고와 확정일자 받을 수 있는지',
 ];
@@ -40,15 +41,26 @@ export function planCard(_card: Extract<Card, { kind: 'plan' }>): TemplateResult
     .sort((a, b) => a.v.order - b.v.order);
   const talk = state.session?.kakaoTalk;
   return html`<article class="card plan" data-testid="plan-card">
-    <div class="card-head">
-      <h3>${dateOnly(plan.start)} ${hm(plan.start)}~${hm(plan.end)} · ${visits.length}곳</h3>
-    </div>
+    <header class="plan-head">
+      <span class="plan-icon" aria-hidden="true">${icons.calendar(22)}</span>
+      <div>
+        <h3>집 보기 계획서</h3>
+        <p class="sub">
+          ${dateOnly(plan.start)} ${hm(plan.start)} ~ ${hm(plan.end)} · ${visits.length}곳 방문
+        </p>
+      </div>
+    </header>
     <div class="notify ${talk ? 'on' : ''}">
       ${
         talk
-          ? html`<p>카카오톡 '나에게 보내기'로 방문 전날 저녁과 1시간 전에 알려 드려요.</p>`
-          : html`<p>지금은 이 화면이 열려 있을 때 화면 알림으로 알려 드려요.</p>
-              <button class="link" @click=${() => openPanel('sched')}>카카오톡 알림 연결</button>`
+          ? html`<strong>카카오톡으로 알려 드려요</strong>
+              <p>방문 전날 저녁과 1시간 전에 카카오톡 '나에게 보내기'로 보내요.</p>`
+          : html`<strong>화면 알림으로 대신 알려 드려요</strong>
+              <p>
+                카카오톡 알림을 연결하지 않아서, 이 화면을 열어 두면 방문 전날·1시간 전에 화면 알림을 띄우고
+                일정 탭에 모아 둬요.
+              </p>
+              <button class="btn-pill" @click=${() => openPanel('sched')}>카카오톡 알림 연결</button>`
       }
     </div>
     ${miniMap(
@@ -143,7 +155,6 @@ export function finalCard(card: Extract<Card, { kind: 'final' }>): TemplateResul
             <th>버스</th>
             <th>준공</th>
             <th>입주</th>
-            <th>등기·대출</th>
             <th>방문</th>
           </tr>
         </thead>
@@ -165,7 +176,6 @@ export function finalCard(card: Extract<Card, { kind: 'final' }>): TemplateResul
               <td>${d ? `${d.bus.interval}분 · ${d.bus.last}` : '-'}</td>
               <td>${r.l.built}</td>
               <td>${r.l.moveIn}</td>
-              <td>${CHECK_LABEL[r.l.check].text}</td>
               <td>${v ? `${CONTACT_LABEL[r.l.contact].text} ${dateTime(v.at)}` : '-'}</td>
             </tr>`;
           })}

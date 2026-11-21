@@ -109,7 +109,7 @@ export type Intent =
   | { kind: 'editConds' }
   | { kind: 'condForm' }
   | { kind: 'search' }
-  | { kind: 'plan'; includeCaution: boolean }
+  | { kind: 'plan' }
   | { kind: 'final' }
   | { kind: 'oneByOne' }
   | { kind: 'greeting' }
@@ -130,16 +130,11 @@ export function intentOf(text: string): Intent {
   if (/(?:다|모두|전부)\s*전화/.test(t)) return { kind: 'callAll' };
   const only = /(\d)\s*번(?:\s*(?:이랑|하고|,|와|과)\s*(\d)\s*번)?\s*(?:만)?\s*전화/.exec(t);
   if (only?.[1]) return { kind: 'callOnly', nos: [Number(only[1]), ...(only[2] ? [Number(only[2])] : [])] };
-  if (/주의\s*매물까지/.test(t)) return { kind: 'plan', includeCaution: true };
-  if (/(?:추천\s*매물로|미팅\s*잡아|방문\s*잡아|약속\s*잡아)/.test(t))
-    return { kind: 'plan', includeCaution: false };
+  if (/(?:고른\s*방으로|미팅\s*잡아|방문\s*잡아|약속\s*잡아)/.test(t)) return { kind: 'plan' };
   if (/최종\s*추천/.test(t)) return { kind: 'final' };
   if (/조건\s*(?:바꿀|바꾸|고칠|고치|수정)/.test(t)) return { kind: 'editConds' };
   if (/^(?:이대로\s*)?찾아\s*줘?$|^찾기$/.test(t)) return { kind: 'search' };
-  const concept =
-    /(환산월세|전월세\s*전환율|전환율|근저당|전세\s*대출|확정일자|전입신고|청년\s*(?:월세)?\s*지원|등기부)/.exec(
-      t,
-    );
+  const concept = /(환산월세|전월세\s*전환율|전환율|확정일자|전입신고|청년\s*(?:월세)?\s*지원)/.exec(t);
   if (concept?.[1] && /(뭐|무엇|알려|설명|어떻게|받을\s*수|언제|\?)/.test(t)) {
     return { kind: 'concept', topic: concept[1].replace(/\s/g, '') };
   }

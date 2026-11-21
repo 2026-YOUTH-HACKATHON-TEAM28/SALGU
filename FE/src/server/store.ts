@@ -9,6 +9,7 @@ export interface UserRecord extends User {
   createdAt: string;
   kakaoTalk: boolean;
   calls: { date: string; count: number };
+  testCalls?: { date: string; count: number };
 }
 
 export interface SessionRecord {
@@ -162,6 +163,17 @@ export class Store {
     delete this.db.chats[id];
     this.markDirty();
     return true;
+  }
+
+  /** 시험 전화 하루 3번 */
+  useTestCall(userId: string, today: string): number {
+    const u = this.db.users[userId];
+    if (!u) return 0;
+    if (!u.testCalls || u.testCalls.date !== today) u.testCalls = { date: today, count: 0 };
+    if (u.testCalls.count >= 3) return 0;
+    u.testCalls.count += 1;
+    this.markDirty();
+    return 1;
   }
 
   /** 하루 통화 수 한도(10통) 확인 후 더하기 */

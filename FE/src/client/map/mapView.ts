@@ -1,10 +1,11 @@
 import { html, nothing, type TemplateResult } from 'lit-html';
 import type { Listing } from '../../shared/types.js';
-import { CHECK_LABEL, CONTACT_LABEL } from '../../shared/labels.js';
+import { CONTACT_LABEL, PRICE_LABEL } from '../../shared/labels.js';
 import { depRent, hm } from '../../shared/format.js';
 import { state, ui, type MapMode } from '../store.js';
 import { listingCard } from '../components/cards/listing.js';
 import { createProvider, esc, SEOUL, type LatLng, type MapProvider } from './provider.js';
+import { COMPANY_ICON } from './pins.js';
 
 const MODES: { id: MapMode; label: string }[] = [
   { id: 'dong', label: '동네' },
@@ -37,7 +38,7 @@ function workplace() {
   return state.meta?.workplaces.find((w) => w.id === id) ?? null;
 }
 
-const COMPANY_PIN = `<span class="pin company" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><rect x="5" y="3.5" width="14" height="17" rx="1.5"/><path d="M9 8h2M13 8h2M9 12h2M13 12h2"/></svg></span>`;
+const companyPin = (name: string) => `<span class="lpin k-company">${COMPANY_ICON}${esc(name)}</span>`;
 
 /** 지금 상태를 지도에 그려요(바뀐 게 있을 때만) */
 function paint(p: MapProvider): void {
@@ -65,7 +66,7 @@ function paint(p: MapProvider): void {
     p.marker({
       lat: wp.lat,
       lng: wp.lng,
-      html: COMPANY_PIN,
+      html: companyPin(wp.name),
       title: `회사 ${wp.name}`,
       popup: ['회사(학교)', wp.name],
     });
@@ -79,7 +80,7 @@ function paint(p: MapProvider): void {
       p.marker({
         lat: d.lat,
         lng: d.lng,
-        html: `<span class="pin dong">${d.rank}</span>`,
+        html: `<span class="lpin ${d.rank === 1 ? 'k-first' : 'k-dong'}"><b>${d.rank}</b>${esc(d.name)}</span>`,
         title: `${d.rank}순위 ${d.name}`,
         popup: [
           `${d.rank}. ${d.name}`,
@@ -112,15 +113,15 @@ function paint(p: MapProvider): void {
       });
     }
     for (const l of visibleListings()) {
-      const tone = CHECK_LABEL[l.check].tone;
+      const tone = PRICE_LABEL[l.priceVerdict].tone;
       p.marker({
         lat: l.lat,
         lng: l.lng,
-        html: `<span class="pin listing t-${tone}">${l.no}</span>`,
+        html: `<span class="lpin t-${tone}"><b>${l.no}</b>${esc(depRent(l.deposit, l.rent))}</span>`,
         title: `${l.no}번 ${l.building}`,
         popup: [
           `${l.no}. ${l.building}`,
-          `${depRent(l.deposit, l.rent)} · ${CHECK_LABEL[l.check].text}`,
+          `${depRent(l.deposit, l.rent)} · 실거래 대비 ${PRICE_LABEL[l.priceVerdict].text}`,
           CONTACT_LABEL[l.contact].text,
         ],
         onClick: () => ui({ mapFocus: l.id, sheetOpen: true }),
@@ -138,7 +139,7 @@ function paint(p: MapProvider): void {
       p.marker({
         lat: l.lat,
         lng: l.lng,
-        html: `<span class="pin visit"><b>${i + 1}</b>${esc(hm(v.at))}</span>`,
+        html: `<span class="lpin k-visit"><b>${i + 1}</b>${esc(hm(v.at))}</span>`,
         title: `${i + 1}번째 방문 ${hm(v.at)} ${l.building}`,
         popup: [`${hm(v.at)} ${l.building}`, CONTACT_LABEL[l.contact].text],
         onClick: () => ui({ mapFocus: l.id, sheetOpen: true }),
@@ -191,30 +192,42 @@ export function syncMap(): void {
 
 window.addEventListener('resize', () => provider?.resize());
 
+const LEGEND_TITLE: Record<MapMode, string> = {
+  dong: '살만한 동네 (과거 실거래 기준)',
+  listing: '통화로 찾은 방',
+  route: '방문 동선',
+};
+
 function legend(): TemplateResult {
   const mode = state.ui.mapMode;
   const items: [string, string][] =
     mode === 'dong'
       ? [
-          ['dong', '살만한 동네(번호 = 순위)'],
-          ['broker', '전화할 중개사무소'],
+          ['dong', '번호 = 채팅 카드 순위'],
+          ['broker', '전화할 등록 중개사무소'],
           ['company', '회사(학교)'],
         ]
       : mode === 'listing'
         ? [
-            ['listing ok', '추천'],
-            ['listing warn', '주의'],
-            ['listing bad', '제외 권장'],
-            ['listing muted', '등기 대기'],
+            ['listing-ok', '실거래 대비 적정'],
+            ['listing-warn', '약간 비쌈'],
+            ['listing-bad', '비쌈'],
             ['broker', '통화한 중개사무소'],
           ]
         : [
             ['visit', '방문 순서와 시각'],
             ['company', '회사(학교)'],
           ];
-  return html`<ul class="map-legend">
-    ${items.map(([k, label]) => html`<li><span class="lg lg-${k.replace(' ', '-')}"></span>${label}</li>`)}
-  </ul>`;
+  return html`<div class="map-legend" data-testid="map-legend">
+    <strong>${LEGEND_TITLE[mode]}</strong>
+    <ul>
+      ${items.map(([k, label]) => html`<li><span class="lg lg-${k}"></span>${label}</li>`)}
+    </ul>
+    <p class="map-src">
+      지도: ${provider?.kind === 'kakao' ? '카카오맵' : 'OpenStreetMap(카카오맵을 쓸 수 없는 주소)'} · 위치는
+      예시 값
+    </p>
+  </div>`;
 }
 
 function sheet(): TemplateResult | typeof nothing {
@@ -280,46 +293,33 @@ function sheet(): TemplateResult | typeof nothing {
 export function mapView(): TemplateResult {
   const { mapMode, mapLayers } = state.ui;
   const hasData = Boolean(state.chat?.search);
+  const chip = (label: string, on: boolean, onClick: () => void, testid?: string) =>
+    html`<button
+      class="map-chip ${on ? 'on' : ''}"
+      aria-pressed=${on}
+      @click=${onClick}
+      data-testid=${testid ?? nothing}
+    >
+      ${label}
+    </button>`;
   return html`<div class="bigmap-wrap" data-testid="bigmap">
-    <div class="map-tools">
-      <div class="seg-btns" role="group" aria-label="지도 보기">
-        ${MODES.map(
-          (m) =>
-            html`<button
-              class="seg-btn small"
-              aria-pressed=${mapMode === m.id}
-              @click=${() => ui({ mapMode: m.id, mapFocus: null, sheetOpen: false })}
-            >
-              ${m.label}
-            </button>`,
-        )}
-      </div>
-      <div class="checks layers">
-        <label
-          ><input
-            type="checkbox"
-            .checked=${mapLayers.stations}
-            @change=${(e: Event) => ui({ mapLayers: { ...mapLayers, stations: (e.target as HTMLInputElement).checked } })}
-          />
-          역</label
-        >
-        <label
-          ><input
-            type="checkbox"
-            .checked=${mapLayers.commuteRange}
-            @change=${(e: Event) => ui({ mapLayers: { ...mapLayers, commuteRange: (e.target as HTMLInputElement).checked } })}
-          />
-          출근 권역</label
-        >
-      </div>
-    </div>
     <div id="bigmap" class="bigmap" role="region" aria-label="지도"></div>
+    <div class="map-tools" role="group" aria-label="지도 보기">
+      ${MODES.map((m) =>
+        chip(
+          m.label,
+          mapMode === m.id,
+          () => ui({ mapMode: m.id, mapFocus: null, sheetOpen: false }),
+          `map-mode-${m.id}`,
+        ),
+      )}
+      <span class="map-sep" aria-hidden="true"></span>
+      ${chip('역', mapLayers.stations, () => ui({ mapLayers: { ...mapLayers, stations: !mapLayers.stations } }))}
+      ${chip('출근 권역', mapLayers.commuteRange, () =>
+        ui({ mapLayers: { ...mapLayers, commuteRange: !mapLayers.commuteRange } }),
+      )}
+    </div>
     ${hasData ? nothing : html`<p class="map-empty">동네를 찾으면 여기에 동네와 중개사무소가 보여요.</p>`}
-    ${legend()}
-    <p class="map-src">
-      지도 ${provider?.kind === 'kakao' ? '카카오맵' : 'OpenStreetMap(카카오맵을 쓸 수 없는 주소)'} · 위치는
-      예시 값
-    </p>
-    ${sheet()}
+    ${state.ui.mapFocus && state.ui.sheetOpen ? nothing : legend()} ${sheet()}
   </div>`;
 }

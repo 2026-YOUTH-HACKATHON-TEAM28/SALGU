@@ -1,8 +1,6 @@
-/* 계산 엔진. 화면에 나오는 숫자(환산월세, 시세 판정, 순위 점수, 위험 비율)는 모두 여기서 나와요.
+/* 계산 엔진. 화면에 나오는 숫자(환산월세, 시세 판정, 순위 점수)는 모두 여기서 나와요.
  * AI는 숫자를 만들지 않아요. */
 import type {
-  CheckDetail,
-  CheckStatus,
   Commute,
   CondKey,
   CondValues,
@@ -12,7 +10,6 @@ import type {
   FilterLoss,
   PriceVerdict,
   Priority,
-  RiskLevel,
   SearchResult,
   Workplace,
 } from '../../shared/types.js';
@@ -69,14 +66,21 @@ export function commuteOf(dong: DongSeed, wp: Workplace): Commute {
   const km = distKm(dong.lat, dong.lng, wp.lat, wp.lng);
   const transfers = shared ? 0 : km > 14 ? 2 : 1;
   const walk = 5 + (Math.round(km * 7) % 4);
+  const walkEnd = 3 + (Math.round(km * 5) % 3);
   const ride = Math.round(km * 2.3 + 3);
-  const minutes = walk + ride + transfers * 6;
-  const route = [`도보 ${walk}분`, `${shared ?? dong.lines[0]}호선`.replace('신림호선', '신림선')];
-  if (!shared)
+  const minutes = walk + ride + walkEnd + transfers * 6;
+  const lineName = (l: string) => (/^\d+$/.test(l) ? `${l}호선` : l === '공항' ? '공항철도' : `${l}선`);
+  const route = [`${dong.station}역까지 걸어서 ${walk}분`];
+  if (shared) route.push(`${lineName(shared)} ${ride}분`);
+  else {
+    const first = Math.max(3, Math.round(ride * 0.6));
     route.push(
-      `환승 ${transfers}회`,
-      `${wp.lines[0]}호선`.replace('신분당호선', '신분당선').replace('공항호선', '공항철도'),
+      `${lineName(dong.lines[0] ?? '')} ${first}분`,
+      `환승`,
+      `${lineName(wp.lines[0] ?? '')} ${ride - first}분`,
     );
+  }
+  route.push(`걸어서 ${walkEnd}분`);
   return { minutes, transfers, route };
 }
 
@@ -250,78 +254,6 @@ export function priceVerdict(
   if (ratio <= 1.05) return 'fair';
   if (ratio <= 1.15) return 'slightly_high';
   return 'high';
-}
-
-/* ---------- 등기 · 건축물대장 · 전세대출 (규칙 r1-2026-11) ---------- */
-
-export interface RegistryFacts {
-  address: string;
-  owner: string;
-  owners: number;
-  mortgage: number;
-  seizure: boolean;
-  trust: boolean;
-  leaseRight: boolean;
-  buildingUse: string;
-  violation: boolean;
-  approvedYear: number;
-  area: number;
-  salePrice: number | null;
-  deposit: number;
-}
-
-export function judge(
-  f: RegistryFacts,
-): Omit<
-  CheckDetail,
-  | 'address'
-  | 'owner'
-  | 'owners'
-  | 'mortgage'
-  | 'seizure'
-  | 'trust'
-  | 'leaseRight'
-  | 'buildingUse'
-  | 'violation'
-  | 'approvedYear'
-  | 'salePrice'
-> & { status: CheckStatus } {
-  const loanReasons: string[] = [];
-  if (f.buildingUse.includes('근린생활시설'))
-    loanReasons.push('주용도가 근린생활시설이라 주택 전세대출이 안 돼요');
-  if (f.violation) loanReasons.push('건축물대장에 위반건축물로 올라 있어요');
-  if (f.area > 85) loanReasons.push('전용면적이 85㎡를 넘어요');
-  const loanOk = loanReasons.length === 0;
-
-  const ratio = f.salePrice ? Math.round(((f.mortgage + f.deposit) / f.salePrice) * 1000) / 10 : null;
-  const riskReasons: string[] = [];
-  let risk: RiskLevel = 'good';
-  if (f.seizure) riskReasons.push('압류나 경매 기록이 남아 있어요');
-  if (f.trust) riskReasons.push('신탁 등기가 남아 있어요');
-  if (ratio !== null && ratio >= 80) riskReasons.push(`근저당과 보증금 합이 시세의 ${ratio}%예요`);
-  if (riskReasons.length) risk = 'danger';
-  else {
-    if (ratio !== null && ratio >= 70) riskReasons.push(`근저당과 보증금 합이 시세의 ${ratio}%예요`);
-    if (ratio === null) riskReasons.push('매매 시세를 몰라 비율을 계산하지 못했어요');
-    if (f.leaseRight) riskReasons.push('전세권이나 임차권 등기가 있어요');
-    if (f.owners >= 3) riskReasons.push(`소유자가 ${f.owners}명이에요`);
-    if (riskReasons.length) risk = 'caution';
-    else riskReasons.push(ratio === null ? '' : `근저당과 보증금 합이 시세의 ${ratio}%로 낮아요`);
-  }
-
-  let status: CheckStatus;
-  if (!loanOk || risk === 'danger') status = 'exclude';
-  else if (risk === 'caution') status = 'caution';
-  else status = 'recommend';
-  return {
-    loanOk,
-    loanReasons,
-    risk,
-    ratio,
-    riskReasons: riskReasons.filter(Boolean),
-    ruleVersion: STANDARD.ruleVersion,
-    status,
-  };
 }
 
 export { buildingsOf, dongById };
