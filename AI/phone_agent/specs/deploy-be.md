@@ -29,12 +29,13 @@ cp .env.example .env                                      # 값 채우기(아래
 | 화면 주소만 API를 부르게 할 때 | `PHONE_AGENT_CORS_ORIGINS=https://화면주소` (기본 `*`) |
 | 시연을 밤·일요일에 할 때 | `PHONE_AGENT_IGNORE_HOURS=1` (기본은 월~토 9~19시에만 발신) |
 | 안 받을 때 재발신을 빨리 보여 줄 때 | `PHONE_AGENT_RETRY_MINUTES=2` (기본 30) |
-| 녹음을 끌 때 | `PHONE_AGENT_RECORD=0` (대화록은 실시간 전사로 받음, 속도 측정은 비게 됨) |
+| 녹음 | **기본은 녹음 안 함**(기획서). 대화록은 실시간 전사로 받습니다. 속도 실험 때만 `PHONE_AGENT_RECORD=1` |
 
 ## 3. 꼭 지킬 것
 
 - **인증이 없습니다.** demo 모드 서버를 공개 주소에 그대로 열면 누구나 실제 전화를 걸 수 있습니다. 공개 주소는 mock으로만 열고, demo는 BE 서버 안에서만 부르게(방화벽·내부 주소) 해 주세요.
 - demo 모드는 요청에 담긴 중개사 번호로 걸지 않고 `PHONE_AGENT_DEMO_TO`의 팀원 번호로만 겁니다.
+- 녹음하지 않으므로 공급사 에이전트(`KAT_AGENT_ID`)에 **실시간 전사(liveEvents `transcript.final`)가 켜져 있어야** 결과가 나옵니다. 꺼져 있으면 대화록이 없어 결과가 `unclear`입니다(살구-live 에이전트는 11-21에 켬).
 - 같은 사무소 하루 1번·하루 10통 제한이 시연에서도 걸립니다. 같은 예시로 다시 해 보려면 `approval_id`·`reg`를 바꾸거나 `.data/calls.json`을 지우세요.
 - 요청 예시의 방문 날짜(`visit_windows`)가 지났으면 `window_passed`로 거절됩니다. 오늘 이후 날짜로 보내세요.
 

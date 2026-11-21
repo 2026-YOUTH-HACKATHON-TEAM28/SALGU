@@ -42,7 +42,7 @@ def test_create_call_sends_digits_agent_and_instruction():
     assert kat(handler).create_call("010-1111-2222", "지시문", request=call_request) == "CA1"
     assert seen["path"] == "/v1/accounts/AC1/calls"
     assert seen["body"] == {"To": "01011112222", "From": "07012345678", "AgentId": "AG-base",
-                            "CallContext": {"Instruction": "지시문"}}
+                            "CallContext": {"Instruction": "지시문"}, "Record": False}  # 녹음 안 함(기획서)
 
 
 def _phases(status: str, events: list[str]) -> dict:
@@ -136,7 +136,7 @@ def test_trial_table_row_and_lines():
     assert out[1].endswith("← 1.2초 뒤 응답")
 
 
-def test_record_flag_is_sent_only_when_set():
+def test_calls_are_not_recorded_by_default():
     import dataclasses
     seen = []
 
@@ -144,12 +144,12 @@ def test_record_flag_is_sent_only_when_set():
         seen.append(json.loads(request.content))
         return httpx.Response(201, json={"callId": "CA1"})
 
-    kat(handler).create_call("010", "x")
-    off = KatProvider(dataclasses.replace(SETTINGS, record=False),
-                      client=httpx.Client(base_url="https://api.example.test/v1/accounts/AC1",
-                                          transport=httpx.MockTransport(handler)))
-    off.create_call("010", "x")
-    assert "Record" not in seen[0] and seen[1]["Record"] is False
+    kat(handler).create_call("010", "x")   # 기본: 녹음 안 함(기획서)
+    on = KatProvider(dataclasses.replace(SETTINGS, record=True),
+                     client=httpx.Client(base_url="https://api.example.test/v1/accounts/AC1",
+                                         transport=httpx.MockTransport(handler)))
+    on.create_call("010", "x")             # 속도 실험용으로 켰을 때만
+    assert seen[0]["Record"] is False and seen[1]["Record"] is True
 
 
 def test_live_transcript_from_live_events():

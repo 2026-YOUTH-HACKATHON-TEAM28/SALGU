@@ -141,7 +141,7 @@
 | `registry_docs[]` | 등기부. 살구 번호로 들어온 문자·MMS(`source: "sms"`)와 사용자가 올린 PDF(`source: "upload"`, `type: "upload"`)가 함께 들어옵니다. 첨부는 `media` 주소로 받습니다. `listing_index`는 업로드할 때 방을 지정했으면 그 방(문자는 `null`). 문자 본문의 주민등록번호는 가립니다. |
 | `unverified` | 확인되지 않아 비운 값의 이름. 화면에는 '확인 필요'로 |
 | `corrections[]` | 중개사가 말을 고친 흔적 `{field, value 또는 dropped, reason, line}`. `corrected_value`(고친 뒤 값을 받음, `value`), `corrected`(고치기 전 값이라 버림, `dropped`), `echoed`(AI가 말한 조건을 되풀이한 값이라 버림), `hedged`(중개사도 확실하지 않아 버림). 화면에 "통화 중 바뀐 값"으로 보여 줄 수 있습니다. 전사 보정도 여기에 남습니다: `name_matched`(전사된 건물 이름을 참고 건물 이름에 맞춤, `heard`에 들린 값), `read_back`(AI가 되읽고 중개사가 "네"라고 한 입주 시기로 받음, `heard`에 들린 값). |
-| `timing` | 통화 속도(초): 응답 지연 중앙값·p90·최대, AI 한 번 발화 평균·최대, AI가 끊은 횟수, 중개사가 끊은 횟수, 통화 길이, 말 빠르기(`ai_syllables_per_sec`·`broker_syllables_per_sec`, 음절/초, 11-21 추가), AI가 말한 시간 합(`ai_talk_seconds`). 시각이 없는 대화록(mock, 또는 녹음을 꺼서 실시간 전사로만 판정한 통화)이면 `null`. 확정 통화 결과에도 있습니다. |
+| `timing` | 통화 속도(초): 응답 지연 중앙값·p90·최대, AI 한 번 발화 평균·최대, AI가 끊은 횟수, 중개사가 끊은 횟수, 통화 길이, 말 빠르기(`ai_syllables_per_sec`·`broker_syllables_per_sec`, 음절/초, 11-21 추가), AI가 말한 시간 합(`ai_talk_seconds`). 시각이 없는 대화록(mock, 실시간 전사)이면 `null`. 녹음하지 않는 것이 기본이라 실제 통화에서는 보통 `null`이고, 속도 실험(`PHONE_AGENT_RECORD=1`) 때만 값이 있습니다. 확정 통화 결과에도 있습니다. |
 | `evidence`, `quotes` | 값이 나온 줄 번호와 그 줄의 내용(전문 보관에 동의하지 않아도 남습니다). `quotes`의 `start`·`end`는 통화 시작부터 센 초로, 대화록에 시각이 있을 때만 붙습니다(mock에는 없음). |
 | `transcript` | 대화 전문. `keep_transcript`가 `true`일 때만, 30일 동안 |
 | `sms_draft` | 두 번 걸어도 받지 않았을 때의 문자 초안(보내지 않습니다) |

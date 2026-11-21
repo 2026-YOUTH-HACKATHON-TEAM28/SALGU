@@ -43,11 +43,11 @@ def agent_id(name: Optional[str], settings: Settings) -> str:
     return os.environ.get(f"KAT_AGENT_ID_{name.upper()}", "").strip() or name
 
 
-def trial_settings(ignore_hours: bool, no_record: bool = False) -> Settings:
+def trial_settings(ignore_hours: bool, record: bool = False) -> Settings:
     settings = Settings.from_env()
     if settings.mode != "demo":
         raise SystemExit("시험 통화는 demo 모드에서만 겁니다(.env의 PHONE_AGENT_MODE=demo).")
-    record = False if no_record else settings.record
+    record = record or settings.record
     return dataclasses.replace(settings, ignore_hours=ignore_hours or settings.ignore_hours, store_path=TRIALS,
                                record=record)
 
@@ -136,7 +136,7 @@ def cmd_measure(args, out=print) -> list[dict]:
 
 
 def cmd_run(args, out=print) -> dict:
-    settings = trial_settings(args.ignore_hours, getattr(args, "no_record", False))
+    settings = trial_settings(args.ignore_hours, getattr(args, "record", False))
     provider = KatProvider(settings)
     provider.agent_id = agent_id(args.agent, settings)
     service = CallService(settings, provider, extractor=LLMExtractor(settings), store=Store(settings.store_path))
@@ -151,7 +151,7 @@ def cmd_run(args, out=print) -> dict:
         raise SystemExit(f"지금 걸 수 없습니다: {rec['status']} {rec['error'] or rec['scheduled_at']} "
                          "(밤·일요일이면 --ignore-hours, 날짜가 지났으면 fixture 날짜를 바꿀 것)")
     out(f"문의 전화: {request.brokers[0].name} → 시연 번호, 에이전트 {args.agent or 'base'}"
-        + (", 녹음 안 함" if settings.record is False else ""))
+        + (", 녹음함(속도 측정용)" if settings.record else ", 녹음 안 함"))
     result = wait(service, call_id, out)
     out(json.dumps(summary(result), ensure_ascii=False, indent=1))
     out(f"대화록 출처: {service.store.calls[call_id].get('transcript_source')}")
@@ -198,7 +198,7 @@ def main(argv: Optional[list[str]] = None) -> None:
     run.add_argument("--label", required=True, help="설정 이름(기록표 한 줄)")
     run.add_argument("--agent", default=None, help="base | high | realtime | live | 에이전트 ID")
     run.add_argument("--ignore-hours", action="store_true", help="영업시간 밖에도 건다")
-    run.add_argument("--no-record", action="store_true", help="녹음하지 않음(대화록은 실시간 전사로)")
+    run.add_argument("--record", action="store_true", help="녹음함(응답 지연 등 속도 측정용). 기본은 녹음 안 함")
     group = run.add_mutually_exclusive_group()
     group.add_argument("--confirm", action="store_true", help="문의 뒤 중개사가 말한 가능 시간으로 확정 전화까지")
     group.add_argument("--confirm-at", default=None, help="확정 시각(ISO). 가능 시간 밖이면 막힘")

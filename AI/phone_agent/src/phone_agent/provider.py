@@ -310,8 +310,8 @@ class KatProvider:
                     scenario: Optional[str] = None) -> str:
         body = {"To": digits(to), "From": self.from_number, "AgentId": self.agent_id,
                 "CallContext": {"Instruction": instruction}}
-        if self.settings.record is not None:  # False면 녹음·사후 전사를 만들지 않음(실시간 전사로 대신)
-            body["Record"] = self.settings.record
+        # 기본은 녹음 안 함(기획서). 녹음이 없으면 사후 전사도 없어 대화록은 실시간 전사(liveEvents)로 받는다
+        body["Record"] = bool(self.settings.record)
         data = self._request("POST", "/calls", json=body).json()
         call_id = data.get("callId") or (data.get("data") or {}).get("callId")
         if not call_id:
