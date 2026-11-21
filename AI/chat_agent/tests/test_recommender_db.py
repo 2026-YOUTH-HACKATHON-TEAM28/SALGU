@@ -44,6 +44,13 @@ class RealDatabaseTest(unittest.TestCase):
             self.assertIn("도봉구 창동", c["address"])  # 염창동·평창동이 섞이지 않는다
             self.assertEqual(c["monthly_rent_manwon"], 0)
 
+    def test_agencies_for_call_draft(self):
+        from salgu_chat import call_request
+        agencies = call_request.find_agencies("서울특별시 서대문구 대현동 37-18")
+        self.assertEqual(len(agencies), 3)
+        self.assertEqual(agencies[0]["dong"], "대현동")  # 같은 동부터
+        self.assertTrue(all(a["reg"] and a["phone"].startswith("0") for a in agencies))
+
     def test_school_without_commute_provider(self):
         res = self.search("학교 근처 원룸 1000/60", "연세대")
         self.assertGreater(res["count"], 0)

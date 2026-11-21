@@ -65,6 +65,7 @@ def chat(body: ChatIn):
         "reply": result["reply"],
         "messages": result["messages"],
         "backend": result["backend"],
+        "action": result.get("action"),  # 전화 요청 초안: 사용자가 승인하면 BE가 전화 서버에 보낸다
         "card": result["card"],
         "keywords": cache["keywords"],
         "ready": cache["ready"],
